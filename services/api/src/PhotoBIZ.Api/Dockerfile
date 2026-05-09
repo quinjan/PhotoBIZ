@@ -2,6 +2,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY PhotoBIZ.slnx ./
+COPY .editorconfig ./
 COPY Directory.Build.props ./
 COPY global.json ./
 COPY services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj services/api/src/PhotoBIZ.Api/
