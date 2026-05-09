@@ -64,8 +64,8 @@ flowchart TB
     Proxy["Caddy<br/>TLS + Reverse Proxy"]
     Admin["Angular Admin Web<br/>Static Files"]
     Booth["Angular Booth UI<br/>Static Files"]
-    API["ASP.NET Core API<br/>.NET 8"]
-    Worker["Background Worker<br/>.NET 8 Hosted Service"]
+    API["ASP.NET Core API<br/>.NET 10 LTS"]
+    Worker["Background Worker<br/>.NET 10 LTS Hosted Service"]
     DB[("PostgreSQL<br/>Persistent Volume")]
     Redis[("Redis<br/>Cache / Realtime Backplane / Jobs")]
   end

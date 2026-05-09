@@ -212,7 +212,7 @@ sequenceDiagram
 
 Stack:
 
-- Angular.
+- Angular 21.
 - TypeScript.
 - Angular Material.
 
@@ -263,7 +263,7 @@ Rules:
 
 Stack:
 
-- ASP.NET Core on .NET 8.
+- ASP.NET Core on .NET 10 LTS.
 - PostgreSQL.
 - Redis for realtime backplane, cache, and distributed locks.
 - SignalR for realtime updates.
@@ -292,7 +292,7 @@ Responsibilities:
 
 Stack:
 
-- .NET 8.
+- .NET 10 LTS.
 - Windows Service.
 
 Responsibilities:
@@ -586,7 +586,7 @@ flowchart TB
     Proxy["Caddy Reverse Proxy<br/>TLS + Routing"]
     Admin["Angular Admin Web<br/>Static Files"]
     Booth["Angular Booth UI<br/>Static Files"]
-    API["ASP.NET Core API<br/>.NET 8"]
+    API["ASP.NET Core API<br/>.NET 10 LTS"]
     Worker["Hangfire Worker<br/>Transaction Expiration + Jobs"]
     DB[("PostgreSQL")]
     Redis[("Redis")]
@@ -620,15 +620,15 @@ flowchart TB
 - Repository: single repository containing Angular apps, ASP.NET Core API, Windows Agent, and documentation.
 - Frontend workspace: one Angular workspace containing two separate applications: `admin-web` and `booth-ui`.
 - Shared frontend code lives in Angular workspace libraries for API clients, DTOs, validation helpers, constants, and reusable UI primitives.
-- Admin Web: Angular + TypeScript + Angular Material.
-- Booth UI: Angular + TypeScript, optimized for kiosk browser use.
-- Backend API: ASP.NET Core on .NET 8.
+- Admin Web: Angular 21 + TypeScript + Angular Material.
+- Booth UI: Angular 21 + TypeScript, optimized for kiosk browser use.
+- Backend API: ASP.NET Core on .NET 10 LTS.
 - Database: PostgreSQL.
 - ORM: Entity Framework Core.
 - Realtime: SignalR.
 - Background jobs: Hangfire with PostgreSQL storage.
 - Cache/locks/backplane: Redis.
-- Windows Agent: .NET 8 Windows Service.
+- Windows Agent: .NET 10 LTS Windows Service.
 - Admin authentication: email/password login with secure HttpOnly cookie sessions.
 - Booth UI authentication: booth-scoped kiosk token issued during booth pairing. No cashier unlock/login is required to show the Booth UI.
 - Agent authentication: booth agent credential issued during pairing.

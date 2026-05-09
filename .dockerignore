@@ -1,0 +1,16 @@
+.git
+.github
+.vs
+**/.vscode
+**/bin
+**/obj
+**/TestResults
+**/node_modules
+**/dist
+**/.angular
+**/coverage
+*.user
+*.suo
+.env
+.env.*
+!*.env.example

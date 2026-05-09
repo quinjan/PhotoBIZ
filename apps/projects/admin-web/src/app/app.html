@@ -1,0 +1,46 @@
+<main class="admin-shell">
+  <aside class="sidebar" aria-label="Primary">
+    <div class="brand-mark">PB</div>
+    <nav>
+      <a aria-current="page">Dashboard</a>
+      <a>Clients</a>
+      <a>Booths</a>
+      <a>Packages</a>
+      <a>Transactions</a>
+    </nav>
+  </aside>
+
+  <section class="workspace">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Phase 1 scaffold</p>
+        <h1>{{ productName() }}</h1>
+      </div>
+      <span class="status-pill">Backend authority enabled</span>
+    </header>
+
+    <section class="metric-grid" aria-label="Platform metrics">
+      @for (metric of metrics; track metric.label) {
+        <article class="metric-card">
+          <p>{{ metric.label }}</p>
+          <strong>{{ metric.value }}</strong>
+          <span>{{ metric.note }}</span>
+        </article>
+      }
+    </section>
+
+    <section class="work-panel">
+      <div>
+        <p class="eyebrow">Next vertical slices</p>
+        <h2>MVP foundations</h2>
+      </div>
+      <ul>
+        <li>Client account and manual subscription management</li>
+        <li>Tenant-scoped locations, booths, users, and packages</li>
+        <li>Safe Booth UI theme configuration</li>
+      </ul>
+    </section>
+  </section>
+</main>
+
+<router-outlet />

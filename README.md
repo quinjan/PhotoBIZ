@@ -28,6 +28,36 @@ photobooth-platform/
     ARCHITECTURE.md
 ```
 
+## Local Development
+
+Prerequisites:
+
+- .NET SDK 10.0.202 or compatible .NET 10 SDK.
+- Node.js 24 and npm 11.
+- Docker with Docker Compose.
+
+Common commands:
+
+```powershell
+dotnet restore PhotoBIZ.slnx
+dotnet build PhotoBIZ.slnx
+dotnet test PhotoBIZ.slnx
+
+Set-Location apps
+npm ci
+npm run build
+npm run test:ci
+
+Set-Location ..
+docker compose up --build
+```
+
+Local endpoints:
+
+- API health: `http://localhost:5082/health`
+- API status: `http://localhost:5082/api/platform/status`
+- Reverse proxy scaffold: `http://localhost:8080`
+
 ## Product Summary
 
 The Application Owner sells PhotoBIZ subscriptions to client businesses on a per-active-booth basis. Clients manage their own locations, booths, packages, staff, active session appearance, transactions, and reports.

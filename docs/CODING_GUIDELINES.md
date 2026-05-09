@@ -58,7 +58,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 
 ## .NET And C# Standards
 
-- Target .NET 8 unless `docs/ARCHITECTURE.md` is updated.
+- Target .NET 10 LTS unless `docs/ARCHITECTURE.md` is updated.
 - Enable nullable reference types for all new C# projects.
 - Use file-scoped namespaces.
 - Use four-space indentation and Allman braces.
@@ -108,7 +108,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 
 ## Angular And TypeScript Standards
 
-- Use one Angular workspace with separate `admin-web` and `booth-ui` applications.
+- Use Angular 21 in one Angular workspace with separate `admin-web` and `booth-ui` applications.
 - Use strict TypeScript and strict Angular templates.
 - Prefer standalone components for new Angular code.
 - Organize by feature area, not by generic type folders such as `components`, `services`, or `models`.
