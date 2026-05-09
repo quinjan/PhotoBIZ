@@ -1,0 +1,2433 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoBIZ UI Mockups</title>
+  <style>
+    :root {
+      --admin-bg: #f5f7f9;
+      --admin-panel: #ffffff;
+      --admin-line: #dde3ea;
+      --admin-text: #17202a;
+      --admin-muted: #6a7785;
+      --admin-blue: #155eef;
+      --admin-green: #0f8b5f;
+      --admin-red: #b42318;
+      --admin-amber: #b54708;
+      --booth-cream: #f7ecd6;
+      --booth-paper: #fbf3e1;
+      --booth-ink: #2a1911;
+      --booth-rust: #a14f2b;
+      --booth-gold: #c6923f;
+      --booth-teal: #2f6868;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #d8dee8;
+      color: var(--admin-text);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .board {
+      width: 1440px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 34px;
+      display: grid;
+      gap: 34px;
+    }
+
+    body.capture {
+      background: transparent;
+    }
+
+    body.capture .board {
+      width: 1366px;
+      min-height: 768px;
+      padding: 0;
+      gap: 0;
+    }
+
+    body.capture .shot {
+      border: 0;
+      box-shadow: none;
+    }
+
+    .shot {
+      width: 1366px;
+      height: 768px;
+      overflow: hidden;
+      background: var(--admin-bg);
+      border: 1px solid #c8d1dc;
+      box-shadow: 0 22px 50px rgba(31, 42, 55, 0.2);
+      position: relative;
+    }
+
+    .admin-shell {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 244px 1fr;
+      background: var(--admin-bg);
+    }
+
+    .side {
+      background: #101828;
+      color: white;
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 26px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      font-weight: 800;
+      font-size: 18px;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #ffffff, #b6d4ff);
+      color: #12336e;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav-item {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 12px;
+      border-radius: 8px;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    .nav-item.active {
+      background: #243b64;
+      color: #ffffff;
+    }
+
+    .nav-icon {
+      width: 18px;
+      text-align: center;
+    }
+
+    .side-footer {
+      margin-top: auto;
+      padding: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      font-size: 12px;
+      color: #d7e2ee;
+      line-height: 1.5;
+    }
+
+    .main {
+      padding: 24px 28px;
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      color: var(--admin-muted);
+      font-size: 13px;
+      margin-bottom: 5px;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    .admin-title {
+      font-size: 28px;
+      line-height: 1.15;
+      letter-spacing: 0;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .search {
+      width: 260px;
+      height: 40px;
+      border: 1px solid var(--admin-line);
+      border-radius: 8px;
+      background: white;
+      color: var(--admin-muted);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 14px;
+    }
+
+    .button {
+      height: 40px;
+      border-radius: 8px;
+      padding: 0 14px;
+      border: 1px solid var(--admin-line);
+      background: #ffffff;
+      color: var(--admin-text);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+    }
+
+    .button.primary {
+      background: var(--admin-blue);
+      color: white;
+      border-color: var(--admin-blue);
+    }
+
+    .button.green {
+      background: var(--admin-green);
+      color: white;
+      border-color: var(--admin-green);
+    }
+
+    .button.danger {
+      background: #fff1f0;
+      color: var(--admin-red);
+      border-color: #f4b8b2;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: var(--admin-panel);
+      border: 1px solid var(--admin-line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .metric-label {
+      color: var(--admin-muted);
+      font-size: 13px;
+      margin-bottom: 9px;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .metric-note {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--admin-green);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .section-title {
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      color: var(--admin-muted);
+      text-align: left;
+      font-weight: 700;
+      border-bottom: 1px solid var(--admin-line);
+      padding: 9px 8px;
+    }
+
+    td {
+      border-bottom: 1px solid #edf1f5;
+      padding: 11px 8px;
+      vertical-align: middle;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .status.green {
+      background: #e7f8ef;
+      color: var(--admin-green);
+    }
+
+    .status.amber {
+      background: #fff4df;
+      color: var(--admin-amber);
+    }
+
+    .status.red {
+      background: #fff1f0;
+      color: var(--admin-red);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .booth-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .admin-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .admin-grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 14px;
+    }
+
+    .form-layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 18px;
+    }
+
+    .form-card {
+      display: grid;
+      gap: 16px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .pill-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .pill {
+      border: 1px solid var(--admin-line);
+      background: #f8fafc;
+      border-radius: 999px;
+      min-height: 30px;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      color: #344054;
+    }
+
+    .callout {
+      border: 1px solid #b9d3ff;
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 14px;
+      color: #12336e;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .danger-zone {
+      border: 1px solid #f4b8b2;
+      background: #fff7f5;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .auth-screen {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 470px;
+      background: #101828;
+      color: white;
+    }
+
+    .auth-hero {
+      padding: 72px;
+      display: grid;
+      align-content: center;
+      background:
+        linear-gradient(135deg, rgba(21, 94, 239, 0.3), rgba(16, 24, 40, 0.8)),
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,0.16), transparent 30%),
+        #101828;
+    }
+
+    .auth-hero h1 {
+      font-size: 56px;
+      line-height: 1.05;
+      max-width: 650px;
+      margin: 18px 0;
+    }
+
+    .auth-panel {
+      background: white;
+      color: var(--admin-text);
+      padding: 54px;
+      display: grid;
+      align-content: center;
+      gap: 18px;
+    }
+
+    .auth-panel .input {
+      height: 46px;
+    }
+
+    .code-box {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+
+    .code-cell {
+      height: 54px;
+      border: 1px solid var(--admin-line);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 900;
+      background: #f8fafc;
+    }
+
+    .workflow-rail {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .workflow-step {
+      border: 1px solid var(--admin-line);
+      border-radius: 8px;
+      background: white;
+      padding: 10px;
+      font-size: 12px;
+      color: var(--admin-muted);
+      min-height: 60px;
+    }
+
+    .workflow-step.active {
+      border-color: var(--admin-blue);
+      background: #eff6ff;
+      color: #12336e;
+      font-weight: 800;
+    }
+
+    .report-bars {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: 130px 1fr 58px;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .bar-track {
+      height: 14px;
+      background: #edf1f5;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: var(--admin-blue);
+      border-radius: 999px;
+    }
+
+    .booth-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid #edf1f5;
+      border-radius: 8px;
+    }
+
+    .booth-name {
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .booth-meta {
+      color: var(--admin-muted);
+      font-size: 12px;
+    }
+
+    .pos-layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 18px;
+    }
+
+    .current-payment {
+      min-height: 360px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .payment-banner {
+      background: #fff7eb;
+      border: 1px solid #ffd9a3;
+      border-radius: 8px;
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .amount {
+      font-size: 54px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .timer {
+      width: 116px;
+      height: 116px;
+      border: 10px solid #f79009;
+      border-right-color: #fee4b4;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      font-weight: 900;
+      color: #93370d;
+    }
+
+    .payment-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .large-action {
+      height: 86px;
+      border-radius: 8px;
+      border: 1px solid var(--admin-line);
+      background: white;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-weight: 900;
+      font-size: 15px;
+    }
+
+    .large-action.green {
+      background: var(--admin-green);
+      color: white;
+      border-color: var(--admin-green);
+    }
+
+    .large-action.blue {
+      background: var(--admin-blue);
+      color: white;
+      border-color: var(--admin-blue);
+    }
+
+    .timeline {
+      display: grid;
+      gap: 9px;
+      font-size: 13px;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 26px 1fr auto;
+      gap: 9px;
+      align-items: center;
+      padding: 9px;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .step-dot {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #d0d5dd;
+    }
+
+    .step-dot.done {
+      background: var(--admin-green);
+    }
+
+    .step-dot.now {
+      background: #f79009;
+    }
+
+    .config-layout {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 18px;
+    }
+
+    .config-layout > .card {
+      padding: 14px 16px;
+    }
+
+    .field-grid {
+      display: grid;
+      gap: 13px;
+    }
+
+    .config-layout .field-grid {
+      gap: 9px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      font-size: 12px;
+      color: var(--admin-muted);
+      font-weight: 800;
+    }
+
+    .input,
+    .textarea,
+    .select,
+    .upload {
+      border: 1px solid var(--admin-line);
+      background: white;
+      border-radius: 8px;
+      padding: 11px 12px;
+      min-height: 40px;
+      font-size: 14px;
+    }
+
+    .config-layout .input,
+    .config-layout .select,
+    .config-layout .upload {
+      min-height: 36px;
+      padding: 8px 12px;
+    }
+
+    .textarea {
+      min-height: 78px;
+      line-height: 1.4;
+    }
+
+    .config-layout .textarea {
+      min-height: 64px;
+      padding: 9px 12px;
+    }
+
+    .upload {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--admin-muted);
+    }
+
+    .preview-frame {
+      background: #111827;
+      border-radius: 8px;
+      padding: 14px;
+      height: 590px;
+      display: grid;
+      place-items: center;
+    }
+
+    .mini-booth {
+      width: 608px;
+      height: 342px;
+      transform: scale(1);
+      transform-origin: center;
+      border: 8px solid #0b1020;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .package-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .package-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--admin-line);
+      border-radius: 8px;
+      background: #ffffff;
+    }
+
+    .toggle {
+      width: 44px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--admin-blue);
+      position: relative;
+    }
+
+    .toggle::after {
+      content: "";
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      top: 3px;
+      right: 3px;
+      border-radius: 50%;
+      background: white;
+    }
+
+    .booth-screen {
+      width: 100%;
+      height: 100%;
+      color: var(--booth-ink);
+      position: relative;
+      overflow: hidden;
+      font-family: Georgia, "Times New Roman", serif;
+      background:
+        radial-gradient(circle at 20% 25%, rgba(255, 241, 197, 0.95), rgba(157, 85, 42, 0.32) 34%, transparent 35%),
+        linear-gradient(115deg, rgba(50, 31, 24, 0.52), rgba(117, 70, 38, 0.2)),
+        repeating-linear-gradient(90deg, rgba(41, 26, 20, 0.08) 0 1px, transparent 1px 7px),
+        linear-gradient(135deg, #f4dfbb, #b06b3e 45%, #2f6868);
+    }
+
+    .booth-screen::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 52% 34%, rgba(255,255,255,0.32), transparent 18%),
+        radial-gradient(circle at 85% 70%, rgba(50, 104, 104, 0.38), transparent 25%),
+        linear-gradient(rgba(42, 25, 17, 0.12), rgba(42, 25, 17, 0.3));
+      pointer-events: none;
+    }
+
+    .booth-screen::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: 0.18;
+      background-image:
+        linear-gradient(0deg, transparent 0 97%, rgba(255,255,255,0.6) 98%),
+        linear-gradient(90deg, transparent 0 97%, rgba(60, 30, 10,0.35) 98%);
+      background-size: 38px 38px;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+    }
+
+    .booth-screen.modern-pop {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #09090b;
+      background:
+        radial-gradient(circle at 82% 18%, rgba(0, 210, 255, 0.38), transparent 24%),
+        radial-gradient(circle at 15% 78%, rgba(255, 46, 149, 0.32), transparent 24%),
+        linear-gradient(135deg, #ffffff, #f3f7fb 52%, #e8fbff);
+    }
+
+    .booth-screen.modern-pop::before {
+      background:
+        linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px),
+        linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+      background-size: 52px 52px;
+      opacity: 0.42;
+    }
+
+    .booth-screen.modern-pop::after {
+      display: none;
+    }
+
+    .modern-pop .booth-top,
+    .modern-pop .booth-bottom,
+    .modern-pop .booth-copy,
+    .modern-pop .booth-subtitle,
+    .modern-pop .booth-page-title {
+      color: #09090b;
+      text-shadow: none;
+    }
+
+    .modern-pop .booth-brand {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .modern-pop .booth-session,
+    .modern-pop .booth-kicker,
+    .modern-pop .package-tag {
+      color: #e6007a;
+      text-shadow: none;
+    }
+
+    .modern-pop .booth-heading {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #09090b;
+      text-shadow: none;
+      font-size: 82px;
+      line-height: 0.98;
+    }
+
+    .modern-pop .booth-cta,
+    .modern-pop .cash-note {
+      background: #00c2ff;
+      border-color: #09090b;
+      color: #09090b;
+      box-shadow: 8px 8px 0 #09090b;
+    }
+
+    .modern-pop .booth-package,
+    .modern-pop .method-card,
+    .modern-pop .payment-panel {
+      border: 3px solid #09090b;
+      background: rgba(255,255,255,0.94);
+      box-shadow: 10px 10px 0 #09090b;
+      color: #09090b;
+    }
+
+    .modern-pop .booth-package.featured {
+      border-color: #09090b;
+      background: #fff4fb;
+    }
+
+    .modern-pop .package-name,
+    .modern-pop .package-price {
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .modern-pop .package-detail,
+    .modern-pop .payment-copy {
+      color: #33333a;
+    }
+
+    .booth-content {
+      position: relative;
+      z-index: 2;
+      height: 100%;
+      padding: 46px 60px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .booth-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--booth-paper);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
+    }
+
+    .booth-brand {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+    }
+
+    .booth-session {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 13px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    .welcome-center {
+      display: grid;
+      align-content: center;
+      justify-items: start;
+      max-width: 770px;
+      color: var(--booth-paper);
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.42);
+    }
+
+    .booth-kicker {
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 900;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #ffe0a6;
+      margin-bottom: 15px;
+    }
+
+    .booth-heading {
+      font-size: 78px;
+      line-height: 0.95;
+      font-weight: 900;
+      letter-spacing: 0;
+      margin-bottom: 22px;
+    }
+
+    .booth-copy {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 21px;
+      line-height: 1.45;
+      max-width: 610px;
+      color: #fff7e8;
+    }
+
+    .booth-cta {
+      height: 70px;
+      min-width: 280px;
+      padding: 0 34px;
+      border-radius: 8px;
+      border: 2px solid rgba(255, 255, 255, 0.54);
+      background: #f5d27e;
+      color: #332011;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      box-shadow: 0 18px 30px rgba(0, 0, 0, 0.28);
+    }
+
+    .booth-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #fff7e8;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
+    }
+
+    .packages-stage {
+      height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 26px;
+    }
+
+    .booth-page-title {
+      color: var(--booth-paper);
+      font-size: 52px;
+      line-height: 1;
+      text-shadow: 0 3px 14px rgba(0,0,0,0.35);
+    }
+
+    .booth-subtitle {
+      color: #fff7e8;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px;
+      margin-top: 8px;
+    }
+
+    .booth-packages {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .booth-package {
+      background: rgba(251, 243, 225, 0.94);
+      border: 2px solid rgba(70, 42, 24, 0.25);
+      border-radius: 8px;
+      padding: 28px 24px;
+      color: var(--booth-ink);
+      box-shadow: 0 22px 34px rgba(35, 20, 11, 0.24);
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      min-height: 330px;
+    }
+
+    .booth-package.featured {
+      border-color: var(--booth-gold);
+      background: #fff4d8;
+    }
+
+    .package-tag {
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--booth-rust);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .package-name {
+      font-size: 35px;
+      line-height: 1;
+      font-weight: 900;
+      margin: 12px 0;
+    }
+
+    .package-detail {
+      font-family: Arial, Helvetica, sans-serif;
+      color: #5d4638;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .package-price {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 30px;
+      font-weight: 900;
+      margin-top: 20px;
+    }
+
+    .payment-stage {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 390px;
+      gap: 34px;
+      align-items: center;
+    }
+
+    .payment-panel {
+      background: rgba(251, 243, 225, 0.96);
+      border-radius: 8px;
+      padding: 28px;
+      box-shadow: 0 22px 34px rgba(35, 20, 11, 0.28);
+    }
+
+    .qr {
+      width: 280px;
+      height: 280px;
+      margin: 0 auto 22px;
+      background:
+        linear-gradient(90deg, #2a1911 12px, transparent 12px) 0 0 / 34px 34px,
+        linear-gradient(#2a1911 12px, transparent 12px) 0 0 / 34px 34px,
+        #fffaf0;
+      border: 14px solid #fffaf0;
+      box-shadow: inset 0 0 0 2px #2a1911;
+      position: relative;
+    }
+
+    .qr::before,
+    .qr::after {
+      content: "";
+      position: absolute;
+      width: 72px;
+      height: 72px;
+      border: 15px solid #2a1911;
+      background: #fffaf0;
+    }
+
+    .qr::before {
+      top: 10px;
+      left: 10px;
+    }
+
+    .qr::after {
+      bottom: 10px;
+      right: 10px;
+    }
+
+    .payment-copy {
+      text-align: center;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #473225;
+      line-height: 1.4;
+      font-size: 16px;
+    }
+
+    .cash-note {
+      margin-top: 14px;
+      height: 46px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: #2f6868;
+      color: white;
+      font-family: Arial, Helvetica, sans-serif;
+      font-weight: 900;
+    }
+
+    .payment-methods {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 22px;
+      width: 880px;
+    }
+
+    .method-card {
+      background: rgba(251, 243, 225, 0.95);
+      border: 2px solid rgba(70, 42, 24, 0.25);
+      border-radius: 8px;
+      padding: 34px;
+      min-height: 250px;
+      display: grid;
+      align-content: space-between;
+      box-shadow: 0 22px 34px rgba(35, 20, 11, 0.24);
+    }
+
+    .method-icon {
+      width: 68px;
+      height: 68px;
+      border-radius: 8px;
+      background: #2f6868;
+      color: white;
+      display: grid;
+      place-items: center;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .booth-status-panel {
+      width: 760px;
+      min-height: 360px;
+      background: rgba(251, 243, 225, 0.96);
+      border-radius: 8px;
+      padding: 38px;
+      box-shadow: 0 22px 34px rgba(35, 20, 11, 0.28);
+      color: var(--booth-ink);
+      display: grid;
+      gap: 18px;
+      align-content: center;
+    }
+
+    .progress-strip {
+      height: 16px;
+      background: rgba(47, 104, 104, 0.18);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 70%;
+      height: 100%;
+      background: var(--booth-teal);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <section class="shot" id="central-login" aria-label="Central Web App login">
+      <div class="auth-screen">
+        <div class="auth-hero">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <h1>Run every client, booth, package, and session from one SaaS platform.</h1>
+          <p style="max-width: 560px; color: #d7e2ee; font-size: 18px; line-height: 1.55;">PhotoBIZ helps photobooth operators manage booths, staff, payments, and LumaBooth sessions under tenant-scoped client accounts.</p>
+          <div class="pill-list" style="margin-top: 28px;">
+            <span class="pill">Application Owner</span>
+            <span class="pill">Client Owner</span>
+            <span class="pill">Client Admin</span>
+            <span class="pill">Cashier POS</span>
+            <span class="pill">Booth Monitoring</span>
+            <span class="pill">Cash MVP</span>
+          </div>
+        </div>
+        <div class="auth-panel">
+          <div>
+            <div class="eyebrow">Production</div>
+            <h1 class="admin-title">Sign in</h1>
+          </div>
+          <div class="field"><label>EMAIL</label><div class="input">admin@photobiz.ph</div></div>
+          <div class="field"><label>PASSWORD</label><div class="input">************</div></div>
+          <button class="button primary" style="height: 46px; justify-content: center;">Sign In</button>
+          <p style="color: var(--admin-muted); font-size: 13px; line-height: 1.5;">Application Owner, client users, and cashiers sign in with email and password. Booth UI uses a paired kiosk token and does not require daily unlock.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="platform-dashboard" aria-label="Application Owner platform dashboard">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item active"><span class="nav-icon">-</span>Platform</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Clients</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Subscriptions</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Audit Logs</div>
+          </nav>
+          <div class="side-footer">Application Owner<br>PhotoBIZ SaaS operations.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Application Owner · Platform view</div><h1 class="admin-title">PhotoBIZ Platform Dashboard</h1></div>
+            <div class="top-actions"><button class="button">Export Report</button><button class="button primary">+ New Client</button></div>
+          </div>
+          <div class="metric-grid">
+            <div class="card"><div class="metric-label">Active clients</div><div class="metric-value">18</div><div class="metric-note">3 trial accounts</div></div>
+            <div class="card"><div class="metric-label">Active booths</div><div class="metric-value">42</div><div class="metric-note">Per-booth subscriptions</div></div>
+            <div class="card"><div class="metric-label">Manual MRR estimate</div><div class="metric-value">₱84k</div><div class="metric-note">Based on active booth count</div></div>
+            <div class="card"><div class="metric-label">Suspended clients</div><div class="metric-value">2</div><div class="metric-note" style="color: var(--admin-amber)">New sessions blocked</div></div>
+          </div>
+          <div class="split">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Client Health</h2><button class="button">View clients</button></div>
+              <table>
+                <thead><tr><th>Client</th><th>Status</th><th>Booths</th><th>Allowance</th><th>Today Sales</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>The Memory Box PH</strong></td><td><span class="status green"><span class="dot"></span>Active</span></td><td>3</td><td>5</td><td>₱18,750</td><td><button class="button">Open</button></td></tr>
+                  <tr><td><strong>Pixel Pop Studio</strong></td><td><span class="status green"><span class="dot"></span>Trial</span></td><td>1</td><td>2</td><td>₱4,200</td><td><button class="button">Open</button></td></tr>
+                  <tr><td><strong>FlashFrame Co.</strong></td><td><span class="status amber"><span class="dot"></span>Past Due</span></td><td>4</td><td>4</td><td>₱0</td><td><button class="button">Review</button></td></tr>
+                  <tr><td><strong>North Lens Booths</strong></td><td><span class="status red"><span class="dot"></span>Suspended</span></td><td>2</td><td>2</td><td>₱0</td><td><button class="button">Reactivate</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Subscription Status</h2></div>
+              <div class="report-bars">
+                <div class="bar-row"><span>Active</span><div class="bar-track"><div class="bar-fill" style="width: 78%;"></div></div><strong>14</strong></div>
+                <div class="bar-row"><span>Trial</span><div class="bar-track"><div class="bar-fill" style="width: 18%;"></div></div><strong>3</strong></div>
+                <div class="bar-row"><span>Past Due</span><div class="bar-track"><div class="bar-fill" style="width: 8%; background: #f79009;"></div></div><strong>1</strong></div>
+                <div class="bar-row"><span>Suspended</span><div class="bar-track"><div class="bar-fill" style="width: 12%; background: #d92d20;"></div></div><strong>2</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="client-accounts" aria-label="Client accounts list">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Platform</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Clients</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Subscriptions</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Audit Logs</div>
+          </nav>
+          <div class="side-footer">Application Owner<br>Manage subscribed client accounts.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Clients</div><h1 class="admin-title">Client Accounts</h1></div>
+            <div class="top-actions"><div class="search">Search client, owner, status</div><button class="button primary">+ New Client</button></div>
+          </div>
+          <div class="card">
+            <div class="section-head"><h2 class="section-title">Subscribed Clients</h2><button class="button">Export</button></div>
+            <table>
+              <thead><tr><th>Client</th><th>Owner</th><th>Subscription</th><th>Booths</th><th>Allowance</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>The Memory Box PH</strong><br><span class="booth-meta">client-0001</span></td><td>Julie Santos</td><td>Per Booth MVP</td><td>3</td><td>5</td><td><span class="status green"><span class="dot"></span>Active</span></td><td><button class="button">Open</button></td></tr>
+                <tr><td><strong>Pixel Pop Studio</strong><br><span class="booth-meta">client-0002</span></td><td>Mika Tan</td><td>Trial Plan</td><td>1</td><td>2</td><td><span class="status green"><span class="dot"></span>Trial</span></td><td><button class="button">Open</button></td></tr>
+                <tr><td><strong>FlashFrame Co.</strong><br><span class="booth-meta">client-0003</span></td><td>Ramon Lee</td><td>Per Booth MVP</td><td>4</td><td>4</td><td><span class="status amber"><span class="dot"></span>Past Due</span></td><td><button class="button">Review</button></td></tr>
+                <tr><td><strong>North Lens Booths</strong><br><span class="booth-meta">client-0004</span></td><td>Ana Cruz</td><td>Per Booth MVP</td><td>2</td><td>2</td><td><span class="status red"><span class="dot"></span>Suspended</span></td><td><button class="button">Open</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="client-account-detail" aria-label="Client account detail">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Platform</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Clients</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Subscriptions</div>
+          </nav>
+          <div class="side-footer">Support access<br>All actions are audit logged.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Client · The Memory Box PH</div><h1 class="admin-title">Client Account Detail</h1></div>
+            <div class="top-actions"><button class="button">Impersonate Support</button><button class="button danger">Suspend Client</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Subscription</div><div class="metric-value" style="font-size: 24px;">ACTIVE</div><div class="metric-note">Renews manually May 31</div></div>
+            <div class="card"><div class="metric-label">Booth usage</div><div class="metric-value">3 / 5</div><div class="metric-note">2 booth slots available</div></div>
+            <div class="card"><div class="metric-label">Client sales today</div><div class="metric-value">₱18,750</div><div class="metric-note">75 sessions</div></div>
+          </div>
+          <div class="split" style="margin-top: 18px;">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Client Profile</h2><button class="button">Edit</button></div>
+              <div class="form-row">
+                <div class="field"><label>CLIENT NAME</label><div class="input">The Memory Box PH</div></div>
+                <div class="field"><label>OWNER EMAIL</label><div class="input">owner@memorybox.ph</div></div>
+              </div>
+              <div class="form-row" style="margin-top: 12px;">
+                <div class="field"><label>BOOTH BRAND</label><div class="input">The Memory Box</div></div>
+                <div class="field"><label>THEME PRESET</label><div class="select">VINTAGE_FILM</div></div>
+              </div>
+              <div class="callout" style="margin-top: 12px;">Client data is scoped by client account. Application Owner support access is platform-level and audit logged.</div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Booths</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">SM Manila B01</div><div class="booth-meta">Online · Cashier Marco</div></div><span class="status green"><span class="dot"></span>Online</span></div>
+                <div class="booth-row"><div><div class="booth-name">SM Manila B02</div><div class="booth-meta">Welcome · Cashier Ana</div></div><span class="status green"><span class="dot"></span>Online</span></div>
+                <div class="booth-row"><div><div class="booth-name">Festival B01</div><div class="booth-meta">Agent not installed</div></div><span class="status amber"><span class="dot"></span>Setup</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="subscription-editor" aria-label="Manual subscription editor">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Platform</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Clients</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Subscriptions</div>
+          </nav>
+          <div class="side-footer">Manual MVP billing<br>No payment provider integration yet.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Subscription · The Memory Box PH</div><h1 class="admin-title">Manual Subscription</h1></div>
+            <div class="top-actions"><button class="button">Cancel</button><button class="button primary">Save Subscription</button></div>
+          </div>
+          <div class="form-layout">
+            <div class="card form-card">
+              <div class="form-row">
+                <div class="field"><label>PLAN</label><div class="select">Per Booth MVP</div></div>
+                <div class="field"><label>STATUS</label><div class="select">ACTIVE</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>ACTIVE BOOTH ALLOWANCE</label><div class="input">5</div></div>
+                <div class="field"><label>PRICE PER BOOTH</label><div class="input">₱2,000 / month</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>STARTS ON</label><div class="input">2026-05-01</div></div>
+                <div class="field"><label>ENDS ON</label><div class="input">2026-05-31</div></div>
+              </div>
+              <div class="field"><label>NOTES</label><div class="textarea">Manual invoice sent outside PhotoBIZ. Keep active through May launch period.</div></div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Usage Enforcement</h2><span class="status green"><span class="dot"></span>Within limit</span></div>
+              <div class="metric-grid" style="grid-template-columns: 1fr; gap: 12px;">
+                <div class="card"><div class="metric-label">Active booths</div><div class="metric-value">3</div></div>
+                <div class="card"><div class="metric-label">Allowance</div><div class="metric-value">5</div></div>
+                <div class="card"><div class="metric-label">Available slots</div><div class="metric-value">2</div></div>
+              </div>
+              <div class="danger-zone" style="margin-top: 14px;"><h3 class="section-title">Suspension behavior</h3><p style="font-size: 13px; color: var(--admin-muted); line-height: 1.5; margin-top: 8px;">Suspended clients cannot start new booth sessions. Historical reports remain accessible to allowed users.</p></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="central-dashboard" aria-label="Central Web App dashboard">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item active"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Locations</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Packages</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Transactions</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Reports</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Settings</div>
+          </nav>
+          <div class="side-footer">
+            Production<br>
+            DigitalOcean SG · 1 booth online
+          </div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Saturday, May 9 · Owner view</div>
+              <h1 class="admin-title">Operations Dashboard</h1>
+            </div>
+            <div class="top-actions">
+              <div class="search">Search transaction, booth, package</div>
+              <button class="button primary">+ Register Booth</button>
+            </div>
+          </div>
+
+          <div class="metric-grid">
+            <div class="card">
+              <div class="metric-label">Gross sales today</div>
+              <div class="metric-value">₱18,750</div>
+              <div class="metric-note">+22% vs yesterday</div>
+            </div>
+            <div class="card">
+              <div class="metric-label">Completed sessions</div>
+              <div class="metric-value">75</div>
+              <div class="metric-note">Average ₱250/session</div>
+            </div>
+            <div class="card">
+              <div class="metric-label">Pending approvals</div>
+              <div class="metric-value">1</div>
+              <div class="metric-note" style="color: var(--admin-amber)">Cash awaiting cashier</div>
+            </div>
+            <div class="card">
+              <div class="metric-label">Booth uptime</div>
+              <div class="metric-value">99.1%</div>
+              <div class="metric-note">Last heartbeat 8 sec ago</div>
+            </div>
+          </div>
+
+          <div class="split">
+            <div class="card">
+              <div class="section-head">
+                <h2 class="section-title">Recent Transactions</h2>
+                <button class="button">Export CSV</button>
+              </div>
+              <table>
+                <thead>
+                  <tr><th>ID</th><th>Booth</th><th>Package</th><th>Payment</th><th>Status</th><th>Total</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>#000847</td><td>SM Manila B01</td><td>Classic 4R</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱250</td></tr>
+                  <tr><td>#000846</td><td>SM Manila B01</td><td>Double Print</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
+                  <tr><td>#000845</td><td>SM Manila B01</td><td>Classic 4R</td><td>Cash</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>₱250</td></tr>
+                  <tr><td>#000844</td><td>SM Manila B01</td><td>Wallet Size</td><td>Cash</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>₱180</td></tr>
+                  <tr><td>#000843</td><td>SM Manila B01</td><td>Double Print</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="section-head">
+                <h2 class="section-title">Booth Status</h2>
+                <button class="button">View all</button>
+              </div>
+              <div class="booth-list">
+                <div class="booth-row">
+                  <div><div class="booth-name">SM Manila B01</div><div class="booth-meta">Customer screen · Payment pending</div></div>
+                  <span class="status amber"><span class="dot"></span>Busy</span>
+                </div>
+                <div class="booth-row">
+                  <div><div class="booth-name">Robinsons Test Booth</div><div class="booth-meta">Local testing · Welcome screen</div></div>
+                  <span class="status green"><span class="dot"></span>Online</span>
+                </div>
+                <div class="booth-row">
+                  <div><div class="booth-name">Festival Mall B01</div><div class="booth-meta">Not installed yet</div></div>
+                  <span class="status red"><span class="dot"></span>Offline</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="users-list" aria-label="Users management">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Users</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Locations</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Packages</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Audit Logs</div>
+          </nav>
+          <div class="side-footer">Client Owner<br>Can create, edit, deactivate users.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Admin · Access control</div>
+              <h1 class="admin-title">Users</h1>
+            </div>
+            <div class="top-actions">
+              <div class="search">Search name, email, role</div>
+              <button class="button primary">+ Add User</button>
+            </div>
+          </div>
+          <div class="metric-grid">
+            <div class="card"><div class="metric-label">Client Owners</div><div class="metric-value">2</div></div>
+            <div class="card"><div class="metric-label">Client Admins</div><div class="metric-value">3</div></div>
+            <div class="card"><div class="metric-label">Cashiers</div><div class="metric-value">8</div></div>
+            <div class="card"><div class="metric-label">Inactive users</div><div class="metric-value">1</div></div>
+          </div>
+          <div class="card">
+            <div class="section-head"><h2 class="section-title">Team Access</h2><button class="button">Export Users</button></div>
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Assigned Booth</th><th>Status</th><th>Last Login</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>Julie Santos</strong></td><td>owner@memorybox.ph</td><td>Client Owner</td><td>All booths</td><td><span class="status green"><span class="dot"></span>Active</span></td><td>Today 1:04 PM</td><td><button class="button">Edit</button></td></tr>
+                <tr><td><strong>Leo Ramos</strong></td><td>leo@memorybox.ph</td><td>Client Admin</td><td>All client booths</td><td><span class="status green"><span class="dot"></span>Active</span></td><td>Today 12:46 PM</td><td><button class="button">Edit</button></td></tr>
+                <tr><td><strong>Marco Reyes</strong></td><td>marco@memorybox.ph</td><td>Cashier</td><td>SM Manila B01</td><td><span class="status green"><span class="dot"></span>Active</span></td><td>Today 12:30 PM</td><td><button class="button">Edit</button></td></tr>
+                <tr><td><strong>Paolo Lim</strong></td><td>paolo@memorybox.ph</td><td>Cashier</td><td>Unassigned</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>Never</td><td><button class="button">Edit</button></td></tr>
+                <tr><td><strong>Mina Dizon</strong></td><td>mina@memorybox.ph</td><td>Cashier</td><td>SM Manila B02</td><td><span class="status red"><span class="dot"></span>Inactive</span></td><td>Apr 28</td><td><button class="button">Edit</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="user-form" aria-label="Add and edit user">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Users</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+          </nav>
+          <div class="side-footer">Audit logged<br>User updates write role-change history.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Users · Add/Edit</div><h1 class="admin-title">Edit Cashier</h1></div>
+            <div class="top-actions"><button class="button">Cancel</button><button class="button primary">Save User</button></div>
+          </div>
+          <div class="form-layout">
+            <div class="card form-card">
+              <div class="form-row">
+                <div class="field"><label>FULL NAME</label><div class="input">Marco Reyes</div></div>
+                <div class="field"><label>EMAIL</label><div class="input">marco@memorybox.ph</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>ROLE</label><div class="select">Cashier</div></div>
+                <div class="field"><label>STATUS</label><div class="select">Active</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>ASSIGNED LOCATION</label><div class="select">SM City Manila</div></div>
+                <div class="field"><label>ASSIGNED BOOTH</label><div class="select">SM Manila B01</div></div>
+              </div>
+              <div class="field"><label>NOTES</label><div class="textarea">Morning shift cashier. Can approve cash payments for assigned booth only.</div></div>
+              <div class="callout"><strong>Cashier scope:</strong> this user can only see one assigned booth, today's sales, current transaction, and recovery actions for that booth.</div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Permissions</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">Approve cash</div><div class="booth-meta">Allowed for assigned booth</div></div><span class="toggle"></span></div>
+                <div class="booth-row"><div><div class="booth-name">Return booth to welcome</div><div class="booth-meta">Recovery action for assigned booth</div></div><span class="toggle"></span></div>
+                <div class="booth-row"><div><div class="booth-name">Cancel transaction</div><div class="booth-meta">Writes audit log</div></div><span class="toggle"></span></div>
+                <div class="booth-row"><div><div class="booth-name">Manage client staff</div><div class="booth-meta">Client Owner / Client Admin</div></div><span class="status red"><span class="dot"></span>Off</span></div>
+              </div>
+              <div class="danger-zone" style="margin-top: 14px;">
+                <h3 class="section-title">Deactivate User</h3>
+                <p style="font-size: 13px; color: var(--admin-muted); line-height: 1.5; margin: 8px 0 12px;">Deactivation removes login access but keeps historical approvals and audit logs.</p>
+                <button class="button danger">Deactivate</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="locations-booths" aria-label="Locations and booth inventory">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Locations</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Users</div>
+          </nav>
+          <div class="side-footer">Multi-location ready<br>One client account can own many locations and booths.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Locations</div><h1 class="admin-title">Location & Booth Inventory</h1></div>
+            <div class="top-actions"><button class="button">+ Add Location</button><button class="button primary">+ Register Booth</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Locations</div><div class="metric-value">3</div><div class="metric-note">1 active, 2 planned</div></div>
+            <div class="card"><div class="metric-label">Registered booths</div><div class="metric-value">4</div><div class="metric-note">2 paired agents</div></div>
+            <div class="card"><div class="metric-label">Cashiers assigned</div><div class="metric-value">3</div><div class="metric-note">1 unassigned</div></div>
+          </div>
+          <div class="split" style="margin-top: 18px;">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Locations</h2></div>
+              <table>
+                <thead><tr><th>Location</th><th>Booths</th><th>Sales Today</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>SM City Manila</strong><br><span class="booth-meta">Ground Floor · near cinema</span></td><td>1</td><td>₱18,750</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                  <tr><td><strong>Robinsons Test Site</strong><br><span class="booth-meta">Warehouse testing</span></td><td>1</td><td>₱0</td><td><span class="status amber"><span class="dot"></span>Testing</span></td></tr>
+                  <tr><td><strong>Festival Mall</strong><br><span class="booth-meta">Install planned</span></td><td>2</td><td>₱0</td><td><span class="status red"><span class="dot"></span>Planned</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Booth Map</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">SM Manila B01</div><div class="booth-meta">WELCOME · Marco Reyes · heartbeat 8 sec</div></div><span class="status green"><span class="dot"></span>Online</span></div>
+                <div class="booth-row"><div><div class="booth-name">Robinsons Test Booth</div><div class="booth-meta">Pairing required · no cashier</div></div><span class="status amber"><span class="dot"></span>Setup</span></div>
+                <div class="booth-row"><div><div class="booth-name">Festival Mall B01</div><div class="booth-meta">Agent not installed</div></div><span class="status red"><span class="dot"></span>Offline</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-register" aria-label="Register booth">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Locations</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Packages</div>
+          </nav>
+          <div class="side-footer">Workflow step 1<br>Create booth record before installing the Windows Agent.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Booths · Registration</div><h1 class="admin-title">Register New Booth</h1></div>
+            <div class="top-actions"><button class="button">Save Draft</button><button class="button primary">Create Pairing Code</button></div>
+          </div>
+          <div class="workflow-rail">
+            <div class="workflow-step active"><strong>1. Booth record</strong><br>Name, location, hardware</div>
+            <div class="workflow-step">2. Pair agent<br>Windows service token</div>
+            <div class="workflow-step">3. Pair kiosk<br>Booth UI token</div>
+            <div class="workflow-step">4. Assign packages<br>Available offers</div>
+            <div class="workflow-step">5. Go live<br>Welcome screen</div>
+          </div>
+          <div class="form-layout">
+            <div class="card form-card">
+              <div class="form-row">
+                <div class="field"><label>BOOTH NAME</label><div class="input">SM Manila B01</div></div>
+                <div class="field"><label>BOOTH CODE</label><div class="input">SM-MNL-B01</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>LOCATION</label><div class="select">SM City Manila</div></div>
+                <div class="field"><label>ASSIGNED CASHIER</label><div class="select">Marco Reyes</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>CAMERA</label><div class="input">Canon R50</div></div>
+                <div class="field"><label>PRINTER</label><div class="input">DNP RX1</div></div>
+              </div>
+              <div class="field"><label>NOTES</label><div class="textarea">Laptop with extended display. Booth UI on customer screen; LumaBooth starts after payment approval.</div></div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Pairing Preview</h2></div>
+              <div class="callout">After saving, the system generates separate credentials for the Windows Agent and Booth UI kiosk token.</div>
+              <div class="field" style="margin-top: 16px;"><label>AGENT PAIRING CODE</label><div class="code-box"><div class="code-cell">7</div><div class="code-cell">4</div><div class="code-cell">9</div><div class="code-cell">2</div><div class="code-cell">K</div><div class="code-cell">Q</div></div></div>
+              <div class="field" style="margin-top: 16px;"><label>BOOTH UI URL</label><div class="input">booth.memorybox.ph/pair/SM-MNL-B01</div></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-detail" aria-label="Booth detail and end booth">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Transactions</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Audit Logs</div>
+          </nav>
+          <div class="side-footer">Workflow end<br>End session, disable booth, or unregister booth.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Booths · SM Manila B01</div><h1 class="admin-title">Booth Detail</h1></div>
+            <div class="top-actions"><span class="status green"><span class="dot"></span>Online</span><button class="button danger">End Booth</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Current state</div><div class="metric-value" style="font-size: 24px;">WELCOME</div><div class="metric-note">Ready for next customer</div></div>
+            <div class="card"><div class="metric-label">Agent heartbeat</div><div class="metric-value" style="font-size: 24px;">8 sec</div><div class="metric-note">Windows Agent paired</div></div>
+            <div class="card"><div class="metric-label">Today sales</div><div class="metric-value">₱18,750</div><div class="metric-note">75 completed sessions</div></div>
+          </div>
+          <div class="split" style="margin-top: 18px;">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Session Controls</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">Return to welcome</div><div class="booth-meta">Used after recovery or manual reset</div></div><button class="button">Send</button></div>
+                <div class="booth-row"><div><div class="booth-name">Restart booth UI</div><div class="booth-meta">Refresh customer screen without stopping agent</div></div><button class="button">Restart</button></div>
+                <div class="booth-row"><div><div class="booth-name">Disable new sessions</div><div class="booth-meta">Finish active customer, then stop accepting customers</div></div><button class="button danger">Disable</button></div>
+              </div>
+              <div class="danger-zone" style="margin-top: 14px;">
+                <h3 class="section-title">End Booth / Unregister</h3>
+                <p style="font-size: 13px; color: var(--admin-muted); line-height: 1.5; margin: 8px 0 12px;">Ends active availability, revokes kiosk and agent credentials, and records the action in audit logs. Historical transactions remain.</p>
+                <button class="button danger">Confirm End Booth</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Pairing & Health</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">Windows Agent</div><div class="booth-meta">v0.1.0 · paired May 9</div></div><span class="status green"><span class="dot"></span>OK</span></div>
+                <div class="booth-row"><div><div class="booth-name">Booth UI Token</div><div class="booth-meta">Kiosk token active</div></div><button class="button">Rotate</button></div>
+                <div class="booth-row"><div><div class="booth-name">LumaBooth</div><div class="booth-meta">Last session completed 1:14 PM</div></div><span class="status green"><span class="dot"></span>OK</span></div>
+                <div class="booth-row"><div><div class="booth-name">Printer media</div><div class="booth-meta">Manual cashier status</div></div><span class="status amber"><span class="dot"></span>Check</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="packages-management" aria-label="Packages management">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Packages</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Themes</div>
+          </nav>
+          <div class="side-footer">Packages are snapshotted into transactions.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Packages</div><h1 class="admin-title">Package Catalog</h1></div>
+            <div class="top-actions"><button class="button">Assign to Booths</button><button class="button primary">+ New Package</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Active packages</div><div class="metric-value">3</div></div>
+            <div class="card"><div class="metric-label">Top seller</div><div class="metric-value" style="font-size: 25px;">Classic 4R</div></div>
+            <div class="card"><div class="metric-label">Assigned booths</div><div class="metric-value">2</div></div>
+          </div>
+          <div class="card" style="margin-top: 18px;">
+            <div class="section-head"><h2 class="section-title">Packages</h2></div>
+            <table>
+              <thead><tr><th>Package</th><th>Price</th><th>Prints</th><th>Paper</th><th>LumaBooth Preset</th><th>Assigned Booths</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Classic 4R</strong><br><span class="booth-meta">Standard two-print offer</span></td><td>₱250</td><td>2</td><td>4R</td><td>classic-photo</td><td>2</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Double Print</strong><br><span class="booth-meta">Most popular group option</span></td><td>₱350</td><td>4</td><td>4R</td><td>double-photo</td><td>1</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Wallet Size</strong><br><span class="booth-meta">Mini print layout</span></td><td>₱180</td><td>6</td><td>Wallet</td><td>wallet-six</td><td>1</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Premium Frame</strong><br><span class="booth-meta">Later upsell package</span></td><td>₱450</td><td>4</td><td>4R</td><td>premium-frame</td><td>0</td><td><span class="status amber"><span class="dot"></span>Draft</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="package-editor" aria-label="Package editor and booth assignment">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item active"><span class="nav-icon">-</span>Packages</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+          </nav>
+          <div class="side-footer">Package assignment controls what appears on Booth UI.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Packages · Edit</div><h1 class="admin-title">Classic 4R</h1></div>
+            <div class="top-actions"><button class="button">Duplicate</button><button class="button primary">Save Package</button></div>
+          </div>
+          <div class="form-layout">
+            <div class="card form-card">
+              <div class="form-row">
+                <div class="field"><label>PACKAGE NAME</label><div class="input">Classic 4R</div></div>
+                <div class="field"><label>PRICE</label><div class="input">₱250.00</div></div>
+              </div>
+              <div class="field"><label>DESCRIPTION</label><div class="textarea">Two 4R prints with Fotoshare digital copy after the session.</div></div>
+              <div class="form-row">
+                <div class="field"><label>PRINT COUNT</label><div class="input">2</div></div>
+                <div class="field"><label>PAPER SIZE</label><div class="select">4R</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>LUMABOOTH MODE</label><div class="select">Photo</div></div>
+                <div class="field"><label>LUMABOOTH PRESET REF</label><div class="input">classic-photo</div></div>
+              </div>
+              <div class="callout">When this package is sold, name, price, print count, paper size, and preset are copied into the transaction snapshot.</div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Assigned Booths</h2><span class="status green"><span class="dot"></span>Active</span></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">SM Manila B01</div><div class="booth-meta">Visible on Booth UI</div></div><span class="toggle"></span></div>
+                <div class="booth-row"><div><div class="booth-name">Robinsons Test Booth</div><div class="booth-meta">Visible on Booth UI</div></div><span class="toggle"></span></div>
+                <div class="booth-row"><div><div class="booth-name">Festival Mall B01</div><div class="booth-meta">Not installed</div></div><span class="status red"><span class="dot"></span>Off</span></div>
+              </div>
+              <div class="field" style="margin-top: 16px;"><label>CUSTOMER DISPLAY LABEL</label><div class="input">Quick Classic</div></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="transactions-reporting" aria-label="Transactions and reports">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Transactions</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Reports</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Audit Logs</div>
+          </nav>
+          <div class="side-footer">Reconciliation<br>Cash, expired, and cancelled transactions.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Transactions · Today</div><h1 class="admin-title">Sales & Audit</h1></div>
+            <div class="top-actions"><div class="search">Filter booth, status, payment</div><button class="button">Export CSV</button></div>
+          </div>
+          <div class="split">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Transaction Ledger</h2></div>
+              <table>
+                <thead><tr><th>ID</th><th>Package</th><th>Payment</th><th>Approved By</th><th>Status</th><th>Time</th><th>Total</th></tr></thead>
+                <tbody>
+                  <tr><td>#000847</td><td>Classic 4R</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:20 PM</td><td>₱250</td></tr>
+                  <tr><td>#000846</td><td>Double Print</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:14 PM</td><td>₱350</td></tr>
+                  <tr><td>#000845</td><td>Classic 4R</td><td>Cash</td><td>-</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>1:18 PM</td><td>₱250</td></tr>
+                  <tr><td>#000844</td><td>Wallet Size</td><td>Cash</td><td>-</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>1:02 PM</td><td>₱180</td></tr>
+                  <tr><td>#000843</td><td>Double Print</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>12:55 PM</td><td>₱350</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Reports</h2></div>
+              <div class="metric-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="card"><div class="metric-label">Cash</div><div class="metric-value">₱12,400</div></div>
+                <div class="card"><div class="metric-label">Coming soon cashless</div><div class="metric-value">Off</div></div>
+              </div>
+              <div class="section-head" style="margin-top: 16px;"><h2 class="section-title">Package Sales</h2></div>
+              <div class="report-bars">
+                <div class="bar-row"><span>Classic 4R</span><div class="bar-track"><div class="bar-fill" style="width: 88%;"></div></div><strong>44</strong></div>
+                <div class="bar-row"><span>Double Print</span><div class="bar-track"><div class="bar-fill" style="width: 62%;"></div></div><strong>31</strong></div>
+                <div class="bar-row"><span>Wallet Size</span><div class="bar-track"><div class="bar-fill" style="width: 28%;"></div></div><strong>14</strong></div>
+              </div>
+              <div class="section-head" style="margin-top: 18px;"><h2 class="section-title">Recent Audit</h2></div>
+              <div class="timeline">
+                <div class="timeline-row"><span class="step-dot done"></span><span>Cash approved by Marco</span><strong>#000847</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Booth returned to welcome</span><strong>1:16 PM</strong></div>
+                <div class="timeline-row"><span class="step-dot now"></span><span>Payment pending created</span><strong>#000845</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="settings-payments" aria-label="Settings and payment configuration">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Users</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Transactions</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Settings</div>
+          </nav>
+          <div class="side-footer">Settings<br>Cash MVP and coming soon payment setup.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Settings · Client Account</div><h1 class="admin-title">Payment & Session Settings</h1></div>
+            <div class="top-actions"><button class="button">Discard</button><button class="button primary">Save Settings</button></div>
+          </div>
+          <div class="admin-grid-2">
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">MVP Payment Methods</h2><span class="status green"><span class="dot"></span>Cash only</span></div>
+              <div class="booth-row"><div><div class="booth-name">Cash Approval</div><div class="booth-meta">Cashier manually approves after collecting cash</div></div><span class="toggle"></span></div>
+              <div class="booth-row"><div><div class="booth-name">MAYA_CHECKOUT_QR</div><div class="booth-meta">Coming soon: client-owned Maya Checkout credentials and webhook</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
+              <div class="booth-row"><div><div class="booth-name">MAYA_TERMINAL_ECR</div><div class="booth-meta">Coming soon: terminal hardware plus booth-local ECR setup</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
+            </div>
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Timeouts & Recovery</h2></div>
+              <div class="form-row">
+                <div class="field"><label>CASH PAYMENT EXPIRY</label><div class="input">5 minutes</div></div>
+                <div class="field"><label>CASHLESS PAYMENT EXPIRY</label><div class="input">Coming soon</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>PAID BUT NOT STARTED ALERT</label><div class="input">30 seconds</div></div>
+                <div class="field"><label>SESSION TIMEOUT ALERT</label><div class="input">15 minutes</div></div>
+              </div>
+              <div class="callout"><strong>Backend owns state:</strong> Booth UI cannot mark a transaction paid or directly start LumaBooth.</div>
+            </div>
+          </div>
+          <div class="admin-grid-2" style="margin-top: 18px;">
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Client Account</h2></div>
+              <div class="form-row">
+                <div class="field"><label>BUSINESS NAME</label><div class="input">The Memory Box PH</div></div>
+                <div class="field"><label>CURRENCY</label><div class="select">PHP</div></div>
+              </div>
+              <div class="field"><label>SUPPORT MESSAGE</label><div class="textarea">Please call the cashier if the booth needs assistance.</div></div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Audit Policy</h2></div>
+              <div class="timeline">
+                <div class="timeline-row"><span class="step-dot done"></span><span>Cash approvals are logged</span><strong>On</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Role changes are logged</span><strong>On</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Booth end/unregister is logged</span><strong>On</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Package changes are logged</span><strong>On</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="maya-checkout-registration" aria-label="Maya Checkout registration">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Payments</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Settings</div>
+          </nav>
+          <div class="side-footer">Coming soon<br>Client-owned Maya Checkout setup.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Payments · MAYA_CHECKOUT_QR</div><h1 class="admin-title">Maya Checkout Registration</h1></div>
+            <div class="top-actions"><span class="status amber"><span class="dot"></span>Coming soon</span><button class="button">Save Draft</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Configuration</div><div class="metric-value" style="font-size: 24px;">Not configured</div><div class="metric-note">Cash remains the only live method</div></div>
+            <div class="card"><div class="metric-label">Webhook</div><div class="metric-value" style="font-size: 24px;">Waiting</div><div class="metric-note">Register URL in Maya Business Manager</div></div>
+            <div class="card"><div class="metric-label">Future status</div><div class="metric-value" style="font-size: 24px;">Ready for enablement</div><div class="metric-note">After verification is supported</div></div>
+          </div>
+          <div class="split" style="margin-top: 18px;">
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Client Maya Business Details</h2><span class="status amber"><span class="dot"></span>Draft</span></div>
+              <div class="timeline">
+                <div class="timeline-row"><span class="step-dot now"></span><span>Business Account</span><strong>Current</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>API Keys</span><strong>Next</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Webhook</span><strong>Next</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Verification</span><strong>Future</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Ready</span><strong>Future</strong></div>
+              </div>
+              <div class="form-row" style="margin-top: 16px;">
+                <div class="field"><label>MAYA BUSINESS ACCOUNT NAME</label><div class="input">The Memory Box PH</div></div>
+                <div class="field"><label>ENVIRONMENT</label><div class="select">Production</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>PUBLIC API KEY</label><div class="input">pk-prod-******************82d4</div></div>
+                <div class="field"><label>SECRET API KEY</label><div class="input">sk-prod-****************** hidden</div></div>
+              </div>
+              <div class="callout"><strong>Client-owned settlement:</strong> the client owns the Maya account, API keys, transaction settlement, and Maya business relationship. PhotoBIZ stores secrets encrypted and uses them only from the backend.</div>
+            </div>
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Webhook Setup</h2></div>
+              <div class="field"><label>PHOTOBOOTH WEBHOOK URL</label><div class="input">https://api.photobiz.ph/webhooks/maya/checkout</div></div>
+              <div class="field"><label>EVENTS TO REGISTER</label><div class="textarea">PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_EXPIRED, PAYMENT_CANCELLED</div></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">Copy webhook URL</div><div class="booth-meta">Client pastes this in Maya Business Manager</div></div><button class="button">Copy</button></div>
+                <div class="booth-row"><div><div class="booth-name">Test webhook reachability</div><div class="booth-meta">Future verification action</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
+                <div class="booth-row"><div><div class="booth-name">Enable MAYA_CHECKOUT_QR</div><div class="booth-meta">Hidden from Booth UI until verified</div></div><span class="status red"><span class="dot"></span>Locked</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="maya-ecr-registration" aria-label="Maya Terminal ECR registration">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Payments</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Terminals</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
+          </nav>
+          <div class="side-footer">Coming soon<br>Booth-local Maya Terminal ECR setup.</div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div><div class="eyebrow">Payments · MAYA_TERMINAL_ECR</div><h1 class="admin-title">Maya Terminal ECR Registration</h1></div>
+            <div class="top-actions"><span class="status amber"><span class="dot"></span>Coming soon</span><button class="button">Save Draft</button></div>
+          </div>
+          <div class="admin-grid-3">
+            <div class="card"><div class="metric-label">Terminal</div><div class="metric-value" style="font-size: 24px;">Not connected</div><div class="metric-note">Client orders/activates hardware with Maya</div></div>
+            <div class="card"><div class="metric-label">Booth Agent</div><div class="metric-value" style="font-size: 24px;">Required</div><div class="metric-note">ECR runs through booth laptop</div></div>
+            <div class="card"><div class="metric-label">Payment method</div><div class="metric-value" style="font-size: 24px;">Locked</div><div class="metric-note">Not shown to customers in MVP</div></div>
+          </div>
+          <div class="split" style="margin-top: 18px;">
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Terminal Setup Checklist</h2></div>
+              <div class="timeline">
+                <div class="timeline-row"><span class="step-dot now"></span><span>Terminal Ordered</span><strong>Client</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>ECR Kit Received</span><strong>Maya</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Booth Assigned</span><strong>PhotoBIZ</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>COM Port Set</span><strong>Agent</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Connection Test</span><strong>Future</strong></div>
+              </div>
+              <div class="form-row" style="margin-top: 16px;">
+                <div class="field"><label>ASSIGNED BOOTH</label><div class="select">SM Manila B01</div></div>
+                <div class="field"><label>ASSIGNED CASHIER / LOCATION</label><div class="input">Marco Reyes · SM City Manila</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>TERMINAL MODEL</label><div class="select">PAX A920</div></div>
+                <div class="field"><label>TERMINAL REFERENCE</label><div class="input">MAYA-TERM-00027</div></div>
+              </div>
+              <div class="form-row">
+                <div class="field"><label>SERIAL / ASSET TAG</label><div class="input">PX920-PH-1149</div></div>
+                <div class="field"><label>WINDOWS COM PORT</label><div class="input">COM11</div></div>
+              </div>
+            </div>
+            <div class="card form-card">
+              <div class="section-head"><h2 class="section-title">Connection Status</h2><span class="status red"><span class="dot"></span>Not connected</span></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">Maya Business account</div><div class="booth-meta">Must be verified before ECR payments</div></div><span class="status amber"><span class="dot"></span>Needed</span></div>
+                <div class="booth-row"><div><div class="booth-name">ECR Integration Kit</div><div class="booth-meta">Required from Maya for terminal protocol</div></div><span class="status amber"><span class="dot"></span>Needed</span></div>
+                <div class="booth-row"><div><div class="booth-name">Booth Agent ECR module</div><div class="booth-meta">Sends sale command through local terminal port</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
+                <div class="booth-row"><div><div class="booth-name">Enable MAYA_TERMINAL_ECR</div><div class="booth-meta">Hidden from Booth UI until verified</div></div><span class="status red"><span class="dot"></span>Locked</span></div>
+              </div>
+              <div class="callout"><strong>Separate from Checkout QR:</strong> terminal ECR depends on booth hardware and the Windows Agent, while Checkout QR depends on backend API keys and webhooks.</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="cashier-pos" aria-label="Cashier POS">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item active"><span class="nav-icon">-</span>POS</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Booth Status</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Today</div>
+          </nav>
+          <div class="side-footer">
+            Cashier<br>
+            Assigned booth: SM Manila B01
+          </div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">SM Manila B01 · Cashier station</div>
+              <h1 class="admin-title">Cashier POS</h1>
+            </div>
+            <div class="top-actions">
+              <span class="status green"><span class="dot"></span>Agent online</span>
+              <button class="button danger">Return to Welcome</button>
+            </div>
+          </div>
+          <div class="pos-layout">
+            <div class="current-payment">
+              <div class="payment-banner">
+                <div>
+                  <div class="eyebrow">Current customer selected</div>
+                  <h2 style="font-size: 32px; margin-bottom: 10px;">Classic 4R · 2 Prints</h2>
+                  <div class="amount">₱250.00</div>
+                  <p style="color: var(--admin-muted); margin-top: 10px;">Payment method: Cash · Transaction #000845</p>
+                </div>
+                <div class="timer">04:12</div>
+              </div>
+              <div class="payment-actions">
+                <button class="large-action green">Approve<br>Cash</button>
+                <button class="large-action">Cancel<br>Request</button>
+                <button class="large-action blue">Return To<br>Welcome</button>
+              </div>
+              <div class="card">
+                <div class="section-head"><h2 class="section-title">Session Timeline</h2><span class="status amber"><span class="dot"></span>Awaiting payment</span></div>
+                <div class="timeline">
+                  <div class="timeline-row"><span class="step-dot done"></span><span>Package selected on Booth UI</span><strong>1:18 PM</strong></div>
+                  <div class="timeline-row"><span class="step-dot now"></span><span>Cash payment approval pending</span><strong>04:12 left</strong></div>
+                  <div class="timeline-row"><span class="step-dot"></span><span>LumaBooth session start</span><strong>Next</strong></div>
+                  <div class="timeline-row"><span class="step-dot"></span><span>Print and Fotoshare completion</span><strong>Waiting</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Today</h2></div>
+              <div class="metric-grid" style="grid-template-columns: 1fr; gap: 12px;">
+                <div class="card" style="padding: 14px;"><div class="metric-label">Sales</div><div class="metric-value">₱6,850</div></div>
+                <div class="card" style="padding: 14px;"><div class="metric-label">Completed</div><div class="metric-value">27</div></div>
+                <div class="card" style="padding: 14px;"><div class="metric-label">Expired</div><div class="metric-value">2</div></div>
+              </div>
+              <div class="section-head" style="margin-top: 16px;"><h2 class="section-title">Recent</h2></div>
+              <div class="booth-list">
+                <div class="booth-row"><div><div class="booth-name">#000844</div><div class="booth-meta">Wallet Size · Expired</div></div><strong>₱180</strong></div>
+                <div class="booth-row"><div><div class="booth-name">#000843</div><div class="booth-meta">Double Print · Complete</div></div><strong>₱350</strong></div>
+                <div class="booth-row"><div><div class="booth-name">#000842</div><div class="booth-meta">Classic 4R · Complete</div></div><strong>₱250</strong></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-customization" aria-label="Booth customization">
+      <div class="admin-shell">
+        <aside class="side">
+          <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
+          <nav class="nav">
+            <div class="nav-item"><span class="nav-icon">-</span>Dashboard</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Booths</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Packages</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Themes</div>
+          </nav>
+          <div class="side-footer">
+            Customization is tied to the booth's active session.
+          </div>
+        </aside>
+        <section class="main">
+          <div class="topbar">
+            <div>
+              <div class="eyebrow">Booths · SM Manila B01</div>
+              <h1 class="admin-title">Session Appearance</h1>
+            </div>
+            <div class="top-actions">
+              <button class="button">Preview Booth</button>
+              <button class="button primary">Save Session</button>
+            </div>
+          </div>
+          <div class="config-layout">
+            <div class="card">
+              <div class="section-head"><h2 class="section-title">Active Session</h2><span class="status green"><span class="dot"></span>Live</span></div>
+              <div class="field-grid">
+                <div class="field"><label>SESSION NAME</label><div class="input">Vintage Summer Pop-Up</div></div>
+                <div class="field"><label>WELCOME HEADLINE</label><div class="input">Step Into The Memory Box</div></div>
+                <div class="field"><label>WELCOME SUBTITLE</label><div class="textarea">Choose your print package, pay at the counter, then strike your best pose.</div></div>
+                <div class="field"><label>BACKGROUND PICTURE</label><div class="upload"><span>vintage-mall-backdrop.jpg</span><strong>Replace</strong></div></div>
+                <div class="field"><label>THEME</label><div class="select">Vintage Film · Cream / Rust / Teal</div></div>
+                <div class="field"><label>ASSIGNED PACKAGES</label>
+                  <div class="package-list">
+                    <div class="package-row"><div><strong>Classic 4R</strong><div class="booth-meta">2 prints · ₱250</div></div><span class="toggle"></span></div>
+                    <div class="package-row"><div><strong>Double Print</strong><div class="booth-meta">4 prints · ₱350</div></div><span class="toggle"></span></div>
+                    <div class="package-row"><div><strong>Wallet Size</strong><div class="booth-meta">6 mini prints · ₱180</div></div><span class="toggle"></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="preview-frame">
+              <div class="mini-booth">
+                <div class="booth-screen">
+                  <div class="booth-content">
+                    <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">SM Manila · Vintage Summer</div></div>
+                    <div class="welcome-center">
+                      <div class="booth-kicker">Self Photo Booth</div>
+                      <h2 class="booth-heading" style="font-size: 40px;">Step Into The Memory Box</h2>
+                      <p class="booth-copy" style="font-size: 13px;">Choose your print package, pay at the counter, then strike your best pose.</p>
+                    </div>
+                    <div class="booth-bottom"><div class="booth-cta" style="height: 42px; min-width: 170px; font-size: 14px;">Start Session</div><span>2 min average session</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot" id="client-a-booth-welcome" aria-label="Client A Booth welcome vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">SM Manila · Vintage Summer</div></div>
+          <div class="welcome-center">
+            <div class="booth-kicker">Self Photo Booth</div>
+            <h1 class="booth-heading">Step Into The Memory Box</h1>
+            <p class="booth-copy">Choose your print package, pay at the counter, then strike your best pose.</p>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Touch To Start</div><span>DNP RX1 Prints · Fotoshare Digital Copy</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="client-a-booth-packages" aria-label="Client A Booth package selection vintage">
+      <div class="booth-screen">
+        <div class="booth-content packages-stage">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Choose a Package</div></div>
+          <div>
+            <h1 class="booth-page-title">Pick Your Print</h1>
+            <p class="booth-subtitle">Available packages for this booth session</p>
+          </div>
+          <div class="booth-packages">
+            <article class="booth-package">
+              <div class="package-tag">Quick Classic</div>
+              <h2 class="package-name">Classic 4R</h2>
+              <p class="package-detail">Two 4R prints with Fotoshare digital copy after the session.</p>
+              <div class="package-price">₱250</div>
+            </article>
+            <article class="booth-package featured">
+              <div class="package-tag">Most Popular</div>
+              <h2 class="package-name">Double Print</h2>
+              <p class="package-detail">Four 4R prints for couples, friends, and family keepsakes.</p>
+              <div class="package-price">₱350</div>
+            </article>
+            <article class="booth-package">
+              <div class="package-tag">Small Keepsakes</div>
+              <h2 class="package-name">Wallet Size</h2>
+              <p class="package-detail">Six mini prints, perfect for wallets, journals, and phone cases.</p>
+              <div class="package-price">₱180</div>
+            </article>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Continue</div><span>Cash payment available</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="client-a-booth-payment" aria-label="Client A Booth payment vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Payment · 04:58</div></div>
+          <div class="payment-stage">
+            <div class="welcome-center" style="align-content: center;">
+              <div class="booth-kicker">Selected Package</div>
+              <h1 class="booth-heading" style="font-size: 68px;">Double Print</h1>
+              <p class="booth-copy">Four 4R prints plus Fotoshare digital copy. Complete payment to begin your LumaBooth session.</p>
+              <div class="booth-cta" style="margin-top: 28px;">₱350.00</div>
+            </div>
+            <div class="payment-panel">
+              <div class="method-icon" style="width: 220px; height: 220px; font-size: 86px; margin: 0 auto;">₱</div>
+              <p class="payment-copy"><strong>Pay cash at the counter</strong><br>Your cashier will approve the payment on the POS screen.</p>
+              <div class="cash-note">Pay Cash At Counter</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Transaction #000846</span><span>Waiting for payment confirmation</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="client-b-booth-welcome" aria-label="Client B Booth welcome modern pop">
+      <div class="booth-screen modern-pop">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Ayala Center · Neon Weekend</div></div>
+          <div class="welcome-center">
+            <div class="booth-kicker">Self Photo Booth</div>
+            <h1 class="booth-heading">Pop In. Pose Big.</h1>
+            <p class="booth-copy">Pick a package, pay at the counter, then jump into a bright studio session.</p>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Start Booth</div><span>Bold prints · Instant digital copy</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="client-b-booth-packages" aria-label="Client B Booth package selection modern pop">
+      <div class="booth-screen modern-pop">
+        <div class="booth-content packages-stage">
+          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Choose a Package</div></div>
+          <div>
+            <h1 class="booth-page-title">Choose Your Pop</h1>
+            <p class="booth-subtitle">Modern theme uses the same backend package config with different tenant styling.</p>
+          </div>
+          <div class="booth-packages">
+            <article class="booth-package">
+              <div class="package-tag">Solo Pop</div>
+              <h2 class="package-name">Quick Shot</h2>
+              <p class="package-detail">Two 4R prints and a bright digital copy for fast mall sessions.</p>
+              <div class="package-price">₱220</div>
+            </article>
+            <article class="booth-package featured">
+              <div class="package-tag">Crowd Favorite</div>
+              <h2 class="package-name">Squad Pack</h2>
+              <p class="package-detail">Four prints for barkada sessions, couples, and families.</p>
+              <div class="package-price">₱380</div>
+            </article>
+            <article class="booth-package">
+              <div class="package-tag">Sticker Mood</div>
+              <h2 class="package-name">Mini Pop</h2>
+              <p class="package-detail">Six mini prints for phones, journals, lockers, and wallets.</p>
+              <div class="package-price">₱190</div>
+            </article>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Continue</div><span>Cash payment available</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="client-b-booth-payment" aria-label="Client B Booth payment modern pop">
+      <div class="booth-screen modern-pop">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Squad Pack · ₱380</div></div>
+          <div class="payment-stage">
+            <div class="welcome-center" style="align-content: center;">
+              <div class="booth-kicker">Selected Package</div>
+              <h1 class="booth-heading" style="font-size: 72px;">Squad Pack</h1>
+              <p class="booth-copy">Four 4R prints plus digital delivery. Complete payment to start your LumaBooth session.</p>
+              <div class="booth-cta" style="margin-top: 28px;">₱380.00</div>
+            </div>
+            <div class="payment-panel">
+              <div class="method-icon" style="width: 220px; height: 220px; font-size: 86px; margin: 0 auto;">₱</div>
+              <p class="payment-copy"><strong>Pay cash at the counter</strong><br>The same cash MVP payment state rendered with a different tenant theme.</p>
+              <div class="cash-note">Pay Cash At Counter</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Transaction #PX-0094</span><span>Waiting for payment confirmation</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-payment-method" aria-label="Booth payment method vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Double Print · ₱350</div></div>
+          <div class="packages-stage" style="align-content: center;">
+            <div>
+              <h1 class="booth-page-title">How Would You Like To Pay?</h1>
+              <p class="booth-subtitle">Cash is available now. Maya Checkout QR and Terminal ECR are coming soon.</p>
+            </div>
+            <div class="payment-methods">
+              <article class="method-card">
+                <div class="method-icon">₱</div>
+                <div>
+                  <h2 class="package-name">Cash</h2>
+                  <p class="package-detail">Pay the cashier. Your session starts once payment is approved.</p>
+                </div>
+              </article>
+              <article class="method-card" style="opacity: 0.58;">
+                <div class="method-icon">QR</div>
+                <div>
+                  <h2 class="package-name">Maya Checkout QR</h2>
+                  <p class="package-detail">Coming soon after client Maya credentials and webhook verification.</p>
+                </div>
+                <span class="status amber"><span class="dot"></span>Coming soon</span>
+              </article>
+              <article class="method-card" style="opacity: 0.58;">
+                <div class="method-icon">ECR</div>
+                <div>
+                  <h2 class="package-name">Maya Terminal ECR</h2>
+                  <p class="package-detail">Coming soon after terminal hardware and booth agent ECR setup.</p>
+                </div>
+                <span class="status amber"><span class="dot"></span>Coming soon</span>
+              </article>
+            </div>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Back</div><span>Pending payments expire in 5 minutes</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-cash-waiting" aria-label="Booth cash waiting vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Cash Payment · 04:12</div></div>
+          <div style="display: grid; place-items: center;">
+            <div class="booth-status-panel">
+              <div class="package-tag">Waiting For Cashier</div>
+              <h1 class="package-name" style="font-size: 52px;">Please pay ₱250 at the counter</h1>
+              <p class="package-detail" style="font-size: 19px;">Your cashier will approve the payment on the POS screen. Keep this screen open.</p>
+              <div class="progress-strip"><div class="progress-fill" style="width: 42%;"></div></div>
+              <div class="cash-note">Transaction #000845 · Classic 4R</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><div class="booth-cta">Cancel</div><span>Cash request sent to cashier</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-starting-session" aria-label="Booth starting LumaBooth vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Payment Approved</div></div>
+          <div style="display: grid; place-items: center;">
+            <div class="booth-status-panel">
+              <div class="package-tag">Get Ready</div>
+              <h1 class="package-name" style="font-size: 58px;">Starting Your Photo Session</h1>
+              <p class="package-detail" style="font-size: 19px;">LumaBooth is opening now. Follow the camera screen and strike your best pose.</p>
+              <div class="progress-strip"><div class="progress-fill" style="width: 82%;"></div></div>
+              <div class="cash-note">Switching to LumaBooth</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Classic 4R · 2 prints</span><span>Fotoshare digital delivery after capture</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-session-progress" aria-label="Booth session progress vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">LumaBooth Session Active</div></div>
+          <div style="display: grid; place-items: center;">
+            <div class="booth-status-panel">
+              <div class="package-tag">In Progress</div>
+              <h1 class="package-name" style="font-size: 54px;">Follow The LumaBooth Screen</h1>
+              <p class="package-detail" style="font-size: 19px;">Capture, print, and Fotoshare are handled by LumaBooth. This screen returns automatically when the session is done.</p>
+              <div class="timeline">
+                <div class="timeline-row"><span class="step-dot done"></span><span>Payment approved</span><strong>Done</strong></div>
+                <div class="timeline-row"><span class="step-dot now"></span><span>Capture and print in progress</span><strong>Now</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Return to welcome</span><strong>Next</strong></div>
+              </div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Do not close this screen</span><span>Cashier can recover from POS if needed</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-session-complete" aria-label="Booth complete vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Session Complete</div></div>
+          <div style="display: grid; place-items: center;">
+            <div class="booth-status-panel">
+              <div class="package-tag">All Set</div>
+              <h1 class="package-name" style="font-size: 58px;">Your Prints Are On The Way</h1>
+              <p class="package-detail" style="font-size: 19px;">Check the printer tray and your Fotoshare delivery. This booth will reset for the next customer.</p>
+              <div class="cash-note">Returning to welcome in 8 seconds</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Transaction #000847 completed</span><span>Thank you</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="shot" id="booth-error-recovery" aria-label="Booth error recovery vintage">
+      <div class="booth-screen">
+        <div class="booth-content">
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Assistance Needed</div></div>
+          <div style="display: grid; place-items: center;">
+            <div class="booth-status-panel">
+              <div class="package-tag">Session Paused</div>
+              <h1 class="package-name" style="font-size: 54px;">Please call the cashier</h1>
+              <p class="package-detail" style="font-size: 19px;">The booth needs cashier assistance. Your transaction is safe and the cashier can retry or return this booth to welcome.</p>
+              <div class="cash-note" style="background: #a14f2b;">Error code: AGENT-LUMABOOTH-TIMEOUT</div>
+            </div>
+          </div>
+          <div class="booth-bottom"><span>Cashier recovery required</span><span>Do not restart the laptop</span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script>
+    const screen = new URLSearchParams(window.location.search).get("screen") || window.location.hash.replace("#", "");
+    if (screen) {
+      document.body.classList.add("capture");
+      document.querySelectorAll(".shot").forEach((shot) => {
+        if (shot.id !== screen) shot.remove();
+      });
+      document.title = screen;
+    }
+  </script>
+</body>
+</html>
