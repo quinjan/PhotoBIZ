@@ -6,14 +6,28 @@
 /e2e/test-output/
 /.angular/
 .angular/
+apps/dist/
+apps/.angular/
+apps/coverage/
+apps/node_modules/
+apps/.vscode/
 
 # Node modules and dependency files
 /node_modules/
-/package-lock.json
 /yarn.lock
+
+# .NET build artefacts
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+.vs/
 
 # Environment files
 /.env
+.env.*
+!.env.example
 
 # Angular CLI and build artefacts
 /.angular-cli.json

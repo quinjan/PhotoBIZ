@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore PhotoBIZ.slnx
+
+      - name: Build
+        run: dotnet build PhotoBIZ.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test PhotoBIZ.slnx --configuration Release --no-build --verbosity normal
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Build Admin Web
+        run: npm run build:admin
+
+      - name: Build Booth UI
+        run: npm run build:booth
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test:ci

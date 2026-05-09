@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/agent/" />
+  <Folder Name="/agent/windows-agent/" />
+  <Folder Name="/agent/windows-agent/src/">
+    <Project Path="agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj" />
+  </Folder>
+  <Folder Name="/agent/windows-agent/tests/">
+    <Project Path="agent/windows-agent/tests/PhotoBIZ.WindowsAgent.Tests/PhotoBIZ.WindowsAgent.Tests.csproj" />
+  </Folder>
+  <Folder Name="/services/" />
+  <Folder Name="/services/api/" />
+  <Folder Name="/services/api/src/">
+    <Project Path="services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj" />
+    <Project Path="services/api/src/PhotoBIZ.Worker/PhotoBIZ.Worker.csproj" />
+  </Folder>
+  <Folder Name="/services/api/tests/">
+    <Project Path="services/api/tests/PhotoBIZ.Api.Tests/PhotoBIZ.Api.Tests.csproj" />
+    <Project Path="services/api/tests/PhotoBIZ.Worker.Tests/PhotoBIZ.Worker.Tests.csproj" />
+  </Folder>
+</Solution>

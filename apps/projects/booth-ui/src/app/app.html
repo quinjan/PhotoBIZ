@@ -1,0 +1,27 @@
+<main class="booth-shell">
+  <section class="welcome-panel" aria-label="Booth welcome">
+    <div class="brand-row">
+      <span class="brand-mark">PB</span>
+      <span class="state">{{ boothStatus() }}</span>
+    </div>
+
+    <div class="welcome-copy">
+      <p class="eyebrow">Customer kiosk scaffold</p>
+      <h1>{{ welcomeHeadline() }}</h1>
+      <p>Choose your print package, pay at the counter, then follow the LumaBooth screen.</p>
+    </div>
+
+    <button type="button">Start Session</button>
+  </section>
+
+  <section class="step-grid" aria-label="Booth flow">
+    @for (step of steps; track step.label) {
+      <article>
+        <span>{{ step.label }}</span>
+        <strong>{{ step.value }}</strong>
+      </article>
+    }
+  </section>
+</main>
+
+<router-outlet />
