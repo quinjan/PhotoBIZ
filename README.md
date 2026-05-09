@@ -42,6 +42,8 @@ Common commands:
 dotnet restore PhotoBIZ.slnx
 dotnet build PhotoBIZ.slnx
 dotnet test PhotoBIZ.slnx
+dotnet tool restore
+dotnet tool run dotnet-ef database update --project services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj --startup-project services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj
 
 Set-Location apps
 npm ci
@@ -56,6 +58,7 @@ Local endpoints:
 
 - API health: `http://localhost:5082/health`
 - API status: `http://localhost:5082/api/platform/status`
+- PostgreSQL: `localhost:55432`
 - Reverse proxy scaffold: `http://localhost:8080`
 
 ## Product Summary

@@ -1,9 +1,25 @@
+using Microsoft.EntityFrameworkCore;
+using PhotoBIZ.Api.Data;
+
 var builder = WebApplication.CreateBuilder(args);
+
+var postgresConnectionString = builder.Configuration.GetConnectionString("Postgres")
+    ?? throw new InvalidOperationException("Connection string 'Postgres' is required.");
+
+builder.Services.AddDbContext<PhotoBizDbContext>(options =>
+{
+    options.UseNpgsql(postgresConnectionString);
+});
 
 builder.Services.AddHealthChecks();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+if (app.Configuration.GetValue("Database:ApplyMigrationsOnStartup", false))
+{
+    await app.ApplyDatabaseMigrationsAsync();
+}
 
 if (app.Environment.IsDevelopment())
 {

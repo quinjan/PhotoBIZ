@@ -21,6 +21,9 @@ csharp_style_var_elsewhere = false:suggestion
 csharp_style_var_for_built_in_types = false:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 
+[**/Migrations/*.cs]
+dotnet_diagnostic.CA1861.severity = none
+
 [*.{json,yml,yaml,html,scss,ts,md}]
 indent_style = space
 indent_size = 2
