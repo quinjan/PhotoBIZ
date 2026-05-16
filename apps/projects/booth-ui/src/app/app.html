@@ -1,27 +1,49 @@
-<main class="booth-shell">
-  <section class="welcome-panel" aria-label="Booth welcome">
+<main
+  class="booth-shell"
+  [style.--theme-primary]="config()?.theme?.primaryColor ?? '#2f6868'"
+  [style.--theme-accent]="config()?.theme?.accentColor ?? '#f5d27e'"
+>
+  <section class="connect-panel">
+    <label>
+      Kiosk token
+      <input [ngModel]="kioskToken()" (ngModelChange)="kioskToken.set($event)" />
+    </label>
+    <button type="button" (click)="connect()">Connect Booth</button>
+  </section>
+
+  <section class="welcome-panel">
     <div class="brand-row">
-      <span class="brand-mark">PB</span>
-      <span class="state">{{ boothStatus() }}</span>
+      <span class="brand-mark">{{ config()?.client?.displayName?.slice(0, 2) ?? 'PB' }}</span>
+      <span class="state">{{ config()?.booth?.state ?? 'OFFLINE' }}</span>
     </div>
 
     <div class="welcome-copy">
-      <p class="eyebrow">Customer kiosk scaffold</p>
-      <h1>{{ welcomeHeadline() }}</h1>
-      <p>Choose your print package, pay at the counter, then follow the LumaBooth screen.</p>
+      <p class="eyebrow">{{ config()?.session?.label || 'Customer kiosk' }}</p>
+      <h1>{{ config()?.session?.welcomeHeadline || 'Step Into The Memory Box' }}</h1>
+      <p>{{ stateMessage() }}</p>
     </div>
 
-    <button type="button">Start Session</button>
+    @if (config()?.activeOffer; as activeOffer) {
+      <div class="offer-card">
+        <span>{{ activeOffer.type }}</span>
+        <strong>{{ activeOffer.name }}</strong>
+        <p>PHP {{ activeOffer.priceCents / 100 }} · {{ activeOffer.includedPrintEntitlement }}</p>
+      </div>
+    } @else {
+      <div class="offer-card unavailable">
+        <strong>Booth unavailable</strong>
+        <p>Set an active offer in the admin console before starting sessions.</p>
+      </div>
+    }
+
+    <button type="button" [disabled]="isStartDisabled()" (click)="startSession()">
+      {{ startButtonLabel() }}
+    </button>
   </section>
 
-  <section class="step-grid" aria-label="Booth flow">
-    @for (step of steps; track step.label) {
-      <article>
-        <span>{{ step.label }}</span>
-        <strong>{{ step.value }}</strong>
-      </article>
-    }
-  </section>
+  @if (error()) {
+    <p class="error">{{ error() }}</p>
+  }
 </main>
 
 <router-outlet />

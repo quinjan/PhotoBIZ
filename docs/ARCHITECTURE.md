@@ -101,11 +101,15 @@ sequenceDiagram
   participant DB as PostgreSQL
 
   B->>API: GET /booth-ui/config with kiosk token
-  API->>DB: Resolve booth, client account, subscription, active session
-  API->>API: Validate booth token and subscription session permission
+  API->>DB: Resolve booth, client account, subscription, active session, agent heartbeat
+  API->>API: Validate booth token, subscription session permission, and effective booth state
   API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state
   B->>B: Apply CSS variables and render current state
 ```
+
+Booth UI token access is separate from Windows Agent availability. A valid kiosk token may still load Booth UI config when the agent is closed, but the backend treats the booth as `OFFLINE` when the booth has no agent heartbeat or the last heartbeat is older than 60 seconds. While effective booth state is `OFFLINE`, Booth UI must show an agent-offline unavailable state and the backend must reject new kiosk transactions.
+
+The backend also enforces one active kiosk transaction per booth. A booth must not create a new session purchase while another transaction for that booth is still in a non-terminal state such as `CREATED`, `PENDING_CASH`, `PAID`, `STARTING_SESSION`, `IN_SESSION`, or `SESSION_FAILED`.
 
 Minimum `GET /booth-ui/config` response shape:
 
@@ -594,6 +598,7 @@ SESSION_FAILED -> CANCELLED
 Rules:
 
 - Booth UI cannot mark transactions as paid.
+- A booth may have at most one non-terminal session transaction at a time.
 - Payment method selection must be validated against booth-level payment option assignments and runtime provider availability.
 - Client-level Maya configuration alone cannot expose a payment method to Booth UI or Cashier POS.
 - `CASH` is the only runtime-enabled payment method in MVP.
@@ -699,6 +704,7 @@ flowchart TB
 - Admin authentication: email/password login with secure HttpOnly cookie sessions.
 - Booth UI authentication: booth-scoped kiosk token issued during booth pairing. No cashier unlock/login is required to show the Booth UI.
 - Agent authentication: booth agent credential issued during pairing.
+- Agent availability: the backend treats a booth as `OFFLINE` when the agent has not heartbeated within 60 seconds. Agent heartbeat restores an offline booth to `WELCOME`; kiosk token access remains valid but transaction creation is blocked while offline.
 - Hosting: DigitalOcean Singapore VPS using Docker Compose.
 - DNS: Cloudflare.
 - CI/CD: GitHub Actions deploying over SSH.
