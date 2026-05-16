@@ -28,11 +28,115 @@ public sealed class PhotoBizTransactionWorkflowTests
         Assert.NotNull(command);
         Assert.Equal(StatusValues.Transaction.StartingSession, transaction.Status);
 
-        await workflow.MarkSessionStartedAsync(transaction.Id, CancellationToken.None);
-        await workflow.MarkSessionCompletedAsync(transaction.Id, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(transaction.Id, booth.Id, "PBZ-test", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(transaction.Id, booth.Id, "PBZ-test", CancellationToken.None);
 
         Assert.Equal(StatusValues.Transaction.Completed, transaction.Status);
+        Assert.Equal(StatusValues.Booth.Completed, booth.CurrentState);
+
+        transaction.CompletedAt = DateTimeOffset.UtcNow.Subtract(PhotoBizTransactionWorkflow.PostSessionPromptDuration).AddSeconds(-1);
+        await dbContext.SaveChangesAsync();
+        await workflow.ResetCompletedBoothsToWelcomeAsync(CancellationToken.None);
+
         Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
+    }
+
+    [Fact]
+    public async Task ExtraPrintAddOnApprovesAndCommandsPrintCopiesWithoutCreatingBoothSession()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var parent = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        parent = await workflow.SetPaymentMethodAsync(parent, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        parent = await workflow.ApproveCashAsync(parent, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+
+        var addOn = await workflow.CreateExtraPrintAddOnAsync(parent, cashier, 3, CancellationToken.None);
+        addOn = await workflow.ApproveCashAsync(addOn, cashier, CancellationToken.None);
+        var command = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+
+        Assert.NotNull(command);
+        Assert.Equal(StatusValues.TransactionType.ExtraPrintAddOn, command.TransactionType);
+        Assert.Equal(3, command.ExtraPrintCount);
+        Assert.Equal(15000, addOn.AmountCents);
+        Assert.Equal(StatusValues.Booth.PrintingOrSharing, booth.CurrentState);
+        Assert.Single(await dbContext.BoothSessions.Where(item => item.TransactionId == parent.Id).ToListAsync());
+        Assert.Empty(await dbContext.BoothSessions.Where(item => item.TransactionId == addOn.Id).ToListAsync());
+
+        await workflow.MarkPrintCompletedAsync(addOn.Id, booth.Id, CancellationToken.None);
+
+        Assert.Equal(StatusValues.Transaction.Completed, addOn.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
+    }
+
+    [Fact]
+    public async Task ExtraPrintAddOnRejectsInvalidEligibility()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var parent = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        parent = await workflow.SetPaymentMethodAsync(parent, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        parent = await workflow.ApproveCashAsync(parent, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+
+        var lowCopyCount = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateExtraPrintAddOnAsync(parent, cashier, 0, CancellationToken.None));
+        var highCopyCount = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateExtraPrintAddOnAsync(parent, cashier, 6, CancellationToken.None));
+
+        Assert.Equal("Extra print copy count must be between 1 and 5.", lowCopyCount.Message);
+        Assert.Equal("Extra print copy count must be between 1 and 5.", highCopyCount.Message);
+
+        var addOn = await workflow.CreateExtraPrintAddOnAsync(parent, cashier, 1, CancellationToken.None);
+        var activeTransaction = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateExtraPrintAddOnAsync(parent, cashier, 1, CancellationToken.None));
+
+        Assert.Equal(StatusValues.Transaction.PendingCash, addOn.Status);
+        Assert.Equal("The booth already has an active transaction.", activeTransaction.Message);
+    }
+
+    [Fact]
+    public async Task CompletedBoothResetUsesLatestCompletedSession()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var older = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        older = await workflow.SetPaymentMethodAsync(older, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        older = await workflow.ApproveCashAsync(older, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(older.Id, booth.Id, "PBZ-older", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(older.Id, booth.Id, "PBZ-older", CancellationToken.None);
+        older.CompletedAt = DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(5));
+        booth.CurrentState = StatusValues.Booth.Welcome;
+        await dbContext.SaveChangesAsync();
+
+        var latest = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        latest = await workflow.SetPaymentMethodAsync(latest, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        latest = await workflow.ApproveCashAsync(latest, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(latest.Id, booth.Id, "PBZ-latest", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(latest.Id, booth.Id, "PBZ-latest", CancellationToken.None);
+
+        var resetCount = await workflow.ResetCompletedBoothsToWelcomeAsync(CancellationToken.None);
+
+        Assert.Equal(0, resetCount);
+        Assert.Equal(StatusValues.Booth.Completed, booth.CurrentState);
     }
 
     [Fact]
@@ -141,6 +245,32 @@ public sealed class PhotoBizTransactionWorkflowTests
     }
 
     [Fact]
+    public async Task ReturnBoothToWelcomeCancelsActiveTransactionAndFailsLatestSession()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var transaction = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        transaction = await workflow.SetPaymentMethodAsync(transaction, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        transaction = await workflow.ApproveCashAsync(transaction, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+
+        await workflow.ReturnBoothToWelcomeAsync(booth, cashier, CancellationToken.None);
+
+        var session = await dbContext.BoothSessions.SingleAsync(item => item.TransactionId == transaction.Id);
+
+        Assert.Equal(StatusValues.Transaction.Cancelled, transaction.Status);
+        Assert.NotNull(transaction.CancelledAt);
+        Assert.Equal("Manual booth recovery returned the booth to welcome.", transaction.FailureReason);
+        Assert.Equal(StatusValues.Session.Failed, session.Status);
+        Assert.NotNull(session.EndedAt);
+        Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
+    }
+
+    [Fact]
     public void EffectiveStateReturnsOfflineForStaleHeartbeat()
     {
         var booth = new Booth
@@ -228,6 +358,7 @@ public sealed class PhotoBizTransactionWorkflowTests
             Currency = "PHP",
             IncludedPrintEntitlement = StatusValues.PrintEntitlement.TwoBySixOrOneByFour,
             AllowsExtraPrintAddOn = true,
+            ExtraPrintPriceCents = 5000,
             LumaboothSessionMode = "SESSION_STANDARD",
             CreatedAt = DateTimeOffset.UtcNow
         };

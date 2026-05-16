@@ -72,6 +72,15 @@ public static class StatusValues
         public const string TwoBySixOrOneByFour = "2 pcs 6x2 or 1 pc 6x4";
     }
 
+    public static class LumaboothSessionMode
+    {
+        public const string Print = "PRINT";
+        public const string Gif = "GIF";
+        public const string Boomerang = "BOOMERANG";
+        public const string Video = "VIDEO";
+        public const string LegacySessionStandard = "SESSION_STANDARD";
+    }
+
     public static class PaymentProvider
     {
         public const string Maya = "MAYA";

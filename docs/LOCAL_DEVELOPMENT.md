@@ -2,24 +2,24 @@
 
 This guide is the practical "how to run PhotoBIZ locally" reference for the current codebase.
 
-## 1) Current Codebase State (Validated May 16, 2026)
+## 1) Current Codebase State
 
-PhotoBIZ is currently in early scaffold/foundation state:
+PhotoBIZ is currently an MVP vertical slice in progress:
 
-- API starts and exposes:
-  - `GET /health`
-  - `GET /api/platform/status`
-- Data layer is present with EF Core model + migrations for the MVP foundation schema.
-- Worker and Windows Agent run as heartbeat background services.
-- Angular `admin-web` and `booth-ui` apps run with scaffold UI.
-- Backend/business workflows from the PRD (transactions, cashier approvals, booth config APIs, realtime flows, etc.) are not fully implemented yet.
+- API starts and exposes health/status, auth/session, setup, kiosk, cashier, and agent endpoints.
+- Data layer is present with EF Core model + migrations for the MVP schema.
+- Worker expires pending cash transactions, returns completed booths to welcome after the 15-second extra-print prompt, and marks stale idle booths offline.
+- Angular `admin-web` and `booth-ui` apps run the current setup, cashier, and kiosk flows.
+- Windows Agent can run in simulator mode or local dslrBooth/LumaBooth API mode.
+- Reporting, real booth hardware smoke validation, and real Maya runtime payments remain incomplete.
 
-Validation run in this repo:
+Recent validation baseline is recorded in `docs/MVP_PROGRESS.md`.
 
-- `dotnet test PhotoBIZ.slnx`: passes.
-- `npm ci`: passes.
-- Angular development builds pass for both apps.
-- `npm run build` and `npm run test:ci` currently fail due missing `css-select` module in the Angular toolchain path (details in Troubleshooting).
+Useful checks:
+
+- `dotnet test PhotoBIZ.slnx --configuration Release --verbosity minimal`
+- `npm run build` from `apps`
+- `npm run test:ci` from `apps`
 
 ## 2) Prerequisites
 
@@ -113,7 +113,101 @@ dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.Wind
 
 Note: on Windows, this project is service-capable (`AddWindowsService`) but runs fine from `dotnet run` during development.
 
-## 7) Optional: Full Containerized Backend Stack
+## 7) Configure Windows Agent LumaBooth Settings
+
+The Agent reads settings from the `PhotoBIZ` configuration section. Local defaults live in:
+
+```text
+agent/windows-agent/src/PhotoBIZ.WindowsAgent/appsettings.Development.json
+```
+
+Use user secrets for real booth credentials or local API passwords so they do not land in git:
+
+```powershell
+dotnet user-secrets set "PhotoBIZ:BoothCode" "<booth-code>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:AgentCredential" "<agent-credential>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+```
+
+### Simulator Mode
+
+Simulator mode is the default and is best for normal backend/UI development without LumaBooth installed:
+
+```json
+{
+  "PhotoBIZ": {
+    "ApiBaseUrl": "http://localhost:5082",
+    "BoothCode": "<booth-code>",
+    "AgentCredential": "<agent-credential>",
+    "PollIntervalSeconds": 5,
+    "SimulatedSessionDurationSeconds": 6,
+    "LumaBooth": {
+      "Mode": "Simulator",
+      "ApiBaseUrl": "http://localhost:1500",
+      "ApiPassword": "",
+      "TriggerListenerUrl": "http://127.0.0.1:5617/lumabooth/events",
+      "StartTimeoutSeconds": 15
+    },
+    "Display": {
+      "LumaBoothWindowTitle": "dslrBooth",
+      "BoothUiWindowTitle": "BoothUi"
+    }
+  }
+}
+```
+
+In simulator mode, the Agent still pairs, heartbeats, polls for commands, reports session started/completed, completes `PRINT_COPIES` commands without calling LumaBooth, and returns Booth UI focus after `SimulatedSessionDurationSeconds`.
+
+### LumaBooth API Mode
+
+Use API mode only on a Windows booth laptop with LumaBooth/dslrBooth Professional API enabled:
+
+```powershell
+dotnet user-secrets set "PhotoBIZ:LumaBooth:Mode" "Api" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiBaseUrl" "http://localhost:1500" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:TriggerListenerUrl" "http://127.0.0.1:5617/lumabooth/events" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:StartTimeoutSeconds" "15" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:LumaBoothWindowTitle" "dslrBooth" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiWindowTitle" "BoothUi" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+```
+
+API mode behavior:
+
+- Agent starts LumaBooth with `GET /api/start?mode={mode}&password={password}` against `PhotoBIZ:LumaBooth:ApiBaseUrl`.
+- Agent prints paid post-session extra copies with `GET /api/print?count={count}` against `PhotoBIZ:LumaBooth:ApiBaseUrl`.
+- When `PhotoBIZ:LumaBooth:ApiPassword` is set, the Agent appends `password={password}` to start and print-copy requests.
+- Supported PhotoBIZ modes are `PRINT`, `GIF`, `BOOMERANG`, and `VIDEO`; legacy `SESSION_STANDARD` is normalized to `PRINT`.
+- Agent starts a local trigger listener at `PhotoBIZ:LumaBooth:TriggerListenerUrl`.
+- `session_start` trigger events report backend session started.
+- `session_end` trigger events report backend session completed and clear local active session context.
+- Non-terminal events such as `printing`, `file_upload`, and `sharing_screen` are logged only.
+- Window focus handoff is best effort; focus failures are warnings, not transaction failures.
+
+Configure LumaBooth URL triggers to call the Agent listener on the same laptop. Use one URL per trigger event, for example:
+
+```text
+http://127.0.0.1:5617/lumabooth/events?event_type=session_start
+http://127.0.0.1:5617/lumabooth/events?event_type=session_end
+http://127.0.0.1:5617/lumabooth/events?event_type=printing
+http://127.0.0.1:5617/lumabooth/events?event_type=file_upload
+http://127.0.0.1:5617/lumabooth/events?event_type=sharing_screen
+```
+
+Optional trigger parameters `param1`, `param2`, `param3`, and `param4` are accepted and logged where useful:
+
+```text
+http://127.0.0.1:5617/lumabooth/events?event_type=printing&param1=<value>
+```
+
+The Agent stores the active local session context at:
+
+```text
+%ProgramData%\PhotoBIZ\agent\active-session.json
+```
+
+If local development gets stuck after killing the Agent or LumaBooth mid-session, stop the Agent, clear the stuck transaction through the cashier recovery flow when possible, and delete this file before restarting the Agent.
+
+## 8) Optional: Full Containerized Backend Stack
 
 If Docker daemon is available, you can run backend + infra + reverse proxy:
 
@@ -133,7 +227,7 @@ Current Caddy behavior:
 - Proxies `/api/*` and `/health` to API.
 - Returns `PhotoBIZ reverse proxy scaffold` for other paths.
 
-## 8) Smoke Checks
+## 9) Smoke Checks
 
 API health:
 
@@ -157,7 +251,7 @@ Expected status payload:
 }
 ```
 
-## 9) Test Commands
+## 10) Test Commands
 
 Backend tests:
 
@@ -173,9 +267,7 @@ npm run build
 npm run test:ci
 ```
 
-At current state, the frontend commands above fail with a `Cannot find module 'css-select'` error; see Troubleshooting.
-
-## 10) Troubleshooting
+## 11) Troubleshooting
 
 ### Docker compose cannot start (`dockerDesktopLinuxEngine` pipe error)
 
@@ -184,22 +276,6 @@ If you get an error like:
 `failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine`
 
 Then Docker Desktop is not running (or Linux engine is unavailable). Start Docker Desktop first, then retry.
-
-### Angular production build/test fails with missing `css-select`
-
-Observed on this codebase after fresh `npm ci`:
-
-- `npm run build`
-- `npm run test:ci`
-
-Both fail with `Cannot find module 'css-select'` from Angular build tooling (`beasties` path).
-
-Current workaround for day-to-day local progress:
-
-- Use dev servers: `npm run start:admin`, `npm run start:booth`
-- Use development build configuration:
-  - `npx ng build admin-web --configuration development`
-  - `npx ng build booth-ui --configuration development`
 
 ### Reset local database volume
 
@@ -211,7 +287,7 @@ docker compose up -d postgres redis
 dotnet tool run dotnet-ef database update --project services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj --startup-project services/api/src/PhotoBIZ.Api/PhotoBIZ.Api.csproj
 ```
 
-## 11) Recommended Daily Flow
+## 12) Recommended Daily Flow
 
 1. `docker compose up -d postgres redis`
 2. `dotnet run` API + Worker

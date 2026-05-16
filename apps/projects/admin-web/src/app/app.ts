@@ -76,12 +76,67 @@ type TransactionSummary = {
   readonly id: string;
   readonly boothId: string;
   readonly transactionNumber: string;
+  readonly transactionType: string;
   readonly status: string;
   readonly paymentMethod: string;
   readonly amountCents: number;
+  readonly parentTransactionId: string | null;
+  readonly extraPrintCount: number;
+  readonly canCreateExtraPrintAddOn: boolean;
+  readonly extraPrintUnitPriceCents: number | null;
   readonly createdAt: string;
   readonly paidAt: string | null;
   readonly completedAt: string | null;
+};
+type ReportSummary = {
+  readonly platform: {
+    readonly activeClients: number;
+    readonly activeBooths: number;
+    readonly offlineBooths: number;
+    readonly trialSubscriptions: number;
+    readonly activeSubscriptions: number;
+    readonly pastDueSubscriptions: number;
+    readonly suspendedSubscriptions: number;
+    readonly cancelledSubscriptions: number;
+    readonly manualMrrCents: number;
+    readonly clientsOverAllowance: number;
+  };
+  readonly sales: {
+    readonly todayGrossSalesCents: number;
+    readonly todayCompletedSessions: number;
+    readonly todayCashSalesCents: number;
+    readonly pendingCashCount: number;
+    readonly failedOrExpiredCount: number;
+  };
+  readonly boothSales: readonly {
+    readonly boothId: string;
+    readonly boothName: string;
+    readonly completedSessions: number;
+    readonly grossSalesCents: number;
+  }[];
+  readonly locationSales: readonly {
+    readonly locationId: string;
+    readonly locationName: string;
+    readonly completedSessions: number;
+    readonly grossSalesCents: number;
+  }[];
+  readonly offerSales: readonly {
+    readonly offerId: string;
+    readonly offerName: string;
+    readonly offerType: string;
+    readonly completedSessions: number;
+    readonly grossSalesCents: number;
+  }[];
+};
+type AuditLogSummary = {
+  readonly id: string;
+  readonly clientAccountId: string | null;
+  readonly userId: string | null;
+  readonly action: string;
+  readonly entityType: string;
+  readonly entityId: string | null;
+  readonly metadata: string;
+  readonly createdAt: string;
 };
 
 type Overview = {
@@ -107,6 +162,8 @@ type Overview = {
   }[];
   readonly paymentAssignments: readonly PaymentAssignmentSummary[];
   readonly transactions: readonly TransactionSummary[];
+  readonly reports: ReportSummary;
+  readonly auditLogs: readonly AuditLogSummary[];
 };
 
 type BoothSecret = {
@@ -116,7 +173,7 @@ type BoothSecret = {
   readonly agentCredential: string;
 };
 
-type ViewKey = 'dashboard' | 'setup' | 'clients' | 'booths' | 'pos';
+type ViewKey = 'dashboard' | 'setup' | 'clients' | 'booths' | 'pos' | 'reports' | 'audit';
 
 @Component({
   selector: 'app-root',
@@ -155,6 +212,7 @@ export class App {
   protected readonly offerName = signal('Per Session');
   protected readonly offerPrice = signal(25000);
   protected readonly offerMode = signal('SESSION_STANDARD');
+  protected readonly extraPrintCopies = signal(1);
 
   protected readonly selectedClientId = computed(() => this.overview()?.clients[0]?.id ?? null);
   protected readonly selectedPlanId = computed(
@@ -204,13 +262,31 @@ export class App {
       ) ?? null
     );
   });
-  protected readonly navItems: readonly { key: ViewKey; label: string }[] = [
+  protected readonly extraPrintCandidate = computed(() => {
+    const boothId = this.assignedBooth()?.id;
+    return (
+      this.overview()?.transactions.find(
+        (transaction) =>
+          boothId && transaction.boothId === boothId && transaction.canCreateExtraPrintAddOn,
+      ) ?? null
+    );
+  });
+  protected readonly extraPrintTotalCents = computed(() => {
+    const candidate = this.extraPrintCandidate();
+    return (candidate?.extraPrintUnitPriceCents ?? 0) * this.extraPrintCopies();
+  });
+  private readonly navItems: readonly { key: ViewKey; label: string }[] = [
     { key: 'dashboard', label: 'Dashboard' },
     { key: 'setup', label: 'Setup' },
     { key: 'clients', label: 'Clients' },
     { key: 'booths', label: 'Booths' },
     { key: 'pos', label: 'Cashier POS' },
+    { key: 'reports', label: 'Reports' },
+    { key: 'audit', label: 'Audit' },
   ];
+  protected readonly visibleNavItems = computed(() =>
+    this.navItems.filter((item) => this.canAccessView(item.key)),
+  );
 
   constructor() {
     this.restoreSession();
@@ -250,6 +326,10 @@ export class App {
   }
 
   protected setView(view: ViewKey): void {
+    if (!this.canAccessView(view)) {
+      return;
+    }
+
     this.activeView.set(view);
   }
 
@@ -609,6 +689,20 @@ export class App {
     });
   }
 
+  protected async createExtraPrintAddOn(parentTransactionId: string): Promise<void> {
+    await this.run(async () => {
+      await firstValueFrom(
+        this.http.post(
+          `${App.apiBaseUrl}/api/cashier/transactions/${parentTransactionId}/extra-prints`,
+          { copyCount: this.extraPrintCopies() },
+          { withCredentials: true },
+        ),
+      );
+      await this.loadOverview();
+      this.message.set('Extra print add-on created. Collect cash, then approve.');
+    });
+  }
+
   protected clientNameFor(clientId: string | null): string {
     return this.overview()?.clients.find((client) => client.id === clientId)?.name ?? 'Platform';
   }
@@ -645,6 +739,42 @@ export class App {
 
   protected isTerminalTransaction(status: string): boolean {
     return status === 'COMPLETED' || status === 'EXPIRED' || status === 'CANCELLED';
+  }
+
+  protected copyOptions(): readonly number[] {
+    return [1, 2, 3, 4, 5];
+  }
+
+  protected activeViewTitle(): string {
+    switch (this.activeView()) {
+      case 'pos':
+        return 'Cashier POS';
+      case 'reports':
+        return 'Reports';
+      case 'audit':
+        return 'Audit Log';
+      default:
+        return 'Admin Web';
+    }
+  }
+
+  protected canAccessView(view: ViewKey): boolean {
+    const role = this.session()?.role;
+
+    if (role === 'CASHIER') {
+      return view === 'dashboard' || view === 'pos' || view === 'reports' || view === 'audit';
+    }
+
+    return true;
+  }
+
+  protected formatDate(value: string): string {
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(new Date(value));
   }
 
   private async createUser(
@@ -698,6 +828,10 @@ export class App {
     );
     this.overview.set(overview);
     this.session.set(overview.session);
+
+    if (!this.canAccessView(this.activeView())) {
+      this.activeView.set('dashboard');
+    }
   }
 
   private async run(operation: () => Promise<void>): Promise<void> {

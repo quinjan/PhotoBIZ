@@ -25,6 +25,7 @@ type BoothConfig = {
     currency: string;
     includedPrintEntitlement: string;
     allowsExtraPrintAddOn: boolean;
+    extraPrintPriceCents: number | null;
   } | null;
   readonly paymentOptions: readonly { method: string; label: string; runtimeEnabled: boolean }[];
 };
@@ -43,6 +44,7 @@ type ScreenState =
   | 'waiting'
   | 'approved'
   | 'session'
+  | 'completed'
   | 'expired'
   | 'error';
 
@@ -100,7 +102,11 @@ export class App {
       return 'error';
     }
 
-    if (config.booth.state === 'COMPLETED' || config.booth.state === 'RETURNING_TO_WELCOME') {
+    if (config.booth.state === 'COMPLETED') {
+      return 'completed';
+    }
+
+    if (config.booth.state === 'RETURNING_TO_WELCOME') {
       return 'expired';
     }
 
@@ -200,6 +206,8 @@ export class App {
         return 'Starting Session';
       case 'session':
         return 'Session In Progress';
+      case 'completed':
+        return 'Extra Prints';
       case 'expired':
         return 'Returning To Welcome';
       case 'error':
@@ -225,6 +233,8 @@ export class App {
         return 'Payment confirmed. The booth session is starting.';
       case 'session':
         return 'Follow the booth operator screen.';
+      case 'completed':
+        return 'Need extra prints? Please go to the cashier.';
       case 'expired':
         return 'This session state has ended.';
       case 'error':

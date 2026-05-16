@@ -176,6 +176,15 @@ input {
   padding: 0.68rem 0.75rem;
 }
 
+select {
+  background: #fbfcfd;
+  border: 1px solid #cbd5de;
+  border-radius: 6px;
+  color: #172026;
+  min-height: 2.4rem;
+  padding: 0.55rem 0.75rem;
+}
+
 button {
   align-items: center;
   background: #0f5f66;
@@ -224,6 +233,15 @@ button.ghost {
 .pos-card {
   align-content: start;
   border-left: 4px solid #0f5f66;
+}
+
+.status-panel {
+  background: #f6f8fa;
+  border: 1px solid #e2e8ee;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
 }
 
 .error {

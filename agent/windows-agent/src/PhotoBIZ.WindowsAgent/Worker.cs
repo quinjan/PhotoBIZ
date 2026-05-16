@@ -1,10 +1,12 @@
-using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
 
 namespace PhotoBIZ.WindowsAgent;
 
 public class Worker(
-    IHttpClientFactory httpClientFactory,
+    IPhotoBizAgentApiClient photoBizApi,
+    ILumaBoothClient lumaBoothClient,
+    IActiveLumaBoothSessionStore activeSessionStore,
+    IWindowFocusService windowFocusService,
     IOptions<PhotoBizAgentOptions> options,
     ILogger<Worker> logger) : BackgroundService
 {
@@ -18,12 +20,15 @@ public class Worker(
             LogLevel.Information,
             new EventId(1001, nameof(LogAgentStatus)),
             "{Message}");
+    private static readonly Action<ILogger, string, Exception?> LogAgentWarning =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(1002, nameof(LogAgentWarning)),
+            "{Message}");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var settings = options.Value;
-        var httpClient = httpClientFactory.CreateClient("photobiz-agent");
-        httpClient.BaseAddress = new Uri(settings.ApiBaseUrl);
 
         if (string.IsNullOrWhiteSpace(settings.BoothCode) || string.IsNullOrWhiteSpace(settings.AgentCredential))
         {
@@ -31,53 +36,91 @@ public class Worker(
             return;
         }
 
-        httpClient.DefaultRequestHeaders.Add("X-Agent-Credential", settings.AgentCredential);
-
-        await PairAsync(httpClient, settings.BoothCode, stoppingToken);
+        await photoBizApi.PairAsync(settings.BoothCode, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             LogHeartbeat(logger, AgentMetadata.ServiceName, TimeProvider.System.GetUtcNow(), null);
-            await HeartbeatAsync(httpClient, settings.BoothCode, stoppingToken);
-            await PollForCommandAsync(httpClient, settings, stoppingToken);
+            await photoBizApi.HeartbeatAsync(settings.BoothCode, stoppingToken);
+            await PollForCommandAsync(settings, stoppingToken);
 
             await Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), stoppingToken);
         }
     }
 
-    private static async Task PairAsync(HttpClient httpClient, string boothCode, CancellationToken cancellationToken)
+    private async Task PollForCommandAsync(PhotoBizAgentOptions settings, CancellationToken cancellationToken)
     {
-        await httpClient.PostAsJsonAsync("/api/agent/pair", new { boothCode }, cancellationToken);
-    }
+        var command = await photoBizApi.GetNextCommandAsync(settings.BoothCode, cancellationToken);
 
-    private static async Task HeartbeatAsync(HttpClient httpClient, string boothCode, CancellationToken cancellationToken)
-    {
-        await httpClient.PostAsJsonAsync("/api/agent/heartbeat", new { boothCode }, cancellationToken);
-    }
-
-    private async Task PollForCommandAsync(HttpClient httpClient, PhotoBizAgentOptions settings, CancellationToken cancellationToken)
-    {
-        var response = await httpClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(settings.BoothCode)}", cancellationToken);
-
-        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        if (command is null)
         {
             return;
         }
 
-        response.EnsureSuccessStatusCode();
+        var activeSession = new ActiveLumaBoothSession(
+            command.TransactionId,
+            command.TransactionNumber,
+            command.Command,
+            LumaBoothSessionModes.Normalize(command.LumaboothSessionMode),
+            $"PBZ-{command.TransactionId:N}",
+            TimeProvider.System.GetUtcNow());
 
-        var command = await response.Content.ReadFromJsonAsync<AgentCommandPayload>(cancellationToken);
-
-        if (command is null || command.Command != "START_SESSION")
+        if (command.Command == "PRINT_COPIES")
         {
+            await PrintCopiesAsync(command, activeSession, cancellationToken);
             return;
         }
 
-        LogAgentStatus(logger, $"Simulating LumaBooth session for {command.TransactionNumber}", null);
-        await httpClient.PostAsJsonAsync($"/api/agent/transactions/{command.TransactionId}/session-started", new { boothCode = settings.BoothCode }, cancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(settings.SimulatedSessionDurationSeconds), cancellationToken);
-        await httpClient.PostAsJsonAsync($"/api/agent/transactions/{command.TransactionId}/session-completed", new { boothCode = settings.BoothCode }, cancellationToken);
+        if (command.Command != "START_SESSION")
+        {
+            LogAgentWarning(logger, $"Unsupported PhotoBIZ command {command.Command} for {command.TransactionNumber}", null);
+            return;
+        }
+
+        try
+        {
+            await activeSessionStore.SaveAsync(activeSession, cancellationToken);
+            LogAgentStatus(logger, $"Starting LumaBooth session for {command.TransactionNumber}", null);
+            await lumaBoothClient.StartSessionAsync(activeSession, cancellationToken);
+            await windowFocusService.ShowLumaBoothAsync(cancellationToken);
+
+            if (IsSimulatorMode(settings))
+            {
+                await photoBizApi.MarkSessionStartedAsync(activeSession, "simulator_session_start", cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(settings.SimulatedSessionDurationSeconds), cancellationToken);
+                await photoBizApi.MarkSessionCompletedAsync(activeSession, "simulator_session_end", cancellationToken);
+                await activeSessionStore.ClearAsync(cancellationToken);
+                await windowFocusService.ShowBoothUiAsync(cancellationToken);
+            }
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogAgentWarning(logger, $"LumaBooth session failed for {command.TransactionNumber}: {ex.Message}", ex);
+            await photoBizApi.MarkSessionFailedAsync(activeSession, ex.Message, "agent_start_failed", cancellationToken);
+            await activeSessionStore.ClearAsync(cancellationToken);
+        }
+    }
+
+    private async Task PrintCopiesAsync(
+        AgentCommandPayload command,
+        ActiveLumaBoothSession activeSession,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            LogAgentStatus(logger, $"Printing {command.ExtraPrintCount} extra copies for {command.TransactionNumber}", null);
+            await lumaBoothClient.PrintCopiesAsync(command.ExtraPrintCount, cancellationToken);
+            await photoBizApi.MarkPrintCompletedAsync(activeSession, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogAgentWarning(logger, $"Extra print command failed for {command.TransactionNumber}: {ex.Message}", ex);
+            await photoBizApi.MarkPrintFailedAsync(activeSession, ex.Message, cancellationToken);
+        }
+    }
+
+    private static bool IsSimulatorMode(PhotoBizAgentOptions settings)
+    {
+        return !string.Equals(settings.LumaBooth.Mode, LumaBoothIntegrationMode.Api, StringComparison.OrdinalIgnoreCase);
     }
 }
-
-public sealed record AgentCommandPayload(Guid TransactionId, string TransactionNumber, string Command);

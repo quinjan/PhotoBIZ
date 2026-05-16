@@ -36,6 +36,9 @@
         <p>
           {{ formatMoney(activeOffer.priceCents) }} / {{ activeOffer.includedPrintEntitlement }}
         </p>
+        @if (activeOffer.allowsExtraPrintAddOn && activeOffer.extraPrintPriceCents !== null) {
+          <p>Extra prints {{ formatMoney(activeOffer.extraPrintPriceCents) }} each</p>
+        }
       </article>
     }
 
@@ -85,6 +88,12 @@
         <div class="status-panel success">
           <strong>Session running</strong>
           <span>Photos, printing, and sharing continue in LumaBooth</span>
+        </div>
+      }
+      @case ('completed') {
+        <div class="status-panel success">
+          <strong>Need extra prints?</strong>
+          <span>Please go to the cashier.</span>
         </div>
       }
       @case ('expired') {

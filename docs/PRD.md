@@ -38,6 +38,12 @@ PhotoBIZ MVP must respect the current LumaBooth operating model.
 - Template and layout choices available inside LumaBooth are controlled by the active LumaBooth event, not by PhotoBIZ Booth UI customer selection.
 - PhotoBIZ tracks the commercial booth offer, payment, allowance, session usage, eligible add-on print sales, tenant reporting, and auditability.
 - The Windows Agent may start the configured LumaBooth session type and may request additional print copies where the LumaBooth API supports it.
+- The MVP integration uses the local dslrBooth/LumaBooth Windows API from the Agent, with `GET /api/start?mode={mode}&password={password}` for session start.
+- Paid post-session extra print add-ons use the local dslrBooth/LumaBooth API from the Agent, with `GET /api/print?count={count}`. If the local API password is configured, the Agent appends it as a `password` query parameter.
+- LumaBooth URL trigger events are sent to the local Agent listener at `http://127.0.0.1:5617/lumabooth/events`; the Agent maps `session_start` to backend session started and `session_end` to backend session completed.
+- Allowed PhotoBIZ session modes are `PRINT`, `GIF`, `BOOMERANG`, and `VIDEO`. Existing `SESSION_STANDARD` values are treated as `PRINT`.
+- The LumaBooth API password is stored only in local Agent configuration and is never returned to web clients.
+- The Windows Agent owns focus handoff between Booth UI and LumaBooth. Focus failures are warnings and do not fail a paid transaction.
 
 ## Goals
 
@@ -126,7 +132,7 @@ Permissions:
 - Approve cash payments.
 - Cancel or expire a pending transaction.
 - View today's transactions and sales for the assigned booth.
-- Trigger basic recovery actions, such as returning booth to welcome screen.
+- Trigger basic recovery actions, such as returning booth to welcome screen and clearing a stuck active booth transaction.
 
 ## Subscription Model
 
@@ -183,6 +189,7 @@ Required MVP screens:
 - Payment approved screen.
 - Starting session screen.
 - Session in progress or LumaBooth handoff screen.
+- Completed session prompt for 15 seconds: "Need extra prints? Please go to the cashier."
 - Expired transaction screen.
 - Error/recovery screen.
 
@@ -207,8 +214,8 @@ Responsibilities:
 - Maintain heartbeat connection with backend.
 - Be treated as offline when no heartbeat has been received or the last heartbeat is older than 60 seconds.
 - Receive commands from backend.
-- Start LumaBooth sessions through LumaBooth integration.
-- Receive LumaBooth triggers or webhooks.
+- Start LumaBooth sessions through the local dslrBooth/LumaBooth API or simulator mode.
+- Receive LumaBooth URL trigger events through its local loopback listener.
 - Report session state changes.
 - Report basic local health.
 - Manage Booth UI and LumaBooth window focus where possible.
@@ -302,11 +309,12 @@ Guardrails:
 7. Cashier clicks `Approve Cash`.
 8. Backend marks transaction as `PAID`.
 9. Backend sends start-session command to the booth agent.
-10. Agent starts the configured LumaBooth session for the booth's active LumaBooth event.
+10. Agent starts the configured LumaBooth session for the booth's active LumaBooth event through the local dslrBooth/LumaBooth API.
 11. LumaBooth handles capture, printing, and Fotoshare sharing.
-12. Agent receives session completion signal.
+12. LumaBooth sends URL trigger events to the Agent's local listener; `session_start` reports backend session started and `session_end` reports backend session completed.
 13. Backend marks transaction as `COMPLETED`.
-14. Booth UI returns to welcome screen.
+14. Booth UI shows a 15-second completed prompt telling the customer to go to the cashier for extra prints if needed.
+15. If no extra print add-on is created, the worker returns the booth to welcome after the prompt.
 
 For `TIME_UNLIMITED` and `SESSION_COUNT` offers, plan activation is cashier-side and cash-only in the MVP. Once a timed or session-count offer is active and paid, Booth UI skips payment and offer review screens and follows welcome, LumaBooth handoff, and return-to-welcome states.
 
@@ -337,7 +345,9 @@ Default MVP expiration:
 1. Agent or backend detects that the booth is stuck, offline, or in an error state.
 2. Cashier sees an alert in POS view.
 3. Cashier can cancel, retry, or return booth to welcome.
-4. All manual recovery actions are written to audit logs.
+4. `Return to welcome` is a backend recovery action, not a visual-only kiosk reset. It cancels the booth's active non-terminal transaction so the booth becomes available again.
+5. If a booth session record already exists for the active transaction, the recovery flow marks that booth session failed before the booth returns to `WELCOME`.
+6. All manual recovery actions are written to audit logs.
 
 ## Booth Offer Requirements
 
@@ -384,9 +394,13 @@ Post-session extra print add-ons are supported only for completed `PER_SESSION` 
 Rules:
 
 - Add-on transactions must be linked to the original completed session transaction.
+- Add-ons are available only for the latest completed `SESSION_PURCHASE` on the same booth.
+- Booth UI does not create add-ons; it only shows the 15-second post-session cashier prompt.
+- Cashier POS creates the add-on and selects 1 to 5 copies.
+- Add-ons are cash-only in MVP.
 - Add-on transactions do not start a new LumaBooth capture session.
 - Add-on approval and payment must follow the cash payment authority rules for MVP.
-- The Windows Agent may request additional LumaBooth print copies after backend payment approval.
+- The Windows Agent requests additional LumaBooth print copies after backend payment approval using `GET /api/print?count={count}`.
 - Add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offers.
 
 ## Booth Requirements
@@ -512,6 +526,7 @@ Future reports:
 - Sales by location.
 - Recent transactions.
 - Current booth statuses.
+- Recent client audit events.
 
 ### Cashier POS View
 
@@ -528,6 +543,8 @@ Future reports:
 - Today's sales.
 - Today's completed sessions.
 - Recent transactions for the assigned booth.
+- Extra print controls for the latest eligible completed per-session transaction, including a 1 to 5 copy selector and computed cash total.
+- Assigned-booth sales summary and cashier-owned audit events.
 - Basic recovery action: return to welcome screen.
 
 ## Payment Requirements
@@ -616,6 +633,7 @@ Audit logs should capture:
 - Booth UI cannot directly mark a transaction as paid.
 - Agent commands require authenticated agent identity.
 - Audit logs for sensitive actions.
+- Cashier `return-to-welcome` recovery must resolve the active booth transaction before the booth is considered available again.
 
 ## MVP Acceptance Criteria
 
@@ -644,5 +662,4 @@ The MVP is considered complete when:
 
 ## Open Decisions
 
-- Exact LumaBooth API command format, session mode mapping, print-copy command behavior, and event trigger payload mapping.
 - Exact Maya production verification steps with the client's Maya account manager.

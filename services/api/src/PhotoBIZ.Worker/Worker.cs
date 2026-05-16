@@ -21,6 +21,11 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
             LogLevel.Information,
             new EventId(1002, nameof(LogOfflineBooths)),
             "Marked {OfflineBooths} stale booths offline");
+    private static readonly Action<ILogger, int, Exception?> LogCompletedBoothsReset =
+        LoggerMessage.Define<int>(
+            LogLevel.Information,
+            new EventId(1003, nameof(LogCompletedBoothsReset)),
+            "Returned {CompletedBooths} completed booths to welcome");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -56,6 +61,40 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
 
                 await dbContext.SaveChangesAsync(stoppingToken);
                 LogExpiredTransactions(logger, expiredTransactions.Count, null);
+            }
+
+            var completedCutoff = now.Subtract(PhotoBizTransactionWorkflow.PostSessionPromptDuration);
+            var completedBooths = await dbContext.Booths
+                .Where(booth => booth.CurrentState == StatusValues.Booth.Completed)
+                .ToListAsync(stoppingToken);
+
+            if (completedBooths.Count > 0)
+            {
+                var completedBoothIds = completedBooths.Select(booth => booth.Id).ToArray();
+                var latestCompletedTransactions = await dbContext.Transactions
+                    .AsNoTracking()
+                    .Where(transaction =>
+                        completedBoothIds.Contains(transaction.BoothId) &&
+                        transaction.TransactionType == StatusValues.TransactionType.SessionPurchase &&
+                        transaction.Status == StatusValues.Transaction.Completed)
+                    .ToListAsync(stoppingToken);
+                var eligibleBoothIds = latestCompletedTransactions
+                    .GroupBy(transaction => transaction.BoothId)
+                    .Select(group => group
+                        .OrderByDescending(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
+                        .ThenByDescending(transaction => transaction.CreatedAt)
+                        .First())
+                    .Where(transaction => transaction.CompletedAt <= completedCutoff)
+                    .Select(transaction => transaction.BoothId)
+                    .ToHashSet();
+
+                foreach (var booth in completedBooths.Where(booth => eligibleBoothIds.Contains(booth.Id)))
+                {
+                    booth.CurrentState = StatusValues.Booth.Welcome;
+                }
+
+                await dbContext.SaveChangesAsync(stoppingToken);
+                LogCompletedBoothsReset(logger, eligibleBoothIds.Count, null);
             }
 
             var staleIdleBooths = await dbContext.Booths

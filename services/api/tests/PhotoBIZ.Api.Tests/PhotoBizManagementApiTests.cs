@@ -124,6 +124,45 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task OverviewIncludesScopedReportsAndAuditLogs()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            ownerEmail: "reports-owner@photobiz.test");
+        var otherSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            ownerEmail: "reports-other-owner@photobiz.test");
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        _ = await factory.SeedSessionTransactionAsync(otherSeed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.SeedAuditLogAsync(seed.ClientAccountId, seed.ClientOwnerId, "reports.seeded");
+        await factory.SeedAuditLogAsync(otherSeed.ClientAccountId, otherSeed.ClientOwnerId, "reports.other_seeded");
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        Assert.Equal(25000, overview.Reports.Sales.TodayGrossSalesCents);
+        Assert.Equal(1, overview.Reports.Sales.TodayCompletedSessions);
+        Assert.Contains(overview.Reports.BoothSales, item => item.BoothId == seed.BoothId && item.GrossSalesCents == 25000);
+        Assert.DoesNotContain(overview.Reports.BoothSales, item => item.BoothId == otherSeed.BoothId);
+        Assert.Contains(overview.AuditLogs, item => item.Action == "reports.seeded");
+        Assert.DoesNotContain(overview.AuditLogs, item => item.Action == "reports.other_seeded");
+    }
+
+    [Fact]
     public async Task CreateCashierRequiresSameTenantAssignedBooth()
     {
         await using var factory = new PhotoBizApiFactory();
@@ -368,6 +407,300 @@ public sealed class PhotoBizManagementApiTests
         Assert.DoesNotContain(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.Cash);
     }
 
+    [Fact]
+    public async Task AgentCommandIncludesNormalizedLumaBoothMetadata()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true,
+            agentCredential: agentCredential);
+        await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Paid, StatusValues.LumaboothSessionMode.LegacySessionStandard);
+        client.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var response = await client.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+
+        response.EnsureSuccessStatusCode();
+        var command = await response.Content.ReadFromJsonAsync<AgentCommandResponse>();
+        Assert.NotNull(command);
+        Assert.Equal("START_SESSION", command.Command);
+        Assert.Equal(StatusValues.LumaboothSessionMode.Print, command.LumaboothSessionMode);
+        Assert.Equal(StatusValues.OfferType.PerSession, command.OfferType);
+        Assert.Equal(StatusValues.TransactionType.SessionPurchase, command.TransactionType);
+        Assert.Equal(StatusValues.PrintEntitlement.TwoBySixOrOneByFour, command.IncludedPrintEntitlement);
+        Assert.Equal(0, command.ExtraPrintCount);
+    }
+
+    [Fact]
+    public async Task AgentSessionCallbacksPersistLumaBoothReferenceAndRemainIdempotent()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true,
+            agentCredential: agentCredential);
+        var transactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.StartingSession, StatusValues.LumaboothSessionMode.Print);
+        client.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var started = await client.PostAsJsonAsync($"/api/agent/transactions/{transactionId}/session-started", new
+        {
+            boothCode = seed.BoothCode,
+            lumaboothSessionRef = "PBZ-luma-1",
+            lumaboothEventType = "session_start"
+        });
+        var duplicateStarted = await client.PostAsJsonAsync($"/api/agent/transactions/{transactionId}/session-started", new
+        {
+            boothCode = seed.BoothCode,
+            lumaboothSessionRef = "PBZ-luma-1",
+            lumaboothEventType = "session_start"
+        });
+        var completed = await client.PostAsJsonAsync($"/api/agent/transactions/{transactionId}/session-completed", new
+        {
+            boothCode = seed.BoothCode,
+            lumaboothSessionRef = "PBZ-luma-1",
+            lumaboothEventType = "session_end"
+        });
+        var duplicateCompleted = await client.PostAsJsonAsync($"/api/agent/transactions/{transactionId}/session-completed", new
+        {
+            boothCode = seed.BoothCode,
+            lumaboothSessionRef = "PBZ-luma-1",
+            lumaboothEventType = "session_end"
+        });
+        var result = await factory.LoadTransactionSessionAsync(transactionId);
+
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, duplicateStarted.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, completed.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, duplicateCompleted.StatusCode);
+        Assert.Equal(StatusValues.Transaction.Completed, result.TransactionStatus);
+        Assert.Equal(StatusValues.Session.Completed, result.SessionStatus);
+        Assert.Equal("PBZ-luma-1", result.LumaBoothSessionRef);
+    }
+
+    [Fact]
+    public async Task CashierCanSellLatestSessionExtraPrintAndAgentCompletesPrintCopies()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-extra-print-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true,
+            agentCredential: agentCredential);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-extra-print@photobiz.test");
+        var parentTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(cashierClient, cashierEmail);
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var addOnResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{parentTransactionId}/extra-prints", new
+        {
+            copyCount = 2
+        });
+        addOnResponse.EnsureSuccessStatusCode();
+        var addOn = await addOnResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(addOn);
+        Assert.Equal(StatusValues.TransactionType.ExtraPrintAddOn, addOn.TransactionType);
+        Assert.Equal(parentTransactionId, addOn.ParentTransactionId);
+        Assert.Equal(2, addOn.ExtraPrintCount);
+        Assert.Equal(10000, addOn.AmountCents);
+
+        var approvalResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{addOn.Id}/approve-cash", new { });
+        approvalResponse.EnsureSuccessStatusCode();
+
+        var commandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+        commandResponse.EnsureSuccessStatusCode();
+        var command = await commandResponse.Content.ReadFromJsonAsync<AgentCommandResponse>();
+        Assert.NotNull(command);
+        Assert.Equal("PRINT_COPIES", command.Command);
+        Assert.Equal(2, command.ExtraPrintCount);
+        Assert.Equal(StatusValues.TransactionType.ExtraPrintAddOn, command.TransactionType);
+        Assert.Equal(0, await factory.CountSessionsForTransactionAsync(addOn.Id));
+
+        var printCompletedResponse = await agentClient.PostAsJsonAsync($"/api/agent/transactions/{addOn.Id}/print-completed", new
+        {
+            boothCode = seed.BoothCode,
+            lumaboothEventType = "print_completed"
+        });
+        printCompletedResponse.EnsureSuccessStatusCode();
+
+        var completed = await factory.LoadTransactionRecordAsync(addOn.Id);
+        Assert.Equal(StatusValues.Transaction.Completed, completed.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, completed.BoothState);
+    }
+
+    [Fact]
+    public async Task ExtraPrintAddOnRejectsNonLatestSessionAndInvalidCopyCounts()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-extra-print-reject@photobiz.test");
+        var olderTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.BackdateCompletedTransactionAsync(olderTransactionId, TimeSpan.FromMinutes(10));
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(client, cashierEmail);
+
+        var nonLatestResponse = await client.PostAsJsonAsync($"/api/cashier/transactions/{olderTransactionId}/extra-prints", new
+        {
+            copyCount = 1
+        });
+        var invalidCopyResponse = await client.PostAsJsonAsync($"/api/cashier/transactions/{olderTransactionId}/extra-prints", new
+        {
+            copyCount = 6
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, nonLatestResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidCopyResponse.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(StatusValues.OfferType.TimeUnlimited)]
+    [InlineData(StatusValues.OfferType.SessionCount)]
+    public async Task ExtraPrintAddOnRejectsTimedAndSessionCountOfferSnapshots(string offerType)
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(seed, $"cashier-{offerType.ToLowerInvariant()}@photobiz.test");
+        var parentTransactionId = await factory.SeedSessionTransactionAsync(
+            seed,
+            StatusValues.Transaction.Completed,
+            StatusValues.LumaboothSessionMode.Print,
+            offerType);
+        await LoginAsync(client, cashierEmail);
+
+        var response = await client.PostAsJsonAsync($"/api/cashier/transactions/{parentTransactionId}/extra-prints", new
+        {
+            copyCount = 1
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Extra prints are available only for PER_SESSION transactions.", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CashierOverviewIsScopedToAssignedBooth()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 2,
+            existingActiveBooths: 2,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var secondBoothId = await factory.GetSecondBoothIdAsync(seed);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-assigned-scope@photobiz.test");
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        _ = await factory.SeedSessionTransactionAsync(seed with { BoothId = secondBoothId }, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(client, cashierEmail);
+
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        Assert.Single(overview.Booths);
+        Assert.Equal(seed.BoothId, overview.Booths.Single().Id);
+        Assert.All(overview.Transactions, transaction => Assert.Equal(seed.BoothId, transaction.BoothId));
+        Assert.All(overview.Reports.BoothSales, boothReport => Assert.Equal(seed.BoothId, boothReport.BoothId));
+    }
+
+    [Fact]
+    public async Task CashierReturnToWelcomeCancelsActiveTransactionAndAllowsNewKioskTransaction()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: "return-welcome-token");
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-return@photobiz.test");
+        await LoginAsync(cashierClient, cashierEmail);
+
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", "return-welcome-token");
+        var firstTransaction = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        firstTransaction.EnsureSuccessStatusCode();
+        var firstTransactionBody = await firstTransaction.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(firstTransactionBody);
+
+        var returnResponse = await cashierClient.PostAsJsonAsync(
+            $"/api/cashier/booths/{seed.BoothId}/return-to-welcome",
+            new { });
+
+        Assert.Equal(HttpStatusCode.OK, returnResponse.StatusCode);
+
+        var recovered = await factory.LoadTransactionRecordAsync(firstTransactionBody.Id);
+        Assert.Equal(StatusValues.Transaction.Cancelled, recovered.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, recovered.BoothState);
+        Assert.Equal("Manual booth recovery returned the booth to welcome.", recovered.FailureReason);
+
+        var secondTransaction = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        secondTransaction.EnsureSuccessStatusCode();
+    }
+
     private static async Task LoginAsync(HttpClient client, string email)
     {
         var response = await client.PostAsJsonAsync("/api/auth/login", new
@@ -450,6 +783,7 @@ public sealed class PhotoBizManagementApiTests
             bool includeAppearance = false,
             bool includeFreshHeartbeat = false,
             string? kioskToken = null,
+            string? agentCredential = null,
             string ownerEmail = "owner@photobiz.test")
         {
             await using var scope = Services.CreateAsyncScope();
@@ -463,6 +797,7 @@ public sealed class PhotoBizManagementApiTests
             var locationId = Guid.NewGuid();
             var ownerId = Guid.NewGuid();
             var firstBoothId = Guid.NewGuid();
+            var firstBoothCode = $"BOOTH-1-{clientId:N}"[..20].ToUpperInvariant();
             Guid? offerId = null;
 
             dbContext.ClientAccounts.Add(new ClientAccount
@@ -519,11 +854,12 @@ public sealed class PhotoBizManagementApiTests
                     ClientAccountId = clientId,
                     LocationId = locationId,
                     Name = $"Booth {index + 1}",
-                    Code = $"BOOTH-{index + 1}-{clientId:N}"[..20],
+                    Code = index == 0 ? firstBoothCode : $"BOOTH-{index + 1}-{clientId:N}"[..20].ToUpperInvariant(),
                     Status = StatusValues.Booth.Active,
                     CurrentState = StatusValues.Booth.Welcome,
                     LastHeartbeatAt = includeFreshHeartbeat ? DateTimeOffset.UtcNow : null,
-                    KioskTokenHash = index == 0 && kioskToken is not null ? tokenHasher.Hash(kioskToken) : null
+                    KioskTokenHash = index == 0 && kioskToken is not null ? tokenHasher.Hash(kioskToken) : null,
+                    AgentCredentialHash = index == 0 && agentCredential is not null ? tokenHasher.Hash(agentCredential) : null
                 });
                 dbContext.BoothPaymentOptionAssignments.Add(new BoothPaymentOptionAssignment
                 {
@@ -564,6 +900,7 @@ public sealed class PhotoBizManagementApiTests
                     Currency = "PHP",
                     IncludedPrintEntitlement = StatusValues.PrintEntitlement.TwoBySixOrOneByFour,
                     AllowsExtraPrintAddOn = true,
+                    ExtraPrintPriceCents = 5000,
                     LumaboothSessionMode = "SESSION_STANDARD",
                     Active = true,
                     CreatedAt = DateTimeOffset.UtcNow
@@ -584,7 +921,157 @@ public sealed class PhotoBizManagementApiTests
 
             await dbContext.SaveChangesAsync();
 
-            return new SeedResult(clientId, subscriptionId, locationId, ownerId, firstBoothId, offerId ?? Guid.Empty, ownerEmail);
+            return new SeedResult(clientId, subscriptionId, locationId, ownerId, firstBoothId, firstBoothCode, offerId ?? Guid.Empty, ownerEmail);
+        }
+
+        public async Task<string> SeedCashierAsync(SeedResult seed, string email)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var passwordHasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher<ApplicationUser>>();
+
+            var cashier = new ApplicationUser
+            {
+                Id = Guid.NewGuid(),
+                ClientAccountId = seed.ClientAccountId,
+                AssignedBoothId = seed.BoothId,
+                Name = "Cashier",
+                Email = email,
+                Role = StatusValues.User.Cashier,
+                Status = StatusValues.User.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            cashier.PasswordHash = passwordHasher.HashPassword(cashier, Password);
+            dbContext.Users.Add(cashier);
+            await dbContext.SaveChangesAsync();
+
+            return email;
+        }
+
+        public async Task<Guid> SeedSessionTransactionAsync(
+            SeedResult seed,
+            string status,
+            string lumaboothSessionMode,
+            string offerType = StatusValues.OfferType.PerSession)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transactionId = Guid.NewGuid();
+            dbContext.Transactions.Add(new Transaction
+            {
+                Id = transactionId,
+                ClientAccountId = seed.ClientAccountId,
+                LocationId = seed.LocationId,
+                BoothId = seed.BoothId,
+                BoothOfferId = seed.OfferId,
+                BoothOfferActivationId = Guid.NewGuid(),
+                TransactionNumber = $"TXN-{transactionId:N}"[..20],
+                TransactionType = StatusValues.TransactionType.SessionPurchase,
+                PaymentMethod = StatusValues.PaymentMethod.Cash,
+                Status = status,
+                AmountCents = 25000,
+                Currency = "PHP",
+                OfferSnapshot = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    Id = seed.OfferId,
+                    Name = offerType == StatusValues.OfferType.PerSession ? "Per Session" : "Plan Offer",
+                    OfferType = offerType,
+                    PriceCents = 25000,
+                    Currency = "PHP",
+                    IncludedPrintEntitlement = StatusValues.PrintEntitlement.TwoBySixOrOneByFour,
+                    AllowsExtraPrintAddOn = true,
+                    ExtraPrintPriceCents = 5000,
+                    LumaboothSessionMode = lumaboothSessionMode
+                }),
+                CreatedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5),
+                PaidAt = status == StatusValues.Transaction.Paid ||
+                    status == StatusValues.Transaction.StartingSession ||
+                    status == StatusValues.Transaction.InSession ||
+                    status == StatusValues.Transaction.Completed
+                    ? DateTimeOffset.UtcNow
+                    : null,
+                CompletedAt = status == StatusValues.Transaction.Completed
+                    ? DateTimeOffset.UtcNow
+                    : null
+            });
+
+            if (status == StatusValues.Transaction.StartingSession)
+            {
+                dbContext.BoothSessions.Add(new BoothSession
+                {
+                    Id = Guid.NewGuid(),
+                    BoothId = seed.BoothId,
+                    TransactionId = transactionId,
+                    Status = StatusValues.Session.Starting
+                });
+            }
+
+            await dbContext.SaveChangesAsync();
+            return transactionId;
+        }
+
+        public async Task SeedAuditLogAsync(Guid clientAccountId, Guid userId, string action)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                ClientAccountId = clientAccountId,
+                UserId = userId,
+                Action = action,
+                EntityType = "Test",
+                EntityId = clientAccountId,
+                Metadata = "{}",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task<Guid> GetSecondBoothIdAsync(SeedResult seed)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            return await dbContext.Booths
+                .Where(item => item.ClientAccountId == seed.ClientAccountId && item.Id != seed.BoothId)
+                .Select(item => item.Id)
+                .SingleAsync();
+        }
+
+        public async Task BackdateCompletedTransactionAsync(Guid transactionId, TimeSpan age)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
+            transaction.CreatedAt = DateTimeOffset.UtcNow.Subtract(age).AddSeconds(-5);
+            transaction.CompletedAt = DateTimeOffset.UtcNow.Subtract(age);
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task<int> CountSessionsForTransactionAsync(Guid transactionId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            return await dbContext.BoothSessions.CountAsync(item => item.TransactionId == transactionId);
+        }
+
+        public async Task<(string TransactionStatus, string SessionStatus, string? LumaBoothSessionRef)> LoadTransactionSessionAsync(Guid transactionId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
+            var session = await dbContext.BoothSessions.SingleAsync(item => item.TransactionId == transactionId);
+            return (transaction.Status, session.Status, session.LumaboothSessionRef);
+        }
+
+        public async Task<(string Status, string BoothState, string? FailureReason)> LoadTransactionRecordAsync(Guid transactionId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
+            var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId);
+            return (transaction.Status, booth.CurrentState, transaction.FailureReason);
         }
     }
 
@@ -594,6 +1081,7 @@ public sealed class PhotoBizManagementApiTests
         Guid LocationId,
         Guid ClientOwnerId,
         Guid BoothId,
+        string BoothCode,
         Guid OfferId,
         string ClientOwnerEmail);
 }

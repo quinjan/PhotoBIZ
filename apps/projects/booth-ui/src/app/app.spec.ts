@@ -55,6 +55,7 @@ describe('App', () => {
         currency: 'PHP',
         includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
         allowsExtraPrintAddOn: true,
+        extraPrintPriceCents: 5000,
       },
       paymentOptions: [{ method: 'CASH', label: 'Cash', runtimeEnabled: true }],
     });
@@ -97,6 +98,7 @@ describe('App', () => {
         currency: 'PHP',
         includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
         allowsExtraPrintAddOn: true,
+        extraPrintPriceCents: 5000,
       },
       paymentOptions: [{ method: 'CASH', label: 'Cash', runtimeEnabled: true }],
     });
@@ -108,5 +110,48 @@ describe('App', () => {
 
     expect(compiled.textContent).toContain('Choose Payment');
     expect(compiled.textContent).toContain('Cash');
+  });
+
+  it('should render the post-session extra print prompt when booth is completed', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set({
+      client: { displayName: 'The Memory Box', logoUrl: null },
+      theme: {
+        preset: 'VINTAGE_FILM',
+        primaryColor: '#2f6868',
+        accentColor: '#f5d27e',
+        backgroundImageUrl: null,
+        fontMode: 'serif',
+      },
+      session: {
+        label: 'SM Manila',
+        welcomeHeadline: 'Step Into The Memory Box',
+        welcomeSubtitle: 'Welcome',
+      },
+      booth: { id: 'booth-id', state: 'COMPLETED' },
+      activeOffer: {
+        id: 'offer-id',
+        name: 'Per Session',
+        type: 'PER_SESSION',
+        priceCents: 25000,
+        currency: 'PHP',
+        includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
+        allowsExtraPrintAddOn: true,
+        extraPrintPriceCents: 5000,
+      },
+      paymentOptions: [{ method: 'CASH', label: 'Cash', runtimeEnabled: true }],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).toContain('Need extra prints?');
+    expect(compiled.textContent).toContain('Please go to the cashier.');
+    expect(compiled.textContent).toContain('Extra prints PHP 50 each');
   });
 });

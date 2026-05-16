@@ -88,6 +88,11 @@ sequenceDiagram
   A->>L: Start configured session type for active LumaBooth event
   L-->>A: Session events
   A-->>API: Session started / completed
+  API-->>B: Show 15-second completed prompt
+  POS->>API: Optional extra print add-on for latest session
+  API->>A: Print extra copies after cash approval
+  A->>L: GET /api/print?count={count}
+  A-->>API: Print completed / failed
   API-->>B: Return to welcome
 ```
 
@@ -109,7 +114,7 @@ sequenceDiagram
 
 Booth UI token access is separate from Windows Agent availability. A valid kiosk token may still load Booth UI config when the agent is closed, but the backend treats the booth as `OFFLINE` when the booth has no agent heartbeat or the last heartbeat is older than 60 seconds. While effective booth state is `OFFLINE`, Booth UI must show an agent-offline unavailable state and the backend must reject new kiosk transactions.
 
-The backend also enforces one active kiosk transaction per booth. A booth must not create a new session purchase while another transaction for that booth is still in a non-terminal state such as `CREATED`, `PENDING_CASH`, `PAID`, `STARTING_SESSION`, `IN_SESSION`, or `SESSION_FAILED`.
+The backend also enforces one active kiosk transaction per booth. A booth must not create a new session purchase while another transaction for that booth is still in a non-terminal state such as `CREATED`, `PENDING_CASH`, `PAID`, `STARTING_SESSION`, `IN_SESSION`, or `SESSION_FAILED`. Cashier manual recovery through `return-to-welcome` resolves that inconsistency by cancelling the active booth transaction and returning the booth to `WELCOME`.
 
 Minimum `GET /booth-ui/config` response shape:
 
@@ -142,7 +147,8 @@ Minimum `GET /booth-ui/config` response shape:
     "priceCents": 25000,
     "currency": "PHP",
     "includedPrintEntitlement": "2 pcs 6x2 or 1 pc 6x4",
-    "allowsExtraPrintAddOn": true
+    "allowsExtraPrintAddOn": true,
+    "extraPrintPriceCents": 5000
   },
   "paymentOptions": [
     {
@@ -163,6 +169,41 @@ If no active offer is configured for the booth, `activeOffer` is `null`, `paymen
 - LumaBooth owns capture, templates, printing, and Fotoshare delivery.
 - PhotoBIZ owns the commercial offer, payment, usage allowance, add-on eligibility, session state, and audit trail.
 - The Windows Agent may start the configured LumaBooth session type and may request additional print copies where the LumaBooth API supports it.
+- The Agent supports `Simulator` and `Api` integration modes. `Api` mode starts sessions with the local dslrBooth/LumaBooth API at `GET /api/start?mode={mode}&password={password}`.
+- Post-session extra print add-ons use the local LumaBooth API at `GET /api/print?count={count}`. If an API password is configured locally, the Agent appends `password={password}`.
+- The Agent exposes a local loopback trigger listener, defaulting to `http://127.0.0.1:5617/lumabooth/events`, for LumaBooth URL trigger callbacks.
+- Canonical session modes are `PRINT`, `GIF`, `BOOMERANG`, and `VIDEO`; legacy `SESSION_STANDARD` is normalized to `PRINT`.
+- `session_start` trigger events become backend session-started callbacks. `session_end` trigger events become backend session-completed callbacks. Non-terminal events such as `printing`, `file_upload`, and `sharing_screen` are logged for operations.
+- The Agent stores the active transaction context locally so trigger events can be correlated to the backend transaction.
+- The Agent brings LumaBooth foreground after a successful start and restores Booth UI/browser after `session_end`. Focus failures are warnings.
+- LumaBooth API credentials live only in local Agent configuration.
+
+Agent command payload. `command` is `START_SESSION` for normal capture sessions and `PRINT_COPIES` for paid extra print add-ons:
+
+```json
+{
+  "transactionId": "uuid",
+  "transactionNumber": "PBZ-20260516-0001",
+  "command": "START_SESSION",
+  "lumaboothSessionMode": "PRINT",
+  "offerType": "PER_SESSION",
+  "transactionType": "SESSION_PURCHASE",
+  "includedPrintEntitlement": "TWO_BY_SIX_OR_ONE_BY_FOUR",
+  "extraPrintCount": 0
+}
+```
+
+Agent session callbacks may include `lumaboothSessionRef`, `lumaboothEventType`, and failure `reason`.
+
+Agent configuration keys:
+
+- `PhotoBIZ:LumaBooth:Mode`
+- `PhotoBIZ:LumaBooth:ApiBaseUrl`
+- `PhotoBIZ:LumaBooth:ApiPassword`
+- `PhotoBIZ:LumaBooth:TriggerListenerUrl`
+- `PhotoBIZ:LumaBooth:StartTimeoutSeconds`
+- `PhotoBIZ:Display:LumaBoothWindowTitle`
+- `PhotoBIZ:Display:BoothUiWindowTitle`
 
 Payment setup has two levels:
 
@@ -179,15 +220,24 @@ stateDiagram-v2
   [*] --> WELCOME
   WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
   OFFER_CONFIRMED --> PENDING_CASH: Customer chooses cash
+  OFFER_CONFIRMED --> CANCELLED: Cashier return-to-welcome recovery
   PENDING_CASH --> PAID: Cashier approves cash
   PENDING_CASH --> EXPIRED: Timeout
   PENDING_CASH --> CANCELLED: Cashier cancels
   PAID --> STARTING_SESSION: Backend commands agent
+  PAID --> CANCELLED: Cashier return-to-welcome recovery
   STARTING_SESSION --> IN_SESSION: LumaBooth starts
   IN_SESSION --> COMPLETED: LumaBooth session ends
+  COMPLETED --> PAYMENT_PENDING: Cashier creates latest-session extra print add-on
+  PAYMENT_PENDING --> PAID: Cashier approves add-on cash
+  PAID --> PRINTING_OR_SHARING: Backend commands print copies
+  PRINTING_OR_SHARING --> COMPLETED: Agent reports print-completed
+  PRINTING_OR_SHARING --> SESSION_FAILED: Agent reports print-failed
   STARTING_SESSION --> SESSION_FAILED: Agent/LumaBooth error
   IN_SESSION --> SESSION_FAILED: Agent/LumaBooth error
-  COMPLETED --> WELCOME: Reset booth
+  STARTING_SESSION --> CANCELLED: Cashier return-to-welcome recovery
+  IN_SESSION --> CANCELLED: Cashier return-to-welcome recovery
+  COMPLETED --> WELCOME: 15-second prompt expires
   EXPIRED --> WELCOME: Reset booth
   CANCELLED --> WELCOME: Reset booth
   SESSION_FAILED --> WELCOME: Manual recovery
@@ -265,6 +315,8 @@ Responsibilities:
 - Reports.
 - Audit logs.
 
+The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
+
 ### Booth UI
 
 Stack:
@@ -320,6 +372,8 @@ Responsibilities:
 - Reporting.
 - Audit logging.
 
+The MVP reporting read model includes active/offline booth counts, subscription status counts, manual MRR estimate, clients over allowance, today's gross/cash sales, today's completed sessions, pending cash count, failed/expired count, and booth/location/offer sales summaries. These summaries are backend-computed from tenant-scoped data; Admin Web only renders them.
+
 ### Windows Booth Agent
 
 Stack:
@@ -332,8 +386,8 @@ Responsibilities:
 - Pair with backend booth record.
 - Maintain heartbeat.
 - Listen for start-session commands.
-- Call LumaBooth through the documented local API/integration path.
-- Receive LumaBooth triggers/webhooks.
+- Call LumaBooth through simulator or local API mode.
+- Receive LumaBooth URL trigger events through the local loopback listener.
 - Report session state.
 - Manage local recovery.
 - Manage Booth UI and LumaBooth app/window focus on the booth laptop.
@@ -589,9 +643,12 @@ PENDING_CASH -> EXPIRED
 PENDING_CASH -> CANCELLED
 PAID -> STARTING_SESSION
 STARTING_SESSION -> IN_SESSION
+PAID -> CANCELLED
 STARTING_SESSION -> SESSION_FAILED
+STARTING_SESSION -> CANCELLED
 IN_SESSION -> COMPLETED
 IN_SESSION -> SESSION_FAILED
+IN_SESSION -> CANCELLED
 SESSION_FAILED -> CANCELLED
 ```
 
@@ -599,6 +656,7 @@ Rules:
 
 - Booth UI cannot mark transactions as paid.
 - A booth may have at most one non-terminal session transaction at a time.
+- Cashier `return-to-welcome` recovery cancels the booth's active non-terminal transaction so the booth can accept a new session purchase.
 - Payment method selection must be validated against booth-level payment option assignments and runtime provider availability.
 - Client-level Maya configuration alone cannot expose a payment method to Booth UI or Cashier POS.
 - `CASH` is the only runtime-enabled payment method in MVP.
@@ -606,7 +664,9 @@ Rules:
 - Application Owner can manage clients/subscriptions but does not normally approve client booth transactions.
 - Expired transactions release the booth.
 - Session transactions snapshot the active booth offer and active offer assignment.
-- Extra print add-on transactions must reference a completed `PER_SESSION` parent transaction and do not start a new capture session.
+- Extra print add-on transactions must reference the latest completed `PER_SESSION` parent transaction for the same booth and do not start a new capture session.
+- Extra print add-ons are cashier/POS-only, cash-only in MVP, and support 1 to 5 copies.
+- Paid extra print add-ons dispatch `PRINT_COPIES` to the Windows Agent and must not create a `BOOTH_SESSION` row.
 - Extra print add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offer transactions.
 - Completed transactions are immutable except for administrative notes or future refund records.
 
@@ -766,8 +826,8 @@ Each booth is paired to exactly one environment.
 - Agent pairing.
 - Agent heartbeat.
 - Backend command dispatch.
-- Start LumaBooth session.
-- Receive session completion.
+- Start LumaBooth session through simulator or local API mode.
+- Receive LumaBooth URL trigger events and map terminal events to backend session callbacks.
 - Booth state recovery.
 
 ### Phase 4: Reporting And Operations

@@ -27,7 +27,7 @@
         <h1>Operations</h1>
       </div>
       <nav>
-        @for (item of navItems; track item.key) {
+        @for (item of visibleNavItems(); track item.key) {
           <button
             type="button"
             [class.active]="activeView() === item.key"
@@ -47,7 +47,7 @@
     <section class="workspace">
       <header class="topbar">
         <div>
-          <h2>{{ activeView() === 'pos' ? 'Cashier POS' : 'Admin Web' }}</h2>
+          <h2>{{ activeViewTitle() }}</h2>
           <span>{{ message() }}</span>
         </div>
         <strong>{{ loading() ? 'Working' : 'Ready' }}</strong>
@@ -61,19 +61,19 @@
         <section class="metric-grid">
           <article>
             <span>Active booths</span>
-            <strong>{{ activeBooths().length }}</strong>
+            <strong>{{ overview()?.reports?.platform?.activeBooths ?? activeBooths().length }}</strong>
           </article>
           <article>
             <span>Offline booths</span>
-            <strong>{{ offlineBooths().length }}</strong>
+            <strong>{{ overview()?.reports?.platform?.offlineBooths ?? offlineBooths().length }}</strong>
           </article>
           <article>
             <span>Pending cash</span>
-            <strong>{{ pendingTransactions().length }}</strong>
+            <strong>{{ overview()?.reports?.sales?.pendingCashCount ?? pendingTransactions().length }}</strong>
           </article>
           <article>
             <span>Gross sales</span>
-            <strong>{{ formatMoney(grossSalesCents()) }}</strong>
+            <strong>{{ formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? grossSalesCents()) }}</strong>
           </article>
         </section>
 
@@ -110,6 +110,93 @@
                     >
                   </div>
                   <span class="pill">{{ transaction.status }}</span>
+                </div>
+              }
+            </div>
+          </article>
+        </section>
+      }
+
+      @if (activeView() === 'reports') {
+        <section class="metric-grid">
+          <article>
+            <span>Today sales</span>
+            <strong>{{ formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? 0) }}</strong>
+          </article>
+          <article>
+            <span>Today sessions</span>
+            <strong>{{ overview()?.reports?.sales?.todayCompletedSessions ?? 0 }}</strong>
+          </article>
+          <article>
+            <span>Cash sales</span>
+            <strong>{{ formatMoney(overview()?.reports?.sales?.todayCashSalesCents ?? 0) }}</strong>
+          </article>
+          <article>
+            <span>Manual MRR</span>
+            <strong>{{ formatMoney(overview()?.reports?.platform?.manualMrrCents ?? 0) }}</strong>
+          </article>
+        </section>
+
+        <section class="content-grid two">
+          <article class="panel">
+            <header><h3>Booth Sales</h3></header>
+            <div class="table-list">
+              @for (booth of overview()?.reports?.boothSales ?? []; track booth.boothId) {
+                <div class="row">
+                  <div>
+                    <strong>{{ booth.boothName }}</strong>
+                    <span>{{ booth.completedSessions }} sessions</span>
+                  </div>
+                  <span class="pill">{{ formatMoney(booth.grossSalesCents) }}</span>
+                </div>
+              }
+            </div>
+          </article>
+
+          <article class="panel">
+            <header><h3>Offer Sales</h3></header>
+            <div class="table-list">
+              @for (offer of overview()?.reports?.offerSales ?? []; track offer.offerId) {
+                <div class="row">
+                  <div>
+                    <strong>{{ offer.offerName }}</strong>
+                    <span>{{ offer.offerType }} / {{ offer.completedSessions }} sessions</span>
+                  </div>
+                  <span class="pill">{{ formatMoney(offer.grossSalesCents) }}</span>
+                </div>
+              }
+            </div>
+          </article>
+
+          <article class="panel span-two">
+            <header><h3>Location Sales</h3></header>
+            <div class="table-list">
+              @for (location of overview()?.reports?.locationSales ?? []; track location.locationId) {
+                <div class="row">
+                  <div>
+                    <strong>{{ location.locationName }}</strong>
+                    <span>{{ location.completedSessions }} sessions</span>
+                  </div>
+                  <span class="pill">{{ formatMoney(location.grossSalesCents) }}</span>
+                </div>
+              }
+            </div>
+          </article>
+        </section>
+      }
+
+      @if (activeView() === 'audit') {
+        <section class="content-grid two">
+          <article class="panel span-two">
+            <header><h3>Recent Audit Events</h3></header>
+            <div class="table-list">
+              @for (audit of overview()?.auditLogs ?? []; track audit.id) {
+                <div class="row">
+                  <div>
+                    <strong>{{ audit.action }}</strong>
+                    <span>{{ audit.entityType }} / {{ formatDate(audit.createdAt) }}</span>
+                  </div>
+                  <span class="pill">{{ audit.entityId ? 'Recorded' : 'System' }}</span>
                 </div>
               }
             </div>
@@ -444,8 +531,12 @@
             @if (cashierTransaction(); as transaction) {
               <strong>{{ transaction.transactionNumber }}</strong>
               <p>
-                {{ transaction.status }} / {{ transaction.paymentMethod }} /
+                {{ transaction.transactionType }} / {{ transaction.status }} /
+                {{ transaction.paymentMethod }} /
                 {{ formatMoney(transaction.amountCents) }}
+                @if (transaction.extraPrintCount > 0) {
+                  / {{ transaction.extraPrintCount }} copies
+                }
               </p>
               <div class="actions">
                 @if (transaction.status === 'PENDING_CASH') {
@@ -462,6 +553,27 @@
               </div>
             } @else {
               <p>No active payment request.</p>
+              @if (extraPrintCandidate(); as transaction) {
+                <div class="status-panel">
+                  <strong>Extra Prints</strong>
+                  <span>{{ transaction.transactionNumber }}</span>
+                  <label>
+                    Copies
+                    <select
+                      [ngModel]="extraPrintCopies()"
+                      (ngModelChange)="extraPrintCopies.set(+$event)"
+                    >
+                      @for (copyCount of copyOptions(); track copyCount) {
+                        <option [ngValue]="copyCount">{{ copyCount }}</option>
+                      }
+                    </select>
+                  </label>
+                  <p>Total {{ formatMoney(extraPrintTotalCents()) }}</p>
+                  <button type="button" (click)="createExtraPrintAddOn(transaction.id)">
+                    Create Extra Prints
+                  </button>
+                </div>
+              }
               @if (assignedBooth(); as booth) {
                 <button type="button" class="secondary" (click)="returnBoothToWelcome(booth.id)">
                   Return To Welcome
@@ -480,8 +592,11 @@
                       <div>
                         <strong>{{ transaction.transactionNumber }}</strong>
                         <span
-                          >{{ transaction.status }} /
-                          {{ formatMoney(transaction.amountCents) }}</span
+                          >{{ transaction.transactionType }} / {{ transaction.status }} /
+                          {{ formatMoney(transaction.amountCents) }}
+                          @if (transaction.extraPrintCount > 0) {
+                            / {{ transaction.extraPrintCount }} copies
+                          }</span
                         >
                       </div>
                       <span class="pill">{{ transaction.paymentMethod }}</span>
@@ -494,7 +609,11 @@
                     <div>
                       <strong>{{ transaction.transactionNumber }}</strong>
                       <span
-                        >{{ transaction.status }} / {{ formatMoney(transaction.amountCents) }}</span
+                        >{{ transaction.transactionType }} / {{ transaction.status }} /
+                        {{ formatMoney(transaction.amountCents) }}
+                        @if (transaction.extraPrintCount > 0) {
+                          / {{ transaction.extraPrintCount }} copies
+                        }</span
                       >
                     </div>
                     <span class="pill">{{ transaction.paymentMethod }}</span>
