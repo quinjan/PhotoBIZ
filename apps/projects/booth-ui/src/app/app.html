@@ -1,44 +1,108 @@
 <main
   class="booth-shell"
+  [class.state-offline]="screen() === 'offline'"
+  [class.state-waiting]="screen() === 'waiting'"
+  [class.state-error]="screen() === 'error'"
   [style.--theme-primary]="config()?.theme?.primaryColor ?? '#2f6868'"
   [style.--theme-accent]="config()?.theme?.accentColor ?? '#f5d27e'"
 >
-  <section class="connect-panel">
+  <section class="token-bar">
     <label>
       Kiosk token
       <input [ngModel]="kioskToken()" (ngModelChange)="kioskToken.set($event)" />
     </label>
-    <button type="button" (click)="connect()">Connect Booth</button>
+    <button type="button" (click)="connect()">Connect</button>
   </section>
 
-  <section class="welcome-panel">
-    <div class="brand-row">
-      <span class="brand-mark">{{ config()?.client?.displayName?.slice(0, 2) ?? 'PB' }}</span>
-      <span class="state">{{ config()?.booth?.state ?? 'OFFLINE' }}</span>
-    </div>
+  <section class="stage-panel">
+    <header>
+      <div class="brand-lockup">
+        <span>{{ config()?.client?.displayName?.slice(0, 2) ?? 'PB' }}</span>
+        <strong>{{ config()?.client?.displayName ?? 'PhotoBIZ' }}</strong>
+      </div>
+      <span class="state-chip">{{ config()?.booth?.state ?? 'OFFLINE' }}</span>
+    </header>
 
-    <div class="welcome-copy">
+    <div class="stage-copy">
       <p class="eyebrow">{{ config()?.session?.label || 'Customer kiosk' }}</p>
-      <h1>{{ config()?.session?.welcomeHeadline || 'Step Into The Memory Box' }}</h1>
-      <p>{{ stateMessage() }}</p>
+      <h1>{{ screenTitle() }}</h1>
+      <p>{{ screenMessage() }}</p>
     </div>
 
     @if (config()?.activeOffer; as activeOffer) {
-      <div class="offer-card">
+      <article class="offer-panel">
         <span>{{ activeOffer.type }}</span>
         <strong>{{ activeOffer.name }}</strong>
-        <p>PHP {{ activeOffer.priceCents / 100 }} · {{ activeOffer.includedPrintEntitlement }}</p>
-      </div>
-    } @else {
-      <div class="offer-card unavailable">
-        <strong>Booth unavailable</strong>
-        <p>Set an active offer in the admin console before starting sessions.</p>
-      </div>
+        <p>
+          {{ formatMoney(activeOffer.priceCents) }} / {{ activeOffer.includedPrintEntitlement }}
+        </p>
+      </article>
     }
 
-    <button type="button" [disabled]="isStartDisabled()" (click)="startSession()">
-      {{ startButtonLabel() }}
-    </button>
+    @switch (screen()) {
+      @case ('connect') {
+        <button type="button" class="primary-action" (click)="connect()" [disabled]="loading()">
+          Connect Booth
+        </button>
+      }
+      @case ('offer') {
+        <button
+          type="button"
+          class="primary-action"
+          (click)="confirmOffer()"
+          [disabled]="loading()"
+        >
+          Confirm Offer
+        </button>
+      }
+      @case ('payment') {
+        <div class="payment-list">
+          @if (cashOption(); as option) {
+            <button
+              type="button"
+              class="primary-action"
+              (click)="chooseCash()"
+              [disabled]="loading()"
+            >
+              {{ option.label }}
+            </button>
+          }
+        </div>
+      }
+      @case ('waiting') {
+        <div class="status-panel">
+          <strong>Waiting for cashier</strong>
+          <span>Cash payment pending</span>
+        </div>
+      }
+      @case ('approved') {
+        <div class="status-panel success">
+          <strong>Payment approved</strong>
+          <span>LumaBooth handoff starting</span>
+        </div>
+      }
+      @case ('session') {
+        <div class="status-panel success">
+          <strong>Session running</strong>
+          <span>Photos, printing, and sharing continue in LumaBooth</span>
+        </div>
+      }
+      @case ('expired') {
+        <button type="button" class="primary-action" (click)="loadConfig()" [disabled]="loading()">
+          Refresh
+        </button>
+      }
+      @case ('offline') {
+        <button type="button" class="primary-action" (click)="loadConfig()" [disabled]="loading()">
+          Retry
+        </button>
+      }
+      @case ('error') {
+        <button type="button" class="primary-action" (click)="loadConfig()" [disabled]="loading()">
+          Check Status
+        </button>
+      }
+    }
   </section>
 
   @if (error()) {

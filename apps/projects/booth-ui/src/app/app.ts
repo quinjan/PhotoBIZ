@@ -1,10 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterOutlet } from '@angular/router';
-import { firstValueFrom, interval } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { firstValueFrom, interval } from 'rxjs';
 
 type BoothConfig = {
   readonly client: { displayName: string; logoUrl: string | null };
@@ -34,6 +34,18 @@ type BoothTransaction = {
   readonly status: string;
 };
 
+type ScreenState =
+  | 'connect'
+  | 'offline'
+  | 'unavailable'
+  | 'offer'
+  | 'payment'
+  | 'waiting'
+  | 'approved'
+  | 'session'
+  | 'expired'
+  | 'error';
+
 @Component({
   selector: 'app-root',
   imports: [CommonModule, FormsModule, RouterOutlet],
@@ -49,6 +61,57 @@ export class App {
   protected readonly config = signal<BoothConfig | null>(null);
   protected readonly transaction = signal<BoothTransaction | null>(null);
   protected readonly error = signal('');
+  protected readonly loading = signal(false);
+  protected readonly screen = computed<ScreenState>(() => {
+    const config = this.config();
+
+    if (!config) {
+      return 'connect';
+    }
+
+    if (config.booth.state === 'OFFLINE') {
+      return 'offline';
+    }
+
+    if (!config.activeOffer || config.paymentOptions.length === 0) {
+      return 'unavailable';
+    }
+
+    if (config.booth.state === 'OFFER_CONFIRMED' || this.transaction()?.status === 'CREATED') {
+      return 'payment';
+    }
+
+    if (config.booth.state === 'PAYMENT_PENDING') {
+      return 'waiting';
+    }
+
+    if (config.booth.state === 'PAID' || config.booth.state === 'STARTING_LUMABOOTH') {
+      return 'approved';
+    }
+
+    if (
+      config.booth.state === 'IN_LUMABOOTH_SESSION' ||
+      config.booth.state === 'PRINTING_OR_SHARING'
+    ) {
+      return 'session';
+    }
+
+    if (config.booth.state === 'ERROR') {
+      return 'error';
+    }
+
+    if (config.booth.state === 'COMPLETED' || config.booth.state === 'RETURNING_TO_WELCOME') {
+      return 'expired';
+    }
+
+    return 'offer';
+  });
+  protected readonly cashOption = computed(
+    () =>
+      this.config()?.paymentOptions.find(
+        (option) => option.method === 'CASH' && option.runtimeEnabled,
+      ) ?? null,
+  );
 
   constructor() {
     interval(3000)
@@ -65,8 +128,8 @@ export class App {
     await this.loadConfig();
   }
 
-  protected async startSession(): Promise<void> {
-    try {
+  protected async confirmOffer(): Promise<void> {
+    await this.run(async () => {
       const transaction = await firstValueFrom(
         this.http.post<BoothTransaction>(
           `${App.apiBaseUrl}/api/booth-ui/transactions`,
@@ -75,84 +138,116 @@ export class App {
         ),
       );
 
-      if (!transaction) {
-        return;
-      }
-
       this.transaction.set(transaction);
+      await this.loadConfig();
+    }, 'Could not confirm this offer.');
+  }
 
-      await firstValueFrom(
-        this.http.post(
+  protected async chooseCash(): Promise<void> {
+    const transaction = this.transaction();
+
+    if (!transaction) {
+      return;
+    }
+
+    await this.run(async () => {
+      const updated = await firstValueFrom(
+        this.http.post<BoothTransaction>(
           `${App.apiBaseUrl}/api/booth-ui/transactions/${transaction.id}/payment-method`,
           { method: 'CASH' },
           { headers: this.headers() },
         ),
       );
 
+      this.transaction.set(updated);
       await this.loadConfig();
-    } catch (error) {
-      this.error.set(error instanceof Error ? error.message : 'Could not start kiosk transaction.');
-    }
+    }, 'Could not select cash payment.');
   }
 
   protected async loadConfig(): Promise<void> {
-    try {
+    await this.run(async () => {
       const config = await firstValueFrom(
         this.http.get<BoothConfig>(`${App.apiBaseUrl}/api/booth-ui/config`, {
           headers: this.headers(),
         }),
       );
 
-      if (config) {
-        this.config.set(config);
-        this.error.set('');
+      this.config.set(config);
+
+      if (config.booth.state === 'WELCOME') {
+        this.transaction.set(null);
       }
-    } catch (error) {
-      this.error.set(error instanceof Error ? error.message : 'Could not load booth config.');
-    }
+    }, 'Could not load booth config.');
   }
 
-  protected stateMessage(): string {
-    const state = this.config()?.booth.state;
+  protected formatMoney(cents: number): string {
+    return `PHP ${(cents / 100).toLocaleString('en-PH', { maximumFractionDigits: 0 })}`;
+  }
 
-    switch (state) {
-      case 'OFFLINE':
-        return 'Agent offline. Start the Windows Agent on the booth laptop before accepting a session.';
-      case 'PAYMENT_PENDING':
-        return 'Waiting for cashier cash approval.';
-      case 'PAID':
-      case 'STARTING_LUMABOOTH':
-        return 'Payment approved. Starting the session.';
-      case 'IN_LUMABOOTH_SESSION':
-        return 'Session is in progress on the operator machine.';
-      case 'ERROR':
-        return 'The booth needs manual recovery from the cashier view.';
+  protected screenTitle(): string {
+    switch (this.screen()) {
+      case 'connect':
+        return 'Connect Booth';
+      case 'offline':
+        return 'Agent Offline';
+      case 'unavailable':
+        return 'Booth Unavailable';
+      case 'payment':
+        return 'Choose Payment';
+      case 'waiting':
+        return 'Cashier Approval';
+      case 'approved':
+        return 'Starting Session';
+      case 'session':
+        return 'Session In Progress';
+      case 'expired':
+        return 'Returning To Welcome';
+      case 'error':
+        return 'Recovery Needed';
       default:
-        return this.config()?.session.welcomeSubtitle ?? 'Connect a kiosk token to begin.';
+        return this.config()?.session.welcomeHeadline ?? 'Welcome';
     }
   }
 
-  protected isStartDisabled(): boolean {
-    const state = this.config()?.booth.state;
-
-    return !this.config()?.activeOffer || state === 'OFFLINE' || state === 'PAYMENT_PENDING';
-  }
-
-  protected startButtonLabel(): string {
-    const state = this.config()?.booth.state;
-
-    if (state === 'OFFLINE') {
-      return 'Agent Offline';
+  protected screenMessage(): string {
+    switch (this.screen()) {
+      case 'connect':
+        return 'Enter the booth kiosk token.';
+      case 'offline':
+        return 'Start the Windows Agent on the booth laptop.';
+      case 'unavailable':
+        return this.config()?.session.welcomeSubtitle ?? 'Ask staff to configure this booth.';
+      case 'payment':
+        return 'Pay cash at the counter after selecting the payment method.';
+      case 'waiting':
+        return 'Please wait while the cashier confirms payment.';
+      case 'approved':
+        return 'Payment confirmed. The booth session is starting.';
+      case 'session':
+        return 'Follow the booth operator screen.';
+      case 'expired':
+        return 'This session state has ended.';
+      case 'error':
+        return 'Ask the cashier for booth recovery.';
+      default:
+        return this.config()?.session.welcomeSubtitle ?? 'Review the active offer.';
     }
-
-    if (state === 'PAYMENT_PENDING') {
-      return 'Waiting For Cashier';
-    }
-
-    return 'Start Session';
   }
 
   private headers(): HttpHeaders {
     return new HttpHeaders({ 'X-Kiosk-Token': this.kioskToken() });
+  }
+
+  private async run(operation: () => Promise<void>, fallbackMessage: string): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
+
+    try {
+      await operation();
+    } catch (error) {
+      this.error.set(error instanceof Error ? error.message : fallbackMessage);
+    } finally {
+      this.loading.set(false);
+    }
   }
 }

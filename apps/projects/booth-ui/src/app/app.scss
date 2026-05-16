@@ -7,121 +7,188 @@
   --theme-primary: #2f6868;
   --theme-accent: #f5d27e;
   align-content: center;
-  background:
-    radial-gradient(circle at top, rgba(245, 210, 126, 0.28), transparent 25%),
-    linear-gradient(180deg, color-mix(in srgb, var(--theme-primary) 16%, #fff6ec) 0%, #f9efe3 100%);
+  background: linear-gradient(
+    180deg,
+    #fff7ea 0%,
+    color-mix(in srgb, var(--theme-primary) 18%, #fff7ea) 100%
+  );
+  display: grid;
+  gap: 1rem;
   min-height: 100vh;
   padding: 1.5rem;
 }
 
-.connect-panel,
-.welcome-panel {
-  background: rgba(255, 249, 240, 0.84);
-  border: 1px solid rgba(36, 28, 22, 0.08);
-  border-radius: 8px;
-  margin: 0 auto;
-  max-width: 52rem;
+.booth-shell.state-offline {
+  background: linear-gradient(180deg, #f7f1ea 0%, #d8d0c8 100%);
 }
 
-.connect-panel {
+.booth-shell.state-waiting {
+  background: linear-gradient(180deg, #fff9e7 0%, #f0d283 100%);
+}
+
+.booth-shell.state-error {
+  background: linear-gradient(180deg, #fff2f1 0%, #e5a09d 100%);
+}
+
+.token-bar,
+.stage-panel {
+  background: rgba(255, 252, 246, 0.9);
+  border: 1px solid rgba(30, 38, 40, 0.12);
+  border-radius: 8px;
+  margin: 0 auto;
+  max-width: 58rem;
+  width: 100%;
+}
+
+.token-bar {
   align-items: end;
   display: grid;
   gap: 0.75rem;
   grid-template-columns: 1fr auto;
-  margin-bottom: 1rem;
-  padding: 1rem;
+  padding: 0.9rem;
 }
 
-.connect-panel label {
+label {
   display: grid;
   gap: 0.35rem;
 }
 
-.connect-panel input,
+input,
 button {
   border-radius: 6px;
+  min-height: 3rem;
   padding: 0.85rem 1rem;
 }
 
-.connect-panel input {
-  border: 1px solid rgba(36, 28, 22, 0.14);
-}
-
-.welcome-panel {
-  display: grid;
-  gap: 1.5rem;
-  padding: 2rem;
-}
-
-.brand-row,
-.offer-card {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-}
-
-.brand-mark {
-  background: var(--theme-primary);
-  border-radius: 6px;
-  color: #fff8ee;
-  display: inline-grid;
-  font-weight: 700;
-  height: 3rem;
-  place-items: center;
-  width: 3rem;
-}
-
-.welcome-copy h1 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(2.4rem, 7vw, 4.6rem);
-  line-height: 0.95;
-  margin: 0 0 1rem;
-}
-
-.eyebrow,
-.state,
-.offer-card span {
-  color: #65594f;
-}
-
-.offer-card {
-  background: rgba(255, 255, 255, 0.62);
-  border-radius: 8px;
-  gap: 1rem;
-  padding: 1rem;
-}
-
-.offer-card.unavailable {
-  display: grid;
-  justify-content: start;
+input {
+  border: 1px solid rgba(30, 38, 40, 0.16);
 }
 
 button {
   background: var(--theme-primary);
   border: 0;
-  color: #fff8ee;
+  color: #fffaf0;
   cursor: pointer;
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 button:disabled {
-  background: #a2968b;
+  background: #9c958e;
   cursor: not-allowed;
 }
 
+.stage-panel {
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+}
+
+header,
+.brand-lockup,
+.offer-panel,
+.status-panel {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+}
+
+header,
+.offer-panel,
+.status-panel {
+  justify-content: space-between;
+}
+
+.brand-lockup span {
+  background: var(--theme-primary);
+  border-radius: 6px;
+  color: #fffaf0;
+  display: grid;
+  font-weight: 900;
+  height: 3.25rem;
+  place-items: center;
+  width: 3.25rem;
+}
+
+.state-chip,
+.offer-panel span {
+  color: #6c6258;
+  font-weight: 800;
+}
+
+.stage-copy h1 {
+  color: #1d2528;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(3rem, 8vw, 6.4rem);
+  line-height: 0.95;
+  margin: 0 0 1rem;
+}
+
+.stage-copy p,
+.eyebrow,
+.status-panel span {
+  color: #63584f;
+}
+
+.offer-panel,
+.status-panel {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(30, 38, 40, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.offer-panel {
+  display: grid;
+  justify-items: start;
+}
+
+.offer-panel strong,
+.status-panel strong {
+  font-size: 1.35rem;
+}
+
+.status-panel.success {
+  border-color: color-mix(in srgb, var(--theme-primary) 36%, #ffffff);
+}
+
+.primary-action {
+  font-size: 1.2rem;
+  min-height: 4rem;
+}
+
+.payment-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .error {
-  color: #8f2e2e;
-  margin: 1rem auto 0;
-  max-width: 52rem;
+  background: #fff1f2;
+  border: 1px solid #e5b7bd;
+  border-radius: 8px;
+  color: #942b35;
+  margin: 0 auto;
+  max-width: 58rem;
+  padding: 0.8rem 1rem;
+  width: 100%;
 }
 
 @media (max-width: 720px) {
-  .connect-panel {
+  .token-bar,
+  header,
+  .offer-panel,
+  .status-panel {
+    align-items: stretch;
     grid-template-columns: 1fr;
   }
 
-  .welcome-panel {
+  .token-bar,
+  header,
+  .status-panel {
+    display: grid;
+  }
+
+  .stage-panel {
     padding: 1.25rem;
   }
 }
