@@ -1,6 +1,8 @@
 using PhotoBIZ.WindowsAgent;
 
 var builder = Host.CreateApplicationBuilder(args);
+builder.Services.Configure<PhotoBizAgentOptions>(builder.Configuration.GetSection("PhotoBIZ"));
+builder.Services.AddHttpClient("photobiz-agent");
 builder.Services.AddHostedService<Worker>();
 
 if (OperatingSystem.IsWindows())

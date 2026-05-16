@@ -8,6 +8,7 @@ PhotoBIZ is designed around Windows-based booths using LumaBooth for photo captu
 
 - [Product Requirements Document](docs/PRD.md)
 - [Architecture and Diagrams](docs/ARCHITECTURE.md)
+- [Local Development Guide](docs/LOCAL_DEVELOPMENT.md)
 - [Hosting and Deployment Plan](docs/DEPLOYMENT.md)
 - [UI Mockups](docs/design/README.md)
 - [UI Workflow Mockups](docs/design/WORKFLOWS.md)
@@ -29,6 +30,8 @@ photobooth-platform/
 ```
 
 ## Local Development
+
+For a detailed and current startup workflow, see the [Local Development Guide](docs/LOCAL_DEVELOPMENT.md).
 
 Prerequisites:
 

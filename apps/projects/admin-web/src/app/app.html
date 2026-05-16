@@ -1,46 +1,183 @@
 <main class="admin-shell">
-  <aside class="sidebar" aria-label="Primary">
-    <div class="brand-mark">PB</div>
-    <nav>
-      <a aria-current="page">Dashboard</a>
-      <a>Clients</a>
-      <a>Booths</a>
-      <a>Packages</a>
-      <a>Transactions</a>
-    </nav>
-  </aside>
-
-  <section class="workspace">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Phase 1 scaffold</p>
-        <h1>{{ productName() }}</h1>
-      </div>
-      <span class="status-pill">Backend authority enabled</span>
-    </header>
-
-    <section class="metric-grid" aria-label="Platform metrics">
-      @for (metric of metrics; track metric.label) {
-        <article class="metric-card">
-          <p>{{ metric.label }}</p>
-          <strong>{{ metric.value }}</strong>
-          <span>{{ metric.note }}</span>
-        </article>
-      }
-    </section>
-
-    <section class="work-panel">
-      <div>
-        <p class="eyebrow">Next vertical slices</p>
-        <h2>MVP foundations</h2>
-      </div>
-      <ul>
-        <li>Client account and manual subscription management</li>
-        <li>Tenant-scoped locations, booths, users, and packages</li>
-        <li>Safe Booth UI theme configuration</li>
-      </ul>
-    </section>
+  <section class="hero">
+    <div>
+      <p class="eyebrow">PhotoBIZ MVP Console</p>
+      <h1>Backend-authoritative operator workspace</h1>
+      <p>
+        This screen drives the first end-to-end slice: authentication, client setup, booth setup,
+        offer activation, kiosk token issuance, and cashier approval.
+      </p>
+    </div>
+    <div class="hero-status">
+      <span>{{ loading() ? 'Working' : 'Ready' }}</span>
+      <strong>{{ session()?.role ?? 'Signed out' }}</strong>
+    </div>
   </section>
+
+  @if (!session()) {
+    <section class="panel login-panel">
+      <h2>Sign In</h2>
+      <label>
+        Email
+        <input [ngModel]="loginEmail()" (ngModelChange)="loginEmail.set($event)" />
+      </label>
+      <label>
+        Password
+        <input type="password" [ngModel]="loginPassword()" (ngModelChange)="loginPassword.set($event)" />
+      </label>
+      <button type="button" (click)="login()">Sign In</button>
+      <p class="muted">Bootstrap dev account: `owner@photobiz.local` / `PhotoBIZ!123`</p>
+    </section>
+  } @else {
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Session</h2>
+        <p>{{ session()?.name }}</p>
+        <p class="muted">{{ session()?.email }}</p>
+        <p class="status">{{ session()?.role }}</p>
+        <button type="button" class="secondary" (click)="logout()">Sign Out</button>
+      </article>
+
+      <article class="panel">
+        <h2>Overview</h2>
+        <div class="stat-grid">
+          <div><span>Clients</span><strong>{{ overview()?.clients?.length ?? 0 }}</strong></div>
+          <div><span>Booths</span><strong>{{ overview()?.booths?.length ?? 0 }}</strong></div>
+          <div><span>Offers</span><strong>{{ overview()?.offers?.length ?? 0 }}</strong></div>
+          <div><span>Pending Cash</span><strong>{{ (overview()?.transactions?.length ?? 0) }}</strong></div>
+        </div>
+        <p class="muted">{{ message() }}</p>
+        @if (error()) {
+          <p class="error">{{ error() }}</p>
+        }
+      </article>
+    </section>
+
+    <section class="grid three-up">
+      <article class="panel">
+        <h2>1. Client</h2>
+        <label>
+          Client name
+          <input [ngModel]="clientName()" (ngModelChange)="clientName.set($event)" />
+        </label>
+        <button type="button" (click)="createClient()">Create Client</button>
+      </article>
+
+      <article class="panel">
+        <h2>2. Plan</h2>
+        <label>
+          Plan name
+          <input [ngModel]="planName()" (ngModelChange)="planName.set($event)" />
+        </label>
+        <label>
+          Price per booth
+          <input type="number" [ngModel]="planPrice()" (ngModelChange)="planPrice.set(+$event)" />
+        </label>
+        <button type="button" (click)="createPlan()">Create Plan</button>
+        <button type="button" class="secondary" (click)="assignSubscription()">Assign Subscription</button>
+      </article>
+
+      <article class="panel">
+        <h2>3. Client Owner</h2>
+        <label>
+          Name
+          <input [ngModel]="ownerName()" (ngModelChange)="ownerName.set($event)" />
+        </label>
+        <label>
+          Email
+          <input [ngModel]="ownerEmail()" (ngModelChange)="ownerEmail.set($event)" />
+        </label>
+        <label>
+          Password
+          <input type="password" [ngModel]="ownerPassword()" (ngModelChange)="ownerPassword.set($event)" />
+        </label>
+        <button type="button" (click)="createOwner()">Create Owner</button>
+      </article>
+    </section>
+
+    <section class="grid three-up">
+      <article class="panel">
+        <h2>4. Location</h2>
+        <label>
+          Location name
+          <input [ngModel]="locationName()" (ngModelChange)="locationName.set($event)" />
+        </label>
+        <button type="button" (click)="createLocation()">Create Location</button>
+      </article>
+
+      <article class="panel">
+        <h2>5. Booth</h2>
+        <label>
+          Booth name
+          <input [ngModel]="boothName()" (ngModelChange)="boothName.set($event)" />
+        </label>
+        <label>
+          Booth code
+          <input [ngModel]="boothCode()" (ngModelChange)="boothCode.set($event)" />
+        </label>
+        <button type="button" (click)="createBooth()">Create Booth</button>
+      </article>
+
+      <article class="panel">
+        <h2>6. Offer</h2>
+        <label>
+          Offer name
+          <input [ngModel]="offerName()" (ngModelChange)="offerName.set($event)" />
+        </label>
+        <label>
+          Price
+          <input type="number" [ngModel]="offerPrice()" (ngModelChange)="offerPrice.set(+$event)" />
+        </label>
+        <button type="button" (click)="createOffer()">Create Offer</button>
+        <button type="button" class="secondary" (click)="activateOffer()">Activate For Booth</button>
+      </article>
+    </section>
+
+    @if (boothSecret()) {
+      <section class="panel secret-panel">
+        <h2>Booth Credentials</h2>
+        <p>{{ boothSecret()?.boothName }} / {{ boothSecret()?.boothCode }}</p>
+        <code>Kiosk token: {{ boothSecret()?.kioskToken }}</code>
+        <code>Agent credential: {{ boothSecret()?.agentCredential }}</code>
+      </section>
+    }
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Booths</h2>
+        <div class="list">
+          @for (booth of overview()?.booths ?? []; track booth.id) {
+            <div class="list-row">
+              <div>
+                <strong>{{ booth.name }}</strong>
+                <span>{{ booth.code }}</span>
+              </div>
+              <span class="status">{{ booth.currentState }}</span>
+            </div>
+          }
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Pending Transactions</h2>
+        <div class="list">
+          @for (transaction of overview()?.transactions ?? []; track transaction.id) {
+            <div class="list-row">
+              <div>
+                <strong>{{ transaction.transactionNumber }}</strong>
+                <span>{{ transaction.status }} / PHP {{ transaction.amountCents / 100 }}</span>
+              </div>
+              @if (transaction.status === 'PENDING_CASH') {
+                <button type="button" (click)="approveCash(transaction.id)">Approve Cash</button>
+              } @else {
+                <span class="status">{{ transaction.status }}</span>
+              }
+            </div>
+          }
+        </div>
+      </article>
+    </section>
+  }
 </main>
 
 <router-outlet />

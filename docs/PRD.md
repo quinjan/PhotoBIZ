@@ -190,7 +190,9 @@ Rules:
 
 - Booth UI is accessible only through a booth-scoped kiosk token.
 - Booth UI does not require cashier login or daily unlock.
+- Booth UI remains accessible with a valid kiosk token when the Windows Agent is closed, but it must show an agent-offline unavailable state and block transaction start.
 - Booth UI displays the booth's single active offer.
+- Booth UI must not allow a second payable session flow to start while the booth already has a non-terminal transaction.
 - Booth UI reflects client-level branding and active session overrides.
 - Booth UI displays only booth-assigned payment methods that are enabled for runtime use.
 - Booth UI cannot directly approve payment or start LumaBooth.
@@ -203,6 +205,7 @@ Responsibilities:
 
 - Authenticate and pair with a booth record.
 - Maintain heartbeat connection with backend.
+- Be treated as offline when no heartbeat has been received or the last heartbeat is older than 60 seconds.
 - Receive commands from backend.
 - Start LumaBooth sessions through LumaBooth integration.
 - Receive LumaBooth triggers or webhooks.
@@ -293,7 +296,7 @@ Guardrails:
 1. Booth UI shows the active booth offer.
 2. Customer confirms the active offer.
 3. Customer chooses cash payment when the offer requires payment for a per-session purchase.
-4. Backend creates a transaction with status `PENDING_CASH`.
+4. Backend creates one transaction with status `PENDING_CASH` and rejects any additional kiosk session purchase attempts for the same booth until the current transaction reaches a terminal state.
 5. Cashier sees the pending cash request in the Central Web App.
 6. Cashier collects cash.
 7. Cashier clicks `Approve Cash`.
@@ -455,6 +458,8 @@ Each transaction must store:
 - Completed timestamp.
 - Cancelled or failed reason.
 
+One booth may have only one non-terminal session purchase transaction at a time. In MVP, terminal transaction statuses are `COMPLETED`, `EXPIRED`, and `CANCELLED`.
+
 ## Reporting Requirements
 
 Application Owner reports:
@@ -543,6 +548,7 @@ Requirements:
 - Cash is the only real MVP payment method.
 - Cash can be assigned per booth and is the only payment option that can be runtime-enabled in MVP.
 - Payment approval requires an authenticated cashier, Client Admin, or Client Owner.
+- Cash approval is blocked when the assigned booth's agent is offline, so staff do not collect cash for a session the agent cannot start.
 - Approval must write an audit log.
 - Approval must include timestamp and approving user ID.
 - Cash transaction must expire if not approved in time.
