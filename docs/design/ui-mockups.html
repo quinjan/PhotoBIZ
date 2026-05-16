@@ -1296,7 +1296,7 @@
               </div>
               <div class="form-row" style="margin-top: 12px;">
                 <div class="field"><label>BOOTH BRAND</label><div class="input">The Memory Box</div></div>
-                <div class="field"><label>THEME PRESET</label><div class="select">VINTAGE_FILM</div></div>
+                <div class="field"><label>DEFAULT WELCOME</label><div class="input">Step Into The Memory Box</div></div>
               </div>
               <div class="callout" style="margin-top: 12px;">Client data is scoped by client account. Application Owner support access is platform-level and audit logged.</div>
             </div>
@@ -1423,11 +1423,11 @@
                   <tr><th>ID</th><th>Booth</th><th>Package</th><th>Payment</th><th>Status</th><th>Total</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td>#000847</td><td>SM Manila B01</td><td>Classic 4R</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱250</td></tr>
-                  <tr><td>#000846</td><td>SM Manila B01</td><td>Double Print</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
-                  <tr><td>#000845</td><td>SM Manila B01</td><td>Classic 4R</td><td>Cash</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>₱250</td></tr>
-                  <tr><td>#000844</td><td>SM Manila B01</td><td>Wallet Size</td><td>Cash</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>₱180</td></tr>
-                  <tr><td>#000843</td><td>SM Manila B01</td><td>Double Print</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
+                  <tr><td>#000847</td><td>SM Manila B01</td><td>Mall Classic</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱250</td></tr>
+                  <tr><td>#000846</td><td>SM Manila B01</td><td>Weekend Premium</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
+                  <tr><td>#000845</td><td>SM Manila B01</td><td>Mall Classic</td><td>Cash</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>₱250</td></tr>
+                  <tr><td>#000844</td><td>SM Manila B01</td><td>School Fair 300</td><td>Cash</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>₱30,000</td></tr>
+                  <tr><td>#000843</td><td>SM Manila B01</td><td>Weekend Premium</td><td>Cash</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>₱350</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1713,27 +1713,29 @@
             <div class="nav-item active"><span class="nav-icon">-</span>Packages</div>
             <div class="nav-item"><span class="nav-icon">-</span>Themes</div>
           </nav>
-          <div class="side-footer">Packages are snapshotted into transactions.</div>
+          <div class="side-footer">Offer packages are configurable and snapshotted into transactions.</div>
         </aside>
         <section class="main">
           <div class="topbar">
-            <div><div class="eyebrow">Packages</div><h1 class="admin-title">Package Catalog</h1></div>
-            <div class="top-actions"><button class="button">Assign to Booths</button><button class="button primary">+ New Package</button></div>
+            <div><div class="eyebrow">Packages</div><h1 class="admin-title">Offer Package Catalog</h1></div>
+            <div class="top-actions"><button class="button">Filter Types</button><button class="button primary">+ New Package</button></div>
           </div>
           <div class="admin-grid-3">
-            <div class="card"><div class="metric-label">Active packages</div><div class="metric-value">3</div></div>
-            <div class="card"><div class="metric-label">Top seller</div><div class="metric-value" style="font-size: 25px;">Classic 4R</div></div>
-            <div class="card"><div class="metric-label">Assigned booths</div><div class="metric-value">2</div></div>
+            <div class="card"><div class="metric-label">Active packages</div><div class="metric-value">6</div><div class="metric-note">Across 3 plan types</div></div>
+            <div class="card"><div class="metric-label">Top seller</div><div class="metric-value" style="font-size: 25px;">Mall Classic</div><div class="metric-note">PER_SESSION</div></div>
+            <div class="card"><div class="metric-label">Booths using offers</div><div class="metric-value">3</div><div class="metric-note">One active package each</div></div>
           </div>
           <div class="card" style="margin-top: 18px;">
-            <div class="section-head"><h2 class="section-title">Packages</h2></div>
+            <div class="section-head"><h2 class="section-title">Configurable Packages</h2><span class="status green"><span class="dot"></span>One selected per booth</span></div>
             <table>
-              <thead><tr><th>Package</th><th>Price</th><th>Prints</th><th>Paper</th><th>LumaBooth Preset</th><th>Assigned Booths</th><th>Status</th></tr></thead>
+              <thead><tr><th>Package</th><th>Type</th><th>Price</th><th>Print Entitlement</th><th>Plan Config</th><th>Add-ons</th><th>Status</th></tr></thead>
               <tbody>
-                <tr><td><strong>Classic 4R</strong><br><span class="booth-meta">Standard two-print offer</span></td><td>₱250</td><td>2</td><td>4R</td><td>classic-photo</td><td>2</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
-                <tr><td><strong>Double Print</strong><br><span class="booth-meta">Most popular group option</span></td><td>₱350</td><td>4</td><td>4R</td><td>double-photo</td><td>1</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
-                <tr><td><strong>Wallet Size</strong><br><span class="booth-meta">Mini print layout</span></td><td>₱180</td><td>6</td><td>Wallet</td><td>wallet-six</td><td>1</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
-                <tr><td><strong>Premium Frame</strong><br><span class="booth-meta">Later upsell package</span></td><td>₱450</td><td>4</td><td>4R</td><td>premium-frame</td><td>0</td><td><span class="status amber"><span class="dot"></span>Draft</span></td></tr>
+                <tr><td><strong>Mall Classic</strong><br><span class="booth-meta">Fast walk-in package for regular mall traffic</span></td><td>PER_SESSION</td><td>₱250</td><td>2 pcs 6x2 or 1 pc 6x4</td><td>Per paid session</td><td>₱80 / extra print</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Weekend Premium</strong><br><span class="booth-meta">Higher-priced per-session package for events</span></td><td>PER_SESSION</td><td>₱350</td><td>2 pcs 6x2 or 1 pc 6x4</td><td>Per paid session</td><td>₱100 / extra print</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Party 5 Hours</strong><br><span class="booth-meta">Unlimited sessions during a prepaid time window</span></td><td>TIME_UNLIMITED</td><td>₱8,500</td><td>2 pcs 6x2 or 1 pc 6x4 per session</td><td>5 hours</td><td>Not allowed</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>Corporate Half Day</strong><br><span class="booth-meta">Longer event package with unlimited sessions</span></td><td>TIME_UNLIMITED</td><td>₱12,000</td><td>2 pcs 6x2 or 1 pc 6x4 per session</td><td>8 hours</td><td>Not allowed</td><td><span class="status amber"><span class="dot"></span>Draft</span></td></tr>
+                <tr><td><strong>500 Session Plan</strong><br><span class="booth-meta">Prepaid count-based booth activation</span></td><td>SESSION_COUNT</td><td>₱45,000</td><td>2 pcs 6x2 or 1 pc 6x4 per session</td><td>500 sessions</td><td>Not allowed</td><td><span class="status green"><span class="dot"></span>Active</span></td></tr>
+                <tr><td><strong>School Fair 300</strong><br><span class="booth-meta">Smaller count-based package for short events</span></td><td>SESSION_COUNT</td><td>₱30,000</td><td>2 pcs 6x2 or 1 pc 6x4 per session</td><td>300 sessions</td><td>Not allowed</td><td><span class="status amber"><span class="dot"></span>Draft</span></td></tr>
               </tbody>
             </table>
           </div>
@@ -1749,38 +1751,46 @@
             <div class="nav-item active"><span class="nav-icon">-</span>Packages</div>
             <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
           </nav>
-          <div class="side-footer">Package assignment controls what appears on Booth UI.</div>
+          <div class="side-footer">Booths select one active package from the full catalog.</div>
         </aside>
         <section class="main">
           <div class="topbar">
-            <div><div class="eyebrow">Packages · Edit</div><h1 class="admin-title">Classic 4R</h1></div>
+            <div><div class="eyebrow">Packages · Edit</div><h1 class="admin-title">Mall Classic</h1></div>
             <div class="top-actions"><button class="button">Duplicate</button><button class="button primary">Save Package</button></div>
           </div>
           <div class="form-layout">
             <div class="card form-card">
               <div class="form-row">
-                <div class="field"><label>PACKAGE NAME</label><div class="input">Classic 4R</div></div>
+                <div class="field"><label>PACKAGE NAME</label><div class="input">Mall Classic</div></div>
+                <div class="field"><label>PACKAGE TYPE</label><div class="select">Pay Per Session · PER_SESSION</div></div>
+              </div>
+              <div class="form-row">
                 <div class="field"><label>PRICE</label><div class="input">₱250.00</div></div>
+                <div class="field"><label>STATUS</label><div class="select">Active</div></div>
               </div>
-              <div class="field"><label>DESCRIPTION</label><div class="textarea">Two 4R prints with Fotoshare digital copy after the session.</div></div>
+              <div class="field"><label>DESCRIPTION</label><div class="textarea">Fast walk-in package for regular mall traffic. Customer pays once for one LumaBooth session.</div></div>
               <div class="form-row">
-                <div class="field"><label>PRINT COUNT</label><div class="input">2</div></div>
-                <div class="field"><label>PAPER SIZE</label><div class="select">4R</div></div>
+                <div class="field"><label>INCLUDED PRINT ENTITLEMENT</label><div class="select">2 pcs 6x2 or 1 pc 6x4</div></div>
+                <div class="field"><label>LUMABOOTH SESSION MODE</label><div class="select">Photo Session</div></div>
               </div>
               <div class="form-row">
-                <div class="field"><label>LUMABOOTH MODE</label><div class="select">Photo</div></div>
-                <div class="field"><label>LUMABOOTH PRESET REF</label><div class="input">classic-photo</div></div>
+                <div class="field"><label>TIME DURATION</label><div class="input">Not used for PER_SESSION</div></div>
+                <div class="field"><label>SESSION COUNT</label><div class="input">Not used for PER_SESSION</div></div>
               </div>
-              <div class="callout">When this package is sold, name, price, print count, paper size, and preset are copied into the transaction snapshot.</div>
+              <div class="form-row">
+                <div class="field"><label>EXTRA PRINT ADD-ON</label><div class="select">Allowed</div></div>
+                <div class="field"><label>EXTRA PRINT PRICE</label><div class="input">₱80.00</div></div>
+              </div>
+              <div class="callout">For TIME_UNLIMITED packages, set duration in hours. For SESSION_COUNT packages, set session allowance. Extra print add-ons stay available only for PER_SESSION packages.</div>
             </div>
             <div class="card">
-              <div class="section-head"><h2 class="section-title">Assigned Booths</h2><span class="status green"><span class="dot"></span>Active</span></div>
+              <div class="section-head"><h2 class="section-title">Package Type Rules</h2><span class="status green"><span class="dot"></span>Configurable</span></div>
               <div class="booth-list">
-                <div class="booth-row"><div><div class="booth-name">SM Manila B01</div><div class="booth-meta">Visible on Booth UI</div></div><span class="toggle"></span></div>
-                <div class="booth-row"><div><div class="booth-name">Robinsons Test Booth</div><div class="booth-meta">Visible on Booth UI</div></div><span class="toggle"></span></div>
-                <div class="booth-row"><div><div class="booth-name">Festival Mall B01</div><div class="booth-meta">Not installed</div></div><span class="status red"><span class="dot"></span>Off</span></div>
+                <div class="booth-row"><div><div class="booth-name">PER_SESSION</div><div class="booth-meta">Price, description, entitlement, add-on price</div></div><span class="status green"><span class="dot"></span>Current</span></div>
+                <div class="booth-row"><div><div class="booth-name">TIME_UNLIMITED</div><div class="booth-meta">Price, description, entitlement, duration hours</div></div><span class="status amber"><span class="dot"></span>No add-ons</span></div>
+                <div class="booth-row"><div><div class="booth-name">SESSION_COUNT</div><div class="booth-meta">Price, description, entitlement, session allowance</div></div><span class="status amber"><span class="dot"></span>No add-ons</span></div>
               </div>
-              <div class="field" style="margin-top: 16px;"><label>CUSTOMER DISPLAY LABEL</label><div class="input">Quick Classic</div></div>
+              <div class="field" style="margin-top: 16px;"><label>BOOTH ACTIVATION</label><div class="select">Selected later in booth config dropdown</div></div>
             </div>
           </div>
         </section>
@@ -1810,11 +1820,11 @@
               <table>
                 <thead><tr><th>ID</th><th>Package</th><th>Payment</th><th>Approved By</th><th>Status</th><th>Time</th><th>Total</th></tr></thead>
                 <tbody>
-                  <tr><td>#000847</td><td>Classic 4R</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:20 PM</td><td>₱250</td></tr>
-                  <tr><td>#000846</td><td>Double Print</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:14 PM</td><td>₱350</td></tr>
-                  <tr><td>#000845</td><td>Classic 4R</td><td>Cash</td><td>-</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>1:18 PM</td><td>₱250</td></tr>
-                  <tr><td>#000844</td><td>Wallet Size</td><td>Cash</td><td>-</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>1:02 PM</td><td>₱180</td></tr>
-                  <tr><td>#000843</td><td>Double Print</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>12:55 PM</td><td>₱350</td></tr>
+                  <tr><td>#000847</td><td>Mall Classic</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:20 PM</td><td>₱250</td></tr>
+                  <tr><td>#000846</td><td>Weekend Premium</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>1:14 PM</td><td>₱350</td></tr>
+                  <tr><td>#000845</td><td>Mall Classic</td><td>Cash</td><td>-</td><td><span class="status amber"><span class="dot"></span>Pending</span></td><td>1:18 PM</td><td>₱250</td></tr>
+                  <tr><td>#000844</td><td>School Fair 300</td><td>Cash</td><td>-</td><td><span class="status red"><span class="dot"></span>Expired</span></td><td>1:02 PM</td><td>₱30,000</td></tr>
+                  <tr><td>#000843</td><td>Weekend Premium</td><td>Cash</td><td>Marco</td><td><span class="status green"><span class="dot"></span>Completed</span></td><td>12:55 PM</td><td>₱350</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1822,13 +1832,13 @@
               <div class="section-head"><h2 class="section-title">Reports</h2></div>
               <div class="metric-grid" style="grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div class="card"><div class="metric-label">Cash</div><div class="metric-value">₱12,400</div></div>
-                <div class="card"><div class="metric-label">Coming soon cashless</div><div class="metric-value">Off</div></div>
+                <div class="card"><div class="metric-label">Future payments</div><div class="metric-value">Locked</div></div>
               </div>
               <div class="section-head" style="margin-top: 16px;"><h2 class="section-title">Package Sales</h2></div>
               <div class="report-bars">
-                <div class="bar-row"><span>Classic 4R</span><div class="bar-track"><div class="bar-fill" style="width: 88%;"></div></div><strong>44</strong></div>
-                <div class="bar-row"><span>Double Print</span><div class="bar-track"><div class="bar-fill" style="width: 62%;"></div></div><strong>31</strong></div>
-                <div class="bar-row"><span>Wallet Size</span><div class="bar-track"><div class="bar-fill" style="width: 28%;"></div></div><strong>14</strong></div>
+                <div class="bar-row"><span>Mall Classic</span><div class="bar-track"><div class="bar-fill" style="width: 88%;"></div></div><strong>44</strong></div>
+                <div class="bar-row"><span>Weekend Premium</span><div class="bar-track"><div class="bar-fill" style="width: 62%;"></div></div><strong>31</strong></div>
+                <div class="bar-row"><span>School Fair 300</span><div class="bar-track"><div class="bar-fill" style="width: 28%;"></div></div><strong>14</strong></div>
               </div>
               <div class="section-head" style="margin-top: 18px;"><h2 class="section-title">Recent Audit</h2></div>
               <div class="timeline">
@@ -1852,19 +1862,21 @@
             <div class="nav-item"><span class="nav-icon">-</span>Transactions</div>
             <div class="nav-item active"><span class="nav-icon">-</span>Settings</div>
           </nav>
-          <div class="side-footer">Settings<br>Cash MVP and coming soon payment setup.</div>
+          <div class="side-footer">Settings<br>Client resources, booth assignment, cash MVP.</div>
         </aside>
         <section class="main">
           <div class="topbar">
-            <div><div class="eyebrow">Settings · Client Account</div><h1 class="admin-title">Payment & Session Settings</h1></div>
+            <div><div class="eyebrow">Settings · Client Account</div><h1 class="admin-title">Payment Resources</h1></div>
             <div class="top-actions"><button class="button">Discard</button><button class="button primary">Save Settings</button></div>
           </div>
           <div class="admin-grid-2">
             <div class="card form-card">
-              <div class="section-head"><h2 class="section-title">MVP Payment Methods</h2><span class="status green"><span class="dot"></span>Cash only</span></div>
-              <div class="booth-row"><div><div class="booth-name">Cash Approval</div><div class="booth-meta">Cashier manually approves after collecting cash</div></div><span class="toggle"></span></div>
-              <div class="booth-row"><div><div class="booth-name">MAYA_CHECKOUT_QR</div><div class="booth-meta">Coming soon: client-owned Maya Checkout credentials and webhook</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
-              <div class="booth-row"><div><div class="booth-name">MAYA_TERMINAL_ECR</div><div class="booth-meta">Coming soon: terminal hardware plus booth-local ECR setup</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
+              <div class="section-head"><h2 class="section-title">Client Payment Resources</h2><span class="status green"><span class="dot"></span>Cash MVP</span></div>
+              <div class="booth-row"><div><div class="booth-name">Cash Approval</div><div class="booth-meta">Built in · assign per booth · cashier approves after collecting cash</div></div><span class="toggle"></span></div>
+              <div class="booth-row"><div><div class="booth-name">Maya Checkout QR</div><div class="booth-meta">One client QR config · webhook and API keys saved here</div></div><span class="status amber"><span class="dot"></span>Draft</span></div>
+              <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-001</div><div class="booth-meta">Front counter terminal · assign by deviceId at booth level</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+              <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-002</div><div class="booth-meta">Backup terminal · not assigned to any booth</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+              <div class="callout" style="margin-top: 12px;">Client resources do not automatically appear on Booth UI. Each booth chooses from active client resources; cash is the only runtime-enabled MVP method.</div>
             </div>
             <div class="card form-card">
               <div class="section-head"><h2 class="section-title">Timeouts & Recovery</h2></div>
@@ -1967,7 +1979,7 @@
             <div class="nav-item active"><span class="nav-icon">-</span>Terminals</div>
             <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
           </nav>
-          <div class="side-footer">Coming soon<br>Booth-local Maya Terminal ECR setup.</div>
+          <div class="side-footer">Coming soon<br>Client ECR devices assigned per booth later.</div>
         </aside>
         <section class="main">
           <div class="topbar">
@@ -1985,13 +1997,13 @@
               <div class="timeline">
                 <div class="timeline-row"><span class="step-dot now"></span><span>Terminal Ordered</span><strong>Client</strong></div>
                 <div class="timeline-row"><span class="step-dot"></span><span>ECR Kit Received</span><strong>Maya</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>Booth Assigned</span><strong>PhotoBIZ</strong></div>
+                <div class="timeline-row"><span class="step-dot"></span><span>Device Registered</span><strong>PhotoBIZ</strong></div>
                 <div class="timeline-row"><span class="step-dot"></span><span>COM Port Set</span><strong>Agent</strong></div>
                 <div class="timeline-row"><span class="step-dot"></span><span>Connection Test</span><strong>Future</strong></div>
               </div>
               <div class="form-row" style="margin-top: 16px;">
-                <div class="field"><label>ASSIGNED BOOTH</label><div class="select">SM Manila B01</div></div>
-                <div class="field"><label>ASSIGNED CASHIER / LOCATION</label><div class="input">Marco Reyes · SM City Manila</div></div>
+                <div class="field"><label>TERMINAL NAME</label><div class="input">SM Manila Front Counter</div></div>
+                <div class="field"><label>DEVICE ID</label><div class="input">DEVICE-MNL-001</div></div>
               </div>
               <div class="form-row">
                 <div class="field"><label>TERMINAL MODEL</label><div class="select">PAX A920</div></div>
@@ -2010,7 +2022,7 @@
                 <div class="booth-row"><div><div class="booth-name">Booth Agent ECR module</div><div class="booth-meta">Sends sale command through local terminal port</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
                 <div class="booth-row"><div><div class="booth-name">Enable MAYA_TERMINAL_ECR</div><div class="booth-meta">Hidden from Booth UI until verified</div></div><span class="status red"><span class="dot"></span>Locked</span></div>
               </div>
-              <div class="callout"><strong>Separate from Checkout QR:</strong> terminal ECR depends on booth hardware and the Windows Agent, while Checkout QR depends on backend API keys and webhooks.</div>
+              <div class="callout"><strong>Assigned later per booth:</strong> ECR devices are registered at client level, then selected by deviceId inside each booth's payment options.</div>
             </div>
           </div>
         </section>
@@ -2047,7 +2059,7 @@
               <div class="payment-banner">
                 <div>
                   <div class="eyebrow">Current customer selected</div>
-                  <h2 style="font-size: 32px; margin-bottom: 10px;">Classic 4R · 2 Prints</h2>
+                  <h2 style="font-size: 32px; margin-bottom: 10px;">Mall Classic · Per Session</h2>
                   <div class="amount">₱250.00</div>
                   <p style="color: var(--admin-muted); margin-top: 10px;">Payment method: Cash · Transaction #000845</p>
                 </div>
@@ -2058,10 +2070,18 @@
                 <button class="large-action">Cancel<br>Request</button>
                 <button class="large-action blue">Return To<br>Welcome</button>
               </div>
+              <div class="card" style="margin-bottom: 16px;">
+                <div class="section-head"><h2 class="section-title">Booth Payment Options</h2><span class="status green"><span class="dot"></span>MVP cash only</span></div>
+                <div class="booth-list">
+                  <div class="booth-row"><div><div class="booth-name">Cash</div><div class="booth-meta">Assigned to SM Manila B01 · runtime enabled</div></div><span class="status green"><span class="dot"></span>Active</span></div>
+                  <div class="booth-row"><div><div class="booth-name">Maya Checkout QR</div><div class="booth-meta">Client resource drafted · not assigned for runtime</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+                  <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-001</div><div class="booth-meta">Assigned by deviceId · provider integration coming soon</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+                </div>
+              </div>
               <div class="card">
                 <div class="section-head"><h2 class="section-title">Session Timeline</h2><span class="status amber"><span class="dot"></span>Awaiting payment</span></div>
                 <div class="timeline">
-                  <div class="timeline-row"><span class="step-dot done"></span><span>Package selected on Booth UI</span><strong>1:18 PM</strong></div>
+                  <div class="timeline-row"><span class="step-dot done"></span><span>Active offer confirmed on Booth UI</span><strong>1:18 PM</strong></div>
                   <div class="timeline-row"><span class="step-dot now"></span><span>Cash payment approval pending</span><strong>04:12 left</strong></div>
                   <div class="timeline-row"><span class="step-dot"></span><span>LumaBooth session start</span><strong>Next</strong></div>
                   <div class="timeline-row"><span class="step-dot"></span><span>Print and Fotoshare completion</span><strong>Waiting</strong></div>
@@ -2077,9 +2097,9 @@
               </div>
               <div class="section-head" style="margin-top: 16px;"><h2 class="section-title">Recent</h2></div>
               <div class="booth-list">
-                <div class="booth-row"><div><div class="booth-name">#000844</div><div class="booth-meta">Wallet Size · Expired</div></div><strong>₱180</strong></div>
-                <div class="booth-row"><div><div class="booth-name">#000843</div><div class="booth-meta">Double Print · Complete</div></div><strong>₱350</strong></div>
-                <div class="booth-row"><div><div class="booth-name">#000842</div><div class="booth-meta">Classic 4R · Complete</div></div><strong>₱250</strong></div>
+                <div class="booth-row"><div><div class="booth-name">#000844</div><div class="booth-meta">School Fair 300 · Expired</div></div><strong>₱30,000</strong></div>
+                <div class="booth-row"><div><div class="booth-name">#000843</div><div class="booth-meta">Weekend Premium · Complete</div></div><strong>₱350</strong></div>
+                <div class="booth-row"><div><div class="booth-name">#000842</div><div class="booth-meta">Mall Classic · Complete</div></div><strong>₱250</strong></div>
               </div>
             </div>
           </div>
@@ -2098,14 +2118,14 @@
             <div class="nav-item"><span class="nav-icon">-</span>Themes</div>
           </nav>
           <div class="side-footer">
-            Customization is tied to the booth's active session.
+            Client branding is client-level; theme and active offer are set per booth.
           </div>
         </aside>
         <section class="main">
           <div class="topbar">
             <div>
               <div class="eyebrow">Booths · SM Manila B01</div>
-              <h1 class="admin-title">Session Appearance</h1>
+              <h1 class="admin-title">Booth Appearance And Offer</h1>
             </div>
             <div class="top-actions">
               <button class="button">Preview Booth</button>
@@ -2114,18 +2134,22 @@
           </div>
           <div class="config-layout">
             <div class="card">
-              <div class="section-head"><h2 class="section-title">Active Session</h2><span class="status green"><span class="dot"></span>Live</span></div>
+              <div class="section-head"><h2 class="section-title">Booth Session Setup</h2><span class="status green"><span class="dot"></span>Live</span></div>
               <div class="field-grid">
                 <div class="field"><label>SESSION NAME</label><div class="input">Vintage Summer Pop-Up</div></div>
                 <div class="field"><label>WELCOME HEADLINE</label><div class="input">Step Into The Memory Box</div></div>
-                <div class="field"><label>WELCOME SUBTITLE</label><div class="textarea">Choose your print package, pay at the counter, then strike your best pose.</div></div>
+                <div class="field"><label>WELCOME SUBTITLE</label><div class="textarea">Review today's booth offer, pay at the counter, then strike your best pose.</div></div>
                 <div class="field"><label>BACKGROUND PICTURE</label><div class="upload"><span>vintage-mall-backdrop.jpg</span><strong>Replace</strong></div></div>
-                <div class="field"><label>THEME</label><div class="select">Vintage Film · Cream / Rust / Teal</div></div>
-                <div class="field"><label>ASSIGNED PACKAGES</label>
+                <div class="field"><label>THEME LIBRARY (BOOTH LEVEL)</label><div class="select">Vintage Film · Cream / Rust / Teal · Managed by PhotoBIZ</div></div>
+                <div class="field"><label>ACTIVE BOOTH OFFER</label>
+                  <div class="select">Mall Classic · PER_SESSION · ₱250 · 2 pcs 6x2 or 1 pc 6x4</div>
+                  <div class="callout" style="margin-top: 12px;">This dropdown lists every active package across PER_SESSION, TIME_UNLIMITED, and SESSION_COUNT. A booth can activate exactly one package at a time.</div>
+                </div>
+                <div class="field"><label>BOOTH PAYMENT OPTIONS</label>
                   <div class="package-list">
-                    <div class="package-row"><div><strong>Classic 4R</strong><div class="booth-meta">2 prints · ₱250</div></div><span class="toggle"></span></div>
-                    <div class="package-row"><div><strong>Double Print</strong><div class="booth-meta">4 prints · ₱350</div></div><span class="toggle"></span></div>
-                    <div class="package-row"><div><strong>Wallet Size</strong><div class="booth-meta">6 mini prints · ₱180</div></div><span class="toggle"></span></div>
+                    <div class="package-row"><div><strong>Cash</strong><div class="booth-meta">Runtime enabled for MVP · cashier approval required</div></div><span class="toggle"></span></div>
+                    <div class="package-row"><div><strong>Maya Checkout QR</strong><div class="booth-meta">Client QR config exists · locked until provider integration</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+                    <div class="package-row"><div><strong>Maya ECR · DEVICE-MNL-001</strong><div class="booth-meta">Selected from client ECR devices by deviceId · locked</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
                   </div>
                 </div>
               </div>
@@ -2138,7 +2162,7 @@
                     <div class="welcome-center">
                       <div class="booth-kicker">Self Photo Booth</div>
                       <h2 class="booth-heading" style="font-size: 40px;">Step Into The Memory Box</h2>
-                      <p class="booth-copy" style="font-size: 13px;">Choose your print package, pay at the counter, then strike your best pose.</p>
+                      <p class="booth-copy" style="font-size: 13px;">Review today's booth offer, pay at the counter, then strike your best pose.</p>
                     </div>
                     <div class="booth-bottom"><div class="booth-cta" style="height: 42px; min-width: 170px; font-size: 14px;">Start Session</div><span>2 min average session</span></div>
                   </div>
@@ -2157,42 +2181,28 @@
           <div class="welcome-center">
             <div class="booth-kicker">Self Photo Booth</div>
             <h1 class="booth-heading">Step Into The Memory Box</h1>
-            <p class="booth-copy">Choose your print package, pay at the counter, then strike your best pose.</p>
+            <p class="booth-copy">Review today's booth offer, pay at the counter, then strike your best pose.</p>
           </div>
           <div class="booth-bottom"><div class="booth-cta">Touch To Start</div><span>DNP RX1 Prints · Fotoshare Digital Copy</span></div>
         </div>
       </div>
     </section>
 
-    <section class="shot" id="client-a-booth-packages" aria-label="Client A Booth package selection vintage">
+    <section class="shot" id="client-a-booth-packages" aria-label="Client A Booth active offer review vintage">
       <div class="booth-screen">
         <div class="booth-content packages-stage">
-          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Choose a Package</div></div>
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Active Offer</div></div>
           <div>
-            <h1 class="booth-page-title">Pick Your Print</h1>
-            <p class="booth-subtitle">Available packages for this booth session</p>
+            <h1 class="booth-page-title">Review Today's Offer</h1>
+            <p class="booth-subtitle">One active offer per booth, based on the current LumaBooth event.</p>
           </div>
-          <div class="booth-packages">
-            <article class="booth-package">
-              <div class="package-tag">Quick Classic</div>
-              <h2 class="package-name">Classic 4R</h2>
-              <p class="package-detail">Two 4R prints with Fotoshare digital copy after the session.</p>
-              <div class="package-price">₱250</div>
-            </article>
-            <article class="booth-package featured">
-              <div class="package-tag">Most Popular</div>
-              <h2 class="package-name">Double Print</h2>
-              <p class="package-detail">Four 4R prints for couples, friends, and family keepsakes.</p>
-              <div class="package-price">₱350</div>
-            </article>
-            <article class="booth-package">
-              <div class="package-tag">Small Keepsakes</div>
-              <h2 class="package-name">Wallet Size</h2>
-              <p class="package-detail">Six mini prints, perfect for wallets, journals, and phone cases.</p>
-              <div class="package-price">₱180</div>
-            </article>
+          <div style="max-width: 760px; border-top: 2px solid rgba(255,255,255,.55); border-bottom: 2px solid rgba(255,255,255,.55); padding: 34px 0;">
+            <div class="package-tag">PER_SESSION</div>
+            <h2 class="package-name" style="font-size: 58px;">2 pcs 6x2 or 1 pc 6x4</h2>
+            <p class="package-detail" style="font-size: 21px; max-width: 620px;">Cash payment before session. Post-session extra prints are available for this offer only.</p>
+            <div class="package-price" style="margin-top: 46px;">₱250</div>
           </div>
-          <div class="booth-bottom"><div class="booth-cta">Continue</div><span>Cash payment available</span></div>
+          <div class="booth-bottom"><div class="booth-cta">Continue</div><span>Cash payment available · Add-on prints after session</span></div>
         </div>
       </div>
     </section>
@@ -2203,10 +2213,10 @@
           <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Payment · 04:58</div></div>
           <div class="payment-stage">
             <div class="welcome-center" style="align-content: center;">
-              <div class="booth-kicker">Selected Package</div>
-              <h1 class="booth-heading" style="font-size: 68px;">Double Print</h1>
-              <p class="booth-copy">Four 4R prints plus Fotoshare digital copy. Complete payment to begin your LumaBooth session.</p>
-              <div class="booth-cta" style="margin-top: 28px;">₱350.00</div>
+              <div class="booth-kicker">Active Offer</div>
+              <h1 class="booth-heading" style="font-size: 68px;">Per Session</h1>
+              <p class="booth-copy">Includes 2 pcs 6x2 or 1 pc 6x4. Complete payment to begin your LumaBooth session.</p>
+              <div class="booth-cta" style="margin-top: 28px;">₱250.00</div>
             </div>
             <div class="payment-panel">
               <div class="method-icon" style="width: 220px; height: 220px; font-size: 86px; margin: 0 auto;">₱</div>
@@ -2226,64 +2236,41 @@
           <div class="welcome-center">
             <div class="booth-kicker">Self Photo Booth</div>
             <h1 class="booth-heading">Pop In. Pose Big.</h1>
-            <p class="booth-copy">Pick a package, pay at the counter, then jump into a bright studio session.</p>
+            <p class="booth-copy">Your 5-hour unlimited booth plan is active. Tap start and jump into LumaBooth.</p>
           </div>
           <div class="booth-bottom"><div class="booth-cta">Start Booth</div><span>Bold prints · Instant digital copy</span></div>
         </div>
       </div>
     </section>
 
-    <section class="shot" id="client-b-booth-packages" aria-label="Client B Booth package selection modern pop">
+    <section class="shot" id="client-b-booth-packages" aria-label="Client B Booth covered plan handoff modern pop">
       <div class="booth-screen modern-pop">
         <div class="booth-content packages-stage">
-          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Choose a Package</div></div>
+          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">5-Hour Unlimited Active</div></div>
           <div>
-            <h1 class="booth-page-title">Choose Your Pop</h1>
-            <p class="booth-subtitle">Modern theme uses the same backend package config with different tenant styling.</p>
+            <h1 class="booth-page-title">Going To LumaBooth</h1>
+            <p class="booth-subtitle">This plan was activated by the cashier. No Booth UI payment screen is needed.</p>
           </div>
-          <div class="booth-packages">
-            <article class="booth-package">
-              <div class="package-tag">Solo Pop</div>
-              <h2 class="package-name">Quick Shot</h2>
-              <p class="package-detail">Two 4R prints and a bright digital copy for fast mall sessions.</p>
-              <div class="package-price">₱220</div>
-            </article>
-            <article class="booth-package featured">
-              <div class="package-tag">Crowd Favorite</div>
-              <h2 class="package-name">Squad Pack</h2>
-              <p class="package-detail">Four prints for barkada sessions, couples, and families.</p>
-              <div class="package-price">₱380</div>
-            </article>
-            <article class="booth-package">
-              <div class="package-tag">Sticker Mood</div>
-              <h2 class="package-name">Mini Pop</h2>
-              <p class="package-detail">Six mini prints for phones, journals, lockers, and wallets.</p>
-              <div class="package-price">₱190</div>
-            </article>
+          <div style="max-width: 760px; border-top: 2px solid rgba(255,255,255,.55); border-bottom: 2px solid rgba(255,255,255,.55); padding: 34px 0;">
+            <div class="package-tag">TIME_UNLIMITED</div>
+            <h2 class="package-name" style="font-size: 58px;">5-Hour Unlimited</h2>
+            <p class="package-detail" style="font-size: 21px; max-width: 620px;">Includes 2 pcs 6x2 or 1 pc 6x4 per session during the active 5-hour window.</p>
           </div>
-          <div class="booth-bottom"><div class="booth-cta">Continue</div><span>Cash payment available</span></div>
+          <div class="booth-bottom"><span>Covered plan session</span><span>No add-on prints</span></div>
         </div>
       </div>
     </section>
 
-    <section class="shot" id="client-b-booth-payment" aria-label="Client B Booth payment modern pop">
+    <section class="shot" id="client-b-booth-payment" aria-label="Client B Booth return to welcome modern pop">
       <div class="booth-screen modern-pop">
         <div class="booth-content">
-          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Squad Pack · ₱380</div></div>
-          <div class="payment-stage">
-            <div class="welcome-center" style="align-content: center;">
-              <div class="booth-kicker">Selected Package</div>
-              <h1 class="booth-heading" style="font-size: 72px;">Squad Pack</h1>
-              <p class="booth-copy">Four 4R prints plus digital delivery. Complete payment to start your LumaBooth session.</p>
-              <div class="booth-cta" style="margin-top: 28px;">₱380.00</div>
-            </div>
-            <div class="payment-panel">
-              <div class="method-icon" style="width: 220px; height: 220px; font-size: 86px; margin: 0 auto;">₱</div>
-              <p class="payment-copy"><strong>Pay cash at the counter</strong><br>The same cash MVP payment state rendered with a different tenant theme.</p>
-              <div class="cash-note">Pay Cash At Counter</div>
-            </div>
+          <div class="booth-top"><div class="booth-brand">Pixel Pop Studio</div><div class="booth-session">Session Complete</div></div>
+          <div class="welcome-center">
+            <div class="booth-kicker">Thank You</div>
+            <h1 class="booth-heading">Ready For The Next Session</h1>
+            <p class="booth-copy">LumaBooth finished capture, print, and sharing. The covered plan returns straight to welcome.</p>
           </div>
-          <div class="booth-bottom"><span>Transaction #PX-0094</span><span>Waiting for payment confirmation</span></div>
+          <div class="booth-bottom"><div class="booth-cta">Welcome</div><span>5-hour unlimited plan still active</span></div>
         </div>
       </div>
     </section>
@@ -2291,11 +2278,11 @@
     <section class="shot" id="booth-payment-method" aria-label="Booth payment method vintage">
       <div class="booth-screen">
         <div class="booth-content">
-          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Double Print · ₱350</div></div>
+          <div class="booth-top"><div class="booth-brand">The Memory Box</div><div class="booth-session">Per Session · ₱250</div></div>
           <div class="packages-stage" style="align-content: center;">
             <div>
               <h1 class="booth-page-title">How Would You Like To Pay?</h1>
-              <p class="booth-subtitle">Cash is available now. Maya Checkout QR and Terminal ECR are coming soon.</p>
+              <p class="booth-subtitle">Only booth-assigned, runtime-enabled methods appear here. MVP is cash only.</p>
             </div>
             <div class="payment-methods">
               <article class="method-card">
@@ -2309,17 +2296,17 @@
                 <div class="method-icon">QR</div>
                 <div>
                   <h2 class="package-name">Maya Checkout QR</h2>
-                  <p class="package-detail">Coming soon after client Maya credentials and webhook verification.</p>
+                  <p class="package-detail">Assigned from client QR config later; locked until provider integration.</p>
                 </div>
-                <span class="status amber"><span class="dot"></span>Coming soon</span>
+                <span class="status amber"><span class="dot"></span>Locked</span>
               </article>
               <article class="method-card" style="opacity: 0.58;">
                 <div class="method-icon">ECR</div>
                 <div>
                   <h2 class="package-name">Maya Terminal ECR</h2>
-                  <p class="package-detail">Coming soon after terminal hardware and booth agent ECR setup.</p>
+                  <p class="package-detail">Assigned by ECR deviceId later; locked until provider integration.</p>
                 </div>
-                <span class="status amber"><span class="dot"></span>Coming soon</span>
+                <span class="status amber"><span class="dot"></span>Locked</span>
               </article>
             </div>
           </div>
@@ -2338,7 +2325,7 @@
               <h1 class="package-name" style="font-size: 52px;">Please pay ₱250 at the counter</h1>
               <p class="package-detail" style="font-size: 19px;">Your cashier will approve the payment on the POS screen. Keep this screen open.</p>
               <div class="progress-strip"><div class="progress-fill" style="width: 42%;"></div></div>
-              <div class="cash-note">Transaction #000845 · Classic 4R</div>
+              <div class="cash-note">Transaction #000845 · Per Session</div>
             </div>
           </div>
           <div class="booth-bottom"><div class="booth-cta">Cancel</div><span>Cash request sent to cashier</span></div>
@@ -2359,7 +2346,7 @@
               <div class="cash-note">Switching to LumaBooth</div>
             </div>
           </div>
-          <div class="booth-bottom"><span>Classic 4R · 2 prints</span><span>Fotoshare digital delivery after capture</span></div>
+          <div class="booth-bottom"><span>Per Session · 2 pcs 6x2 or 1 pc 6x4</span><span>Fotoshare digital delivery after capture</span></div>
         </div>
       </div>
     </section>

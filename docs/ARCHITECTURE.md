@@ -4,7 +4,7 @@
 
 This document is the source of truth for the PhotoBIZ platform architecture. Future implementation work must follow the decisions, boundaries, state machines, and phases defined here unless this document is explicitly updated. If another project document conflicts with this file, this file takes precedence.
 
-PhotoBIZ is a multi-tenant SaaS platform. The Application Owner manages client accounts and manual subscriptions. Client users manage their own locations, booths, packages, sessions, cashier workflows, and reports. Booth UI and Windows Agent clients operate within one paired booth and one client account.
+PhotoBIZ is a multi-tenant SaaS platform. The Application Owner manages client accounts and manual subscriptions. Client users manage their own locations, booths, booth offers, sessions, cashier workflows, and reports. Booth UI and Windows Agent clients operate within one paired booth and one client account.
 
 The platform has three primary runtime surfaces:
 
@@ -53,13 +53,13 @@ sequenceDiagram
   AO->>API: Create client account
   AO->>API: Assign manual per-booth subscription
   AO->>API: Create/invite Client Owner
-  CO->>API: Create location, users, packages
+  CO->>API: Create location, users, booth offers
   CO->>API: Register booth
   API->>API: Validate subscription status and booth allowance
   API-->>CO: Agent credential + kiosk token
   A->>API: Pair booth agent
   B->>API: Load booth config with kiosk token
-  API-->>B: Client theme, active session, packages, payment options
+  API-->>B: Client branding, booth theme, active offer, assigned runtime payment options
 ```
 
 ## MVP Runtime Flow
@@ -74,9 +74,9 @@ sequenceDiagram
   participant A as Windows Agent
   participant L as LumaBooth
 
-  C->>B: Choose package
+  C->>B: Confirm active offer
   B->>API: Create transaction
-  API->>API: Validate client subscription and booth state
+  API->>API: Validate subscription, booth state, and active offer allowance
   API-->>B: Transaction pending
   C->>B: Choose cash payment
   B->>API: Set payment method CASH
@@ -85,7 +85,7 @@ sequenceDiagram
 
   API->>API: Mark transaction PAID
   API->>A: Start LumaBooth session
-  A->>L: Start configured session/preset
+  A->>L: Start configured session type for active LumaBooth event
   L-->>A: Session events
   A-->>API: Session started / completed
   API-->>B: Return to welcome
@@ -103,7 +103,7 @@ sequenceDiagram
   B->>API: GET /booth-ui/config with kiosk token
   API->>DB: Resolve booth, client account, subscription, active session
   API->>API: Validate booth token and subscription session permission
-  API-->>B: Theme, session text, packages, payment options, booth state
+  API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state
   B->>B: Apply CSS variables and render current state
 ```
 
@@ -125,29 +125,56 @@ Minimum `GET /booth-ui/config` response shape:
   "session": {
     "label": "SM Manila - Vintage Summer",
     "welcomeHeadline": "Step Into The Memory Box",
-    "welcomeSubtitle": "Choose your print package, pay at the counter, then strike your best pose."
+    "welcomeSubtitle": "Review today's booth offer, pay at the counter, then strike your best pose."
   },
   "booth": {
     "id": "booth-id",
     "state": "WELCOME"
   },
-  "packages": [],
-  "paymentOptions": ["CASH"]
+  "activeOffer": {
+    "id": "offer-id",
+    "name": "Per Session",
+    "type": "PER_SESSION",
+    "priceCents": 25000,
+    "currency": "PHP",
+    "includedPrintEntitlement": "2 pcs 6x2 or 1 pc 6x4",
+    "allowsExtraPrintAddOn": true
+  },
+  "paymentOptions": [
+    {
+      "method": "CASH",
+      "label": "Cash",
+      "runtimeEnabled": true
+    }
+  ]
 }
 ```
 
-Future payment option values:
+If no active offer is configured for the booth, `activeOffer` is `null`, `paymentOptions` is empty, and Booth UI must show an unavailable state. Runtime payment options are filtered from booth-level payment assignments, not client-level payment setup alone. In MVP, `CASH` is the only payment method that can be returned with `runtimeEnabled: true`.
 
-- `MAYA_CHECKOUT_QR`: returned only after client Maya Checkout configuration is verified and enabled in a future phase.
-- `MAYA_TERMINAL_ECR`: returned only after client Maya configuration and booth terminal configuration are verified and enabled in a future phase.
+## LumaBooth Integration Constraints
+
+- Each booth machine runs one active LumaBooth event/configuration at a time.
+- PhotoBIZ does not switch LumaBooth templates or event configuration per customer transaction in MVP.
+- LumaBooth owns capture, templates, printing, and Fotoshare delivery.
+- PhotoBIZ owns the commercial offer, payment, usage allowance, add-on eligibility, session state, and audit trail.
+- The Windows Agent may start the configured LumaBooth session type and may request additional print copies where the LumaBooth API supports it.
+
+Payment setup has two levels:
+
+- Client-level resources register one Maya Checkout QR configuration and multiple Maya Terminal ECR device configurations.
+- Booth-level assignments choose which registered payment resources are allowed on each booth.
+- Maya Checkout QR assignment requires the client Maya QR resource to exist and be active or verified.
+- Maya Terminal ECR assignment requires selecting a specific active client ECR `deviceId`.
+- Future payment option values are `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`, but they remain locked until the provider integrations are enabled in a future phase.
 
 ## Cash Payment State Flow
 
 ```mermaid
 stateDiagram-v2
   [*] --> WELCOME
-  WELCOME --> PACKAGE_SELECTED: Customer chooses package
-  PACKAGE_SELECTED --> PENDING_CASH: Customer chooses cash
+  WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
+  OFFER_CONFIRMED --> PENDING_CASH: Customer chooses cash
   PENDING_CASH --> PAID: Cashier approves cash
   PENDING_CASH --> EXPIRED: Timeout
   PENDING_CASH --> CANCELLED: Cashier cancels
@@ -167,8 +194,8 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
   [*] --> WELCOME
-  WELCOME --> PACKAGE_SELECTED: Customer chooses package
-  PACKAGE_SELECTED --> PENDING_MAYA_CHECKOUT_QR: Customer chooses Maya Checkout QR
+  WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
+  OFFER_CONFIRMED --> PENDING_MAYA_CHECKOUT_QR: Customer chooses Maya Checkout QR
   PENDING_MAYA_CHECKOUT_QR --> PAID: Maya webhook confirms paid
   PENDING_MAYA_CHECKOUT_QR --> EXPIRED: Maya webhook or timeout
   PENDING_MAYA_CHECKOUT_QR --> PAYMENT_FAILED: Maya webhook confirms failure
@@ -193,7 +220,7 @@ sequenceDiagram
   participant M as Maya
   participant A as Windows Agent
 
-  C->>B: Choose package
+  C->>B: Confirm active offer
   B->>API: Create transaction
   C->>B: Choose Maya Checkout QR
   API->>API: Load encrypted client Maya credentials
@@ -227,8 +254,9 @@ Responsibilities:
 - User management.
 - Location management.
 - Booth management.
-- Package management.
+- Booth offer management.
 - Booth UI theme/session appearance management.
+- Client payment resource setup and booth payment option assignment.
 - Transaction monitoring.
 - Reports.
 - Audit logs.
@@ -242,14 +270,13 @@ Stack:
 Responsibilities:
 
 - Authenticate with booth-scoped kiosk token.
-- Load client/theme/session config from backend.
+- Load client branding, booth theme, and session config from backend.
 - Map theme values to CSS variables.
 - Display welcome screen.
-- Display assigned packages.
-- Let customer select payment method.
+- Display the booth's active offer.
+- Let customer select only booth-assigned runtime-enabled payment methods for payable per-session flows.
 - Display pending payment state.
 - Display cash waiting state for MVP.
-- Display coming soon cashless payment methods when configured as preview-only.
 - Display expiration/error states.
 - Return to welcome when backend state allows.
 
@@ -277,7 +304,8 @@ Responsibilities:
 - Role-based access control.
 - Client account APIs.
 - Manual subscription APIs.
-- Client/location/booth/user/package APIs.
+- Client/location/booth/user/booth-offer APIs.
+- Client payment resource and booth payment option assignment APIs.
 - Booth UI config API.
 - Transaction state machine.
 - Payment orchestration.
@@ -332,17 +360,23 @@ photobooth-platform/
 erDiagram
   CLIENT_ACCOUNT ||--o{ LOCATION : owns
   CLIENT_ACCOUNT ||--o{ USER : has
-  CLIENT_ACCOUNT ||--o{ PACKAGE : defines
-  CLIENT_ACCOUNT ||--|| CLIENT_BOOTH_THEME : configures
+  CLIENT_ACCOUNT ||--o{ BOOTH_OFFER : defines
   CLIENT_ACCOUNT ||--o{ CLIENT_SUBSCRIPTION : subscribes
   CLIENT_ACCOUNT ||--o{ CLIENT_PAYMENT_PROVIDER_CONFIG : configures
+  CLIENT_ACCOUNT ||--o{ CLIENT_MAYA_ECR_DEVICE : registers
   SUBSCRIPTION_PLAN ||--o{ CLIENT_SUBSCRIPTION : assigned_as
   LOCATION ||--o{ BOOTH : contains
-  BOOTH ||--o{ BOOTH_TERMINAL_CONFIG : configures
-  BOOTH ||--o{ BOOTH_PACKAGE : offers
-  PACKAGE ||--o{ BOOTH_PACKAGE : assigned_to
+  BOOTH ||--|| BOOTH_APPEARANCE_CONFIG : configures
+  BOOTH ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : allows
+  CLIENT_PAYMENT_PROVIDER_CONFIG ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : assigned_to
+  CLIENT_MAYA_ECR_DEVICE ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : assigned_to
+  BOOTH ||--o{ BOOTH_OFFER_ACTIVATION : activates
+  BOOTH_OFFER ||--o{ BOOTH_OFFER_ACTIVATION : assigned_to
   BOOTH ||--o{ TRANSACTION : records
+  BOOTH_OFFER ||--o{ TRANSACTION : sold_as
+  BOOTH_OFFER_ACTIVATION ||--o{ TRANSACTION : used_by
   USER ||--o{ TRANSACTION : approves
+  TRANSACTION ||--o{ TRANSACTION : has_add_on
   TRANSACTION ||--o{ PAYMENT_ATTEMPT : has
   TRANSACTION ||--o{ BOOTH_SESSION : starts
   USER ||--o{ AUDIT_LOG : performs
@@ -373,15 +407,13 @@ erDiagram
     string notes
   }
 
-  CLIENT_BOOTH_THEME {
+  BOOTH_APPEARANCE_CONFIG {
     uuid id
-    uuid client_account_id
-    string display_name
+    uuid booth_id
     string theme_preset
     string primary_color
     string accent_color
     string background_image_url
-    string logo_url
     string default_welcome_headline
     string default_welcome_subtitle
   }
@@ -396,6 +428,19 @@ erDiagram
     string public_key_masked
     string encrypted_secret_key
     string webhook_url
+    datetime verified_at
+  }
+
+  CLIENT_MAYA_ECR_DEVICE {
+    uuid id
+    uuid client_account_id
+    string display_name
+    string device_id
+    string provider
+    string terminal_model
+    string terminal_reference
+    string serial_or_asset_tag
+    string status
     datetime verified_at
   }
 
@@ -429,34 +474,45 @@ erDiagram
     datetime last_heartbeat_at
   }
 
-  BOOTH_TERMINAL_CONFIG {
+  BOOTH_PAYMENT_OPTION_ASSIGNMENT {
     uuid id
     uuid booth_id
-    string provider
-    string terminal_model
-    string terminal_reference
-    string serial_or_asset_tag
-    string com_port
+    uuid client_payment_provider_config_id
+    uuid client_maya_ecr_device_id
+    string payment_method
     string status
-    datetime last_connection_test_at
+    bool runtime_enabled
+    datetime assigned_at
   }
 
-  PACKAGE {
+  BOOTH_OFFER {
     uuid id
     uuid client_account_id
     string name
+    string description
+    string offer_type
     int price_cents
     string currency
-    int print_count
-    string paper_size
-    string lumabooth_preset_ref
+    string included_print_entitlement
+    int duration_hours
+    int session_allowance
+    bool allows_extra_print_add_on
+    int extra_print_price_cents
+    string lumabooth_session_mode
     bool active
   }
 
-  BOOTH_PACKAGE {
+  BOOTH_OFFER_ACTIVATION {
+    uuid id
     uuid booth_id
-    uuid package_id
-    bool active
+    uuid booth_offer_id
+    string status
+    datetime activated_at
+    datetime deactivated_at
+    datetime starts_at
+    datetime ends_at
+    int session_allowance
+    int sessions_used
   }
 
   TRANSACTION {
@@ -464,14 +520,18 @@ erDiagram
     uuid client_account_id
     uuid location_id
     uuid booth_id
-    uuid package_id
+    uuid booth_offer_id
+    uuid booth_offer_activation_id
+    uuid parent_transaction_id
     uuid approved_by_user_id
     string transaction_number
+    string transaction_type
     string payment_method
     string status
     int amount_cents
     string currency
-    json package_snapshot
+    json offer_snapshot
+    int extra_print_count
     datetime expires_at
     datetime paid_at
     datetime completed_at
@@ -496,7 +556,6 @@ erDiagram
     string welcome_headline
     string welcome_subtitle
     string session_label
-    json assigned_package_ids
     datetime started_at
     datetime ended_at
   }
@@ -535,9 +594,15 @@ SESSION_FAILED -> CANCELLED
 Rules:
 
 - Booth UI cannot mark transactions as paid.
+- Payment method selection must be validated against booth-level payment option assignments and runtime provider availability.
+- Client-level Maya configuration alone cannot expose a payment method to Booth UI or Cashier POS.
+- `CASH` is the only runtime-enabled payment method in MVP.
 - Cashiers can approve only transactions for their assigned booth.
 - Application Owner can manage clients/subscriptions but does not normally approve client booth transactions.
 - Expired transactions release the booth.
+- Session transactions snapshot the active booth offer and active offer assignment.
+- Extra print add-on transactions must reference a completed `PER_SESSION` parent transaction and do not start a new capture session.
+- Extra print add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offer transactions.
 - Completed transactions are immutable except for administrative notes or future refund records.
 
 ## Realtime Channels
@@ -560,6 +625,8 @@ Realtime events:
 - `transaction.paid`
 - `transaction.expired`
 - `transaction.cancelled`
+- `transaction.add_on_created`
+- `transaction.add_on_paid`
 - `session.starting`
 - `session.started`
 - `session.completed`
@@ -655,6 +722,7 @@ Each booth is paired to exactly one environment.
 - Enforce tenant isolation for all client-scoped data.
 - Validate subscription status and booth allowance before activating booths or starting sessions.
 - Validate colors and image URLs for Booth UI themes.
+- Validate booth payment option assignments before creating or advancing payment attempts.
 - Reject arbitrary client CSS, scripts, or layout definitions.
 - All payment approvals and subscription changes must be audited.
 - Cashiers must be scoped to assigned booths.
@@ -671,16 +739,19 @@ Each booth is paired to exactly one environment.
 - Manual subscription management.
 - Client user management.
 - Location and booth management.
-- Package management.
-- Package assignment to booth.
+- Booth offer management.
+- Active booth offer assignment.
 - Minimal tenant Booth UI theme management.
+- Booth-level cash payment assignment.
+- Client-level draft Maya QR and Maya ECR setup records.
 
 ### Phase 2: Transaction And POS
 
 - Booth UI config endpoint.
-- Booth UI package selection.
+- Booth UI active offer review.
 - Cash transaction flow.
 - Cashier approval.
+- Cash-only cashier plan activation for time-unlimited and session-count offers.
 - Expiration jobs.
 - Transaction dashboard.
 
@@ -708,7 +779,7 @@ Each booth is paired to exactly one environment.
 - Client-owned Maya Checkout QR integration.
 - Maya webhook handling.
 - Payment reconciliation.
-- Maya Terminal ECR integration.
+- Maya Terminal ECR integration using booth-assigned client ECR `deviceId` values.
 
 ## Architectural Principles
 
@@ -720,5 +791,5 @@ Each booth is paired to exactly one environment.
 - Booth UI customization is config-driven and constrained.
 - Agent owns local Windows and LumaBooth integration.
 - LumaBooth remains responsible for capture, print, and Fotoshare.
-- Package data is snapshotted into transactions.
+- Booth offer data is snapshotted into transactions.
 - Subscription status and booth allowance protect platform access.

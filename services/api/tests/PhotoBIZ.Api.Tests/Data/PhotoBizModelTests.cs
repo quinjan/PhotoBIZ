@@ -8,7 +8,7 @@ namespace PhotoBIZ.Api.Tests.Data;
 public sealed class PhotoBizModelTests
 {
     [Fact]
-    public void ModelIncludesMvpDataFoundationEntities()
+    public void ModelIncludesCurrentMvpDataFoundationEntities()
     {
         using var dbContext = CreateDbContext();
         var model = dbContext.Model;
@@ -16,18 +16,33 @@ public sealed class PhotoBizModelTests
         AssertEntityTable<ClientAccount>(model, "client_accounts");
         AssertEntityTable<SubscriptionPlan>(model, "subscription_plans");
         AssertEntityTable<ClientSubscription>(model, "client_subscriptions");
-        AssertEntityTable<ClientBoothTheme>(model, "client_booth_themes");
         AssertEntityTable<ClientPaymentProviderConfig>(model, "client_payment_provider_configs");
+        AssertEntityTable<ClientMayaEcrDevice>(model, "client_maya_ecr_devices");
         AssertEntityTable<Location>(model, "locations");
         AssertEntityTable<ApplicationUser>(model, "users");
         AssertEntityTable<Booth>(model, "booths");
-        AssertEntityTable<BoothTerminalConfig>(model, "booth_terminal_configs");
-        AssertEntityTable<Package>(model, "packages");
-        AssertEntityTable<BoothPackage>(model, "booth_packages");
+        AssertEntityTable<BoothAppearanceConfig>(model, "booth_appearance_configs");
+        AssertEntityTable<BoothPaymentOptionAssignment>(model, "booth_payment_option_assignments");
+        AssertEntityTable<BoothOffer>(model, "booth_offers");
+        AssertEntityTable<BoothOfferActivation>(model, "booth_offer_activations");
         AssertEntityTable<PhotoBizTransaction>(model, "transactions");
         AssertEntityTable<PaymentAttempt>(model, "payment_attempts");
         AssertEntityTable<BoothSession>(model, "booth_sessions");
         AssertEntityTable<AuditLog>(model, "audit_logs");
+    }
+
+    [Fact]
+    public void ModelDoesNotExposeRetiredPackageThemeOrBoothTerminalEntities()
+    {
+        using var dbContext = CreateDbContext();
+        var entityClrTypes = dbContext.Model.GetEntityTypes()
+            .Select(entity => entity.ClrType.Name)
+            .ToArray();
+
+        Assert.DoesNotContain("Package", entityClrTypes);
+        Assert.DoesNotContain("BoothPackage", entityClrTypes);
+        Assert.DoesNotContain("ClientBoothTheme", entityClrTypes);
+        Assert.DoesNotContain("BoothTerminalConfig", entityClrTypes);
     }
 
     [Fact]
@@ -38,9 +53,26 @@ public sealed class PhotoBizModelTests
         AssertHasIndex<ClientAccount>(dbContext.Model, nameof(ClientAccount.Name));
         AssertHasIndex<Location>(dbContext.Model, nameof(Location.ClientAccountId), nameof(Location.Name));
         AssertHasIndex<Booth>(dbContext.Model, nameof(Booth.ClientAccountId), nameof(Booth.Code));
-        AssertHasIndex<Package>(dbContext.Model, nameof(Package.ClientAccountId), nameof(Package.Name));
+        AssertHasIndex<BoothOffer>(dbContext.Model, nameof(BoothOffer.ClientAccountId), nameof(BoothOffer.Name));
+        AssertHasIndex<ClientMayaEcrDevice>(dbContext.Model, nameof(ClientMayaEcrDevice.ClientAccountId), nameof(ClientMayaEcrDevice.DeviceId));
         AssertHasIndex<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.ClientAccountId), nameof(PhotoBizTransaction.Status));
         AssertHasIndex<AuditLog>(dbContext.Model, nameof(AuditLog.ClientAccountId), nameof(AuditLog.CreatedAt));
+    }
+
+    [Fact]
+    public void BoothOfferActivationEnforcesOneActiveOfferPerBooth()
+    {
+        using var dbContext = CreateDbContext();
+
+        var entityType = dbContext.Model.FindEntityType(typeof(BoothOfferActivation));
+        Assert.NotNull(entityType);
+
+        var index = entityType.GetIndexes().SingleOrDefault(index =>
+            index.Properties.Select(property => property.Name).SequenceEqual([nameof(BoothOfferActivation.BoothId)]) &&
+            index.IsUnique);
+
+        Assert.NotNull(index);
+        Assert.Equal("status = 'ACTIVE'", index.GetFilter());
     }
 
     [Fact]
@@ -48,9 +80,8 @@ public sealed class PhotoBizModelTests
     {
         using var dbContext = CreateDbContext();
 
-        AssertColumnType<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.PackageSnapshot), "jsonb");
+        AssertColumnType<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.OfferSnapshot), "jsonb");
         AssertColumnType<PaymentAttempt>(dbContext.Model, nameof(PaymentAttempt.RawPayload), "jsonb");
-        AssertColumnType<BoothSession>(dbContext.Model, nameof(BoothSession.AssignedPackageIds), "jsonb");
         AssertColumnType<AuditLog>(dbContext.Model, nameof(AuditLog.Metadata), "jsonb");
     }
 
@@ -62,6 +93,9 @@ public sealed class PhotoBizModelTests
         var script = dbContext.Database.GenerateCreateScript();
 
         Assert.Contains("CREATE TABLE client_accounts", script, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE booth_offers", script, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE booth_offer_activations", script, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE booth_payment_option_assignments", script, StringComparison.Ordinal);
         Assert.Contains("CREATE TABLE transactions", script, StringComparison.Ordinal);
         Assert.Contains("CREATE TABLE audit_logs", script, StringComparison.Ordinal);
         Assert.Contains("jsonb", script, StringComparison.Ordinal);

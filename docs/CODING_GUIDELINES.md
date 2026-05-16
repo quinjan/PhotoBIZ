@@ -89,7 +89,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Use `AsNoTracking` for read-only queries.
 - Keep transactions explicit around multi-step state changes that must commit atomically.
 - Model transaction, payment, booth, and session state transitions in code so invalid transitions cannot slip through simple property updates.
-- Package details used by a transaction must be snapshotted into the transaction record.
+- Booth offer details used by a transaction must be snapshotted into the transaction record.
 - Use raw SQL only when EF Core cannot produce the needed query or performance requires it. Keep raw SQL parameterized.
 - Do not rely on frontend state, hidden form fields, or client-provided tenant IDs as authority.
 
@@ -102,7 +102,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Cashiers can approve only transactions for their assigned booth.
 - Application Owner can manage platform clients and subscriptions, but normal booth transaction approvals remain client/cashier scoped.
 - Validate subscription status and active booth allowance before starting sessions or activating booths.
-- Validate theme colors, image URLs, package inputs, and all provider configuration.
+- Validate theme colors, image URLs, booth offer inputs, and all provider configuration.
 - Never allow tenant-provided CSS, scripts, SQL, HTML, command strings, or arbitrary local paths.
 - Store provider secrets encrypted and never return secret values to frontend clients after save.
 
@@ -150,7 +150,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Backend unit tests should cover domain rules, state transitions, authorization helpers, validators, and provider mapping logic.
 - Backend integration tests should cover API auth, tenant isolation, EF Core persistence, transaction workflows, and error responses.
 - Frontend tests should cover important user workflows, component state, form validation, API services, and realtime handling.
-- Booth UI tests should cover package selection, payment method display, cash waiting state, expiration/error handling, and reset to welcome.
+- Booth UI tests should cover active offer display, payment method display, cash waiting state, expiration/error handling, and reset to welcome.
 - Add regression tests for every bug fix unless the test would be more brittle than useful. Document the reason if no test is added.
 - Guideline-only documentation changes do not require application tests.
 

@@ -12,7 +12,7 @@ using PhotoBIZ.Api.Data;
 namespace PhotoBIZ.Api.Data.Migrations
 {
     [DbContext(typeof(PhotoBizDbContext))]
-    [Migration("20260509094741_InitialMvpDataFoundation")]
+    [Migration("20260516050736_InitialMvpDataFoundation")]
     partial class InitialMvpDataFoundation
     {
         /// <inheritdoc />
@@ -222,27 +222,287 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.ToTable("booths", (string)null);
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothPackage", b =>
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothAppearanceConfig", b =>
                 {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AccentColor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("accent_color");
+
+                    b.Property<string>("BackgroundImageUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("background_image_url");
+
                     b.Property<Guid>("BoothId")
                         .HasColumnType("uuid")
                         .HasColumnName("booth_id");
 
-                    b.Property<Guid>("PackageId")
+                    b.Property<string>("DefaultWelcomeHeadline")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("default_welcome_headline");
+
+                    b.Property<string>("DefaultWelcomeSubtitle")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("default_welcome_subtitle");
+
+                    b.Property<string>("PrimaryColor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("primary_color");
+
+                    b.Property<string>("SessionLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("session_label");
+
+                    b.Property<string>("ThemePreset")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("theme_preset");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booth_appearance_configs");
+
+                    b.HasIndex("BoothId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_appearance_configs_booth_id");
+
+                    b.ToTable("booth_appearance_configs", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
-                        .HasColumnName("package_id");
+                        .HasColumnName("id");
 
                     b.Property<bool>("Active")
                         .HasColumnType("boolean")
                         .HasColumnName("active");
 
-                    b.HasKey("BoothId", "PackageId")
-                        .HasName("pk_booth_packages");
+                    b.Property<bool>("AllowsExtraPrintAddOn")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allows_extra_print_add_on");
 
-                    b.HasIndex("PackageId")
-                        .HasDatabaseName("ix_booth_packages_package_id");
+                    b.Property<Guid>("ClientAccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_account_id");
 
-                    b.ToTable("booth_packages", (string)null);
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("description");
+
+                    b.Property<int?>("DurationHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_hours");
+
+                    b.Property<int?>("ExtraPrintPriceCents")
+                        .HasColumnType("integer")
+                        .HasColumnName("extra_print_price_cents");
+
+                    b.Property<string>("IncludedPrintEntitlement")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("included_print_entitlement");
+
+                    b.Property<string>("LumaboothSessionMode")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("lumabooth_session_mode");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("OfferType")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("offer_type");
+
+                    b.Property<int>("PriceCents")
+                        .HasColumnType("integer")
+                        .HasColumnName("price_cents");
+
+                    b.Property<int?>("SessionAllowance")
+                        .HasColumnType("integer")
+                        .HasColumnName("session_allowance");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booth_offers");
+
+                    b.HasIndex("ClientAccountId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_offers_client_account_id_name");
+
+                    b.HasIndex("ClientAccountId", "OfferType", "Active")
+                        .HasDatabaseName("ix_booth_offers_client_account_id_offer_type_active");
+
+                    b.ToTable("booth_offers", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOfferActivation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("ActivatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("activated_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("BoothId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booth_id");
+
+                    b.Property<Guid>("BoothOfferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booth_offer_id");
+
+                    b.Property<DateTimeOffset?>("DeactivatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deactivated_at");
+
+                    b.Property<DateTimeOffset?>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<int?>("SessionAllowance")
+                        .HasColumnType("integer")
+                        .HasColumnName("session_allowance");
+
+                    b.Property<int>("SessionsUsed")
+                        .HasColumnType("integer")
+                        .HasColumnName("sessions_used");
+
+                    b.Property<DateTimeOffset?>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booth_offer_activations");
+
+                    b.HasIndex("BoothId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_offer_activations_one_active_per_booth")
+                        .HasFilter("status = 'ACTIVE'");
+
+                    b.HasIndex("BoothOfferId", "Status")
+                        .HasDatabaseName("ix_booth_offer_activations_booth_offer_id_status");
+
+                    b.ToTable("booth_offer_activations", (string)null);
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothPaymentOptionAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<Guid>("BoothId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booth_id");
+
+                    b.Property<Guid?>("ClientMayaEcrDeviceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_maya_ecr_device_id");
+
+                    b.Property<Guid?>("ClientPaymentProviderConfigId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_payment_provider_config_id");
+
+                    b.Property<string>("PaymentMethod")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("payment_method");
+
+                    b.Property<bool>("RuntimeEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("runtime_enabled");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booth_payment_option_assignments");
+
+                    b.HasIndex("ClientMayaEcrDeviceId")
+                        .HasDatabaseName("ix_booth_payment_option_assignments_client_maya_ecr_device_id");
+
+                    b.HasIndex("ClientPaymentProviderConfigId")
+                        .HasDatabaseName("ix_booth_payment_option_assignments_client_payment_provider_co~");
+
+                    b.HasIndex("BoothId", "PaymentMethod")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_payment_assignments_unique_builtin_method")
+                        .HasFilter("client_payment_provider_config_id IS NULL AND client_maya_ecr_device_id IS NULL");
+
+                    b.HasIndex("BoothId", "RuntimeEnabled")
+                        .HasDatabaseName("ix_booth_payment_option_assignments_booth_id_runtime_enabled");
+
+                    b.HasIndex("BoothId", "PaymentMethod", "ClientMayaEcrDeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_payment_assignments_unique_ecr_device")
+                        .HasFilter("client_maya_ecr_device_id IS NOT NULL");
+
+                    b.HasIndex("BoothId", "PaymentMethod", "ClientPaymentProviderConfigId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_booth_payment_assignments_unique_provider_config")
+                        .HasFilter("client_payment_provider_config_id IS NOT NULL");
+
+                    b.ToTable("booth_payment_option_assignments", (string)null);
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.BoothSession", b =>
@@ -251,11 +511,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
-
-                    b.Property<string>("AssignedPackageIds")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("assigned_package_ids");
 
                     b.Property<Guid>("BoothId")
                         .HasColumnType("uuid")
@@ -314,63 +569,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.ToTable("booth_sessions", (string)null);
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothTerminalConfig", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("BoothId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("booth_id");
-
-                    b.Property<string>("ComPort")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("com_port");
-
-                    b.Property<DateTimeOffset?>("LastConnectionTestAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("last_connection_test_at");
-
-                    b.Property<string>("Provider")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("provider");
-
-                    b.Property<string>("SerialOrAssetTag")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("serial_or_asset_tag");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("TerminalModel")
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("terminal_model");
-
-                    b.Property<string>("TerminalReference")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("terminal_reference");
-
-                    b.HasKey("Id")
-                        .HasName("pk_booth_terminal_configs");
-
-                    b.HasIndex("BoothId", "Provider")
-                        .IsUnique()
-                        .HasDatabaseName("ix_booth_terminal_configs_booth_id_provider");
-
-                    b.ToTable("booth_terminal_configs", (string)null);
-                });
-
             modelBuilder.Entity("PhotoBIZ.Api.Data.ClientAccount", b =>
                 {
                     b.Property<Guid>("Id")
@@ -405,39 +603,22 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.ToTable("client_accounts", (string)null);
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientBoothTheme", b =>
+            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientMayaEcrDevice", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("AccentColor")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("accent_color");
-
-                    b.Property<string>("BackgroundImageUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("background_image_url");
-
                     b.Property<Guid>("ClientAccountId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_account_id");
 
-                    b.Property<string>("DefaultWelcomeHeadline")
+                    b.Property<string>("DeviceId")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
-                        .HasColumnName("default_welcome_headline");
-
-                    b.Property<string>("DefaultWelcomeSubtitle")
-                        .IsRequired()
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("default_welcome_subtitle");
+                        .HasColumnName("device_id");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
@@ -445,31 +626,48 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("display_name");
 
-                    b.Property<string>("LogoUrl")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("logo_url");
-
-                    b.Property<string>("PrimaryColor")
+                    b.Property<string>("Provider")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("primary_color");
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("provider");
 
-                    b.Property<string>("ThemePreset")
+                    b.Property<string>("SerialOrAssetTag")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("serial_or_asset_tag");
+
+                    b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
-                        .HasColumnName("theme_preset");
+                        .HasColumnName("status");
+
+                    b.Property<string>("TerminalModel")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("terminal_model");
+
+                    b.Property<string>("TerminalReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("terminal_reference");
+
+                    b.Property<DateTimeOffset?>("VerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("verified_at");
 
                     b.HasKey("Id")
-                        .HasName("pk_client_booth_themes");
+                        .HasName("pk_client_maya_ecr_devices");
 
-                    b.HasIndex("ClientAccountId")
+                    b.HasIndex("ClientAccountId", "DeviceId")
                         .IsUnique()
-                        .HasDatabaseName("ix_client_booth_themes_client_account_id");
+                        .HasDatabaseName("ix_client_maya_ecr_devices_client_account_id_device_id");
 
-                    b.ToTable("client_booth_themes", (string)null);
+                    b.HasIndex("ClientAccountId", "Status")
+                        .HasDatabaseName("ix_client_maya_ecr_devices_client_account_id_status");
+
+                    b.ToTable("client_maya_ecr_devices", (string)null);
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.ClientPaymentProviderConfig", b =>
@@ -623,68 +821,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.ToTable("locations", (string)null);
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.Package", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("Active")
-                        .HasColumnType("boolean")
-                        .HasColumnName("active");
-
-                    b.Property<Guid>("ClientAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_account_id");
-
-                    b.Property<string>("Currency")
-                        .IsRequired()
-                        .HasMaxLength(3)
-                        .HasColumnType("character varying(3)")
-                        .HasColumnName("currency");
-
-                    b.Property<string>("Description")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("description");
-
-                    b.Property<string>("LumaboothPresetRef")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("lumabooth_preset_ref");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("PaperSize")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("paper_size");
-
-                    b.Property<int>("PriceCents")
-                        .HasColumnType("integer")
-                        .HasColumnName("price_cents");
-
-                    b.Property<int>("PrintCount")
-                        .HasColumnType("integer")
-                        .HasColumnName("print_count");
-
-                    b.HasKey("Id")
-                        .HasName("pk_packages");
-
-                    b.HasIndex("ClientAccountId", "Name")
-                        .IsUnique()
-                        .HasDatabaseName("ix_packages_client_account_id_name");
-
-                    b.ToTable("packages", (string)null);
-                });
-
             modelBuilder.Entity("PhotoBIZ.Api.Data.PaymentAttempt", b =>
                 {
                     b.Property<Guid>("Id")
@@ -693,8 +829,10 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnName("id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
 
                     b.Property<string>("Provider")
                         .IsRequired()
@@ -790,6 +928,14 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("booth_id");
 
+                    b.Property<Guid?>("BoothOfferActivationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booth_offer_activation_id");
+
+                    b.Property<Guid>("BoothOfferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booth_offer_id");
+
                     b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("cancelled_at");
@@ -803,8 +949,10 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnName("completed_at");
 
                     b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("now()");
 
                     b.Property<string>("Currency")
                         .IsRequired()
@@ -816,6 +964,10 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<int>("ExtraPrintCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("extra_print_count");
+
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -825,18 +977,18 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("location_id");
 
-                    b.Property<Guid>("PackageId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("package_id");
-
-                    b.Property<string>("PackageSnapshot")
+                    b.Property<string>("OfferSnapshot")
                         .IsRequired()
                         .HasColumnType("jsonb")
-                        .HasColumnName("package_snapshot");
+                        .HasColumnName("offer_snapshot");
 
                     b.Property<DateTimeOffset?>("PaidAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("paid_at");
+
+                    b.Property<Guid?>("ParentTransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_transaction_id");
 
                     b.Property<string>("PaymentMethod")
                         .IsRequired()
@@ -856,11 +1008,20 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("transaction_number");
 
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("transaction_type");
+
                     b.HasKey("Id")
                         .HasName("pk_transactions");
 
                     b.HasIndex("ApprovedByUserId")
                         .HasDatabaseName("ix_transactions_approved_by_user_id");
+
+                    b.HasIndex("BoothOfferActivationId")
+                        .HasDatabaseName("ix_transactions_booth_offer_activation_id");
 
                     b.HasIndex("ExpiresAt")
                         .HasDatabaseName("ix_transactions_expires_at");
@@ -868,8 +1029,8 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.HasIndex("LocationId")
                         .HasDatabaseName("ix_transactions_location_id");
 
-                    b.HasIndex("PackageId")
-                        .HasDatabaseName("ix_transactions_package_id");
+                    b.HasIndex("ParentTransactionId")
+                        .HasDatabaseName("ix_transactions_parent_transaction_id");
 
                     b.HasIndex("TransactionNumber")
                         .IsUnique()
@@ -877,6 +1038,9 @@ namespace PhotoBIZ.Api.Data.Migrations
 
                     b.HasIndex("BoothId", "Status")
                         .HasDatabaseName("ix_transactions_booth_id_status");
+
+                    b.HasIndex("BoothOfferId", "TransactionType")
+                        .HasDatabaseName("ix_transactions_booth_offer_id_transaction_type");
 
                     b.HasIndex("ClientAccountId", "Status")
                         .HasDatabaseName("ix_transactions_client_account_id_status");
@@ -943,25 +1107,77 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("Location");
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothPackage", b =>
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothAppearanceConfig", b =>
                 {
                     b.HasOne("PhotoBIZ.Api.Data.Booth", "Booth")
-                        .WithMany("BoothPackages")
+                        .WithOne("AppearanceConfig")
+                        .HasForeignKey("PhotoBIZ.Api.Data.BoothAppearanceConfig", "BoothId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booth_appearance_configs_booths_booth_id");
+
+                    b.Navigation("Booth");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOffer", b =>
+                {
+                    b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
+                        .WithMany("BoothOffers")
+                        .HasForeignKey("ClientAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booth_offers_client_accounts_client_account_id");
+
+                    b.Navigation("ClientAccount");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOfferActivation", b =>
+                {
+                    b.HasOne("PhotoBIZ.Api.Data.Booth", "Booth")
+                        .WithMany("BoothOfferActivations")
                         .HasForeignKey("BoothId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_booth_packages_booths_booth_id");
+                        .HasConstraintName("fk_booth_offer_activations_booths_booth_id");
 
-                    b.HasOne("PhotoBIZ.Api.Data.Package", "Package")
-                        .WithMany("BoothPackages")
-                        .HasForeignKey("PackageId")
+                    b.HasOne("PhotoBIZ.Api.Data.BoothOffer", "BoothOffer")
+                        .WithMany("BoothOfferActivations")
+                        .HasForeignKey("BoothOfferId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_booth_packages_packages_package_id");
+                        .HasConstraintName("fk_booth_offer_activations_booth_offers_booth_offer_id");
 
                     b.Navigation("Booth");
 
-                    b.Navigation("Package");
+                    b.Navigation("BoothOffer");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothPaymentOptionAssignment", b =>
+                {
+                    b.HasOne("PhotoBIZ.Api.Data.Booth", "Booth")
+                        .WithMany("PaymentOptionAssignments")
+                        .HasForeignKey("BoothId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booth_payment_option_assignments_booths_booth_id");
+
+                    b.HasOne("PhotoBIZ.Api.Data.ClientMayaEcrDevice", "ClientMayaEcrDevice")
+                        .WithMany("BoothPaymentOptionAssignments")
+                        .HasForeignKey("ClientMayaEcrDeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_booth_payment_option_assignments_client_maya_ecr_devices_cl~");
+
+                    b.HasOne("PhotoBIZ.Api.Data.ClientPaymentProviderConfig", "ClientPaymentProviderConfig")
+                        .WithMany("BoothPaymentOptionAssignments")
+                        .HasForeignKey("ClientPaymentProviderConfigId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_booth_payment_option_assignments_client_payment_provider_co~");
+
+                    b.Navigation("Booth");
+
+                    b.Navigation("ClientMayaEcrDevice");
+
+                    b.Navigation("ClientPaymentProviderConfig");
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.BoothSession", b =>
@@ -985,26 +1201,14 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("Transaction");
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothTerminalConfig", b =>
-                {
-                    b.HasOne("PhotoBIZ.Api.Data.Booth", "Booth")
-                        .WithMany("TerminalConfigs")
-                        .HasForeignKey("BoothId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_booth_terminal_configs_booths_booth_id");
-
-                    b.Navigation("Booth");
-                });
-
-            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientBoothTheme", b =>
+            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientMayaEcrDevice", b =>
                 {
                     b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
-                        .WithOne("BoothTheme")
-                        .HasForeignKey("PhotoBIZ.Api.Data.ClientBoothTheme", "ClientAccountId")
+                        .WithMany("MayaEcrDevices")
+                        .HasForeignKey("ClientAccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_client_booth_themes_client_accounts_client_account_id");
+                        .HasConstraintName("fk_client_maya_ecr_devices_client_accounts_client_account_id");
 
                     b.Navigation("ClientAccount");
                 });
@@ -1054,18 +1258,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("ClientAccount");
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.Package", b =>
-                {
-                    b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
-                        .WithMany("Packages")
-                        .HasForeignKey("ClientAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_packages_client_accounts_client_account_id");
-
-                    b.Navigation("ClientAccount");
-                });
-
             modelBuilder.Entity("PhotoBIZ.Api.Data.PaymentAttempt", b =>
                 {
                     b.HasOne("PhotoBIZ.Api.Data.Transaction", "Transaction")
@@ -1093,6 +1285,19 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_transactions_booths_booth_id");
 
+                    b.HasOne("PhotoBIZ.Api.Data.BoothOfferActivation", "BoothOfferActivation")
+                        .WithMany("Transactions")
+                        .HasForeignKey("BoothOfferActivationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transactions_booth_offer_activations_booth_offer_activation~");
+
+                    b.HasOne("PhotoBIZ.Api.Data.BoothOffer", "BoothOffer")
+                        .WithMany("Transactions")
+                        .HasForeignKey("BoothOfferId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transactions_booth_offers_booth_offer_id");
+
                     b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
                         .WithMany()
                         .HasForeignKey("ClientAccountId")
@@ -1107,22 +1312,25 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_transactions_locations_location_id");
 
-                    b.HasOne("PhotoBIZ.Api.Data.Package", "Package")
-                        .WithMany("Transactions")
-                        .HasForeignKey("PackageId")
+                    b.HasOne("PhotoBIZ.Api.Data.Transaction", "ParentTransaction")
+                        .WithMany("AddOnTransactions")
+                        .HasForeignKey("ParentTransactionId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_transactions_packages_package_id");
+                        .HasConstraintName("fk_transactions_transactions_parent_transaction_id");
 
                     b.Navigation("ApprovedByUser");
 
                     b.Navigation("Booth");
 
+                    b.Navigation("BoothOffer");
+
+                    b.Navigation("BoothOfferActivation");
+
                     b.Navigation("ClientAccount");
 
                     b.Navigation("Location");
 
-                    b.Navigation("Package");
+                    b.Navigation("ParentTransaction");
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.ApplicationUser", b =>
@@ -1134,24 +1342,38 @@ namespace PhotoBIZ.Api.Data.Migrations
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.Booth", b =>
                 {
+                    b.Navigation("AppearanceConfig");
+
                     b.Navigation("AssignedCashier");
 
-                    b.Navigation("BoothPackages");
+                    b.Navigation("BoothOfferActivations");
 
                     b.Navigation("BoothSessions");
 
-                    b.Navigation("TerminalConfigs");
+                    b.Navigation("PaymentOptionAssignments");
 
+                    b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOffer", b =>
+                {
+                    b.Navigation("BoothOfferActivations");
+
+                    b.Navigation("Transactions");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.BoothOfferActivation", b =>
+                {
                     b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.ClientAccount", b =>
                 {
-                    b.Navigation("BoothTheme");
+                    b.Navigation("BoothOffers");
 
                     b.Navigation("Locations");
 
-                    b.Navigation("Packages");
+                    b.Navigation("MayaEcrDevices");
 
                     b.Navigation("PaymentProviderConfigs");
 
@@ -1160,16 +1382,19 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("Users");
                 });
 
+            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientMayaEcrDevice", b =>
+                {
+                    b.Navigation("BoothPaymentOptionAssignments");
+                });
+
+            modelBuilder.Entity("PhotoBIZ.Api.Data.ClientPaymentProviderConfig", b =>
+                {
+                    b.Navigation("BoothPaymentOptionAssignments");
+                });
+
             modelBuilder.Entity("PhotoBIZ.Api.Data.Location", b =>
                 {
                     b.Navigation("Booths");
-                });
-
-            modelBuilder.Entity("PhotoBIZ.Api.Data.Package", b =>
-                {
-                    b.Navigation("BoothPackages");
-
-                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.SubscriptionPlan", b =>
@@ -1179,6 +1404,8 @@ namespace PhotoBIZ.Api.Data.Migrations
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.Transaction", b =>
                 {
+                    b.Navigation("AddOnTransactions");
+
                     b.Navigation("BoothSessions");
 
                     b.Navigation("PaymentAttempts");
