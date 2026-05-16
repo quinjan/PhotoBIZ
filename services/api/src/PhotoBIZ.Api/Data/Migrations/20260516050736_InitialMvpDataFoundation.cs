@@ -41,25 +41,56 @@ namespace PhotoBIZ.Api.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "client_booth_themes",
+                name: "booth_offers",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    client_account_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    description = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    offer_type = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
+                    price_cents = table.Column<int>(type: "integer", nullable: false),
+                    currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false),
+                    included_print_entitlement = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: false),
+                    duration_hours = table.Column<int>(type: "integer", nullable: true),
+                    session_allowance = table.Column<int>(type: "integer", nullable: true),
+                    allows_extra_print_add_on = table.Column<bool>(type: "boolean", nullable: false),
+                    extra_print_price_cents = table.Column<int>(type: "integer", nullable: true),
+                    lumabooth_session_mode = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    active = table.Column<bool>(type: "boolean", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_booth_offers", x => x.id);
+                    table.ForeignKey(
+                        name: "fk_booth_offers_client_accounts_client_account_id",
+                        column: x => x.client_account_id,
+                        principalTable: "client_accounts",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "client_maya_ecr_devices",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     client_account_id = table.Column<Guid>(type: "uuid", nullable: false),
                     display_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    theme_preset = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
-                    primary_color = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    accent_color = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
-                    background_image_url = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    logo_url = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    default_welcome_headline = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    default_welcome_subtitle = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false)
+                    device_id = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    provider = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    terminal_model = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
+                    terminal_reference = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    serial_or_asset_tag = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    status = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    verified_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_client_booth_themes", x => x.id);
+                    table.PrimaryKey("pk_client_maya_ecr_devices", x => x.id);
                     table.ForeignKey(
-                        name: "fk_client_booth_themes_client_accounts_client_account_id",
+                        name: "fk_client_maya_ecr_devices_client_accounts_client_account_id",
                         column: x => x.client_account_id,
                         principalTable: "client_accounts",
                         principalColumn: "id",
@@ -107,32 +138,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     table.PrimaryKey("pk_locations", x => x.id);
                     table.ForeignKey(
                         name: "fk_locations_client_accounts_client_account_id",
-                        column: x => x.client_account_id,
-                        principalTable: "client_accounts",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "packages",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false),
-                    client_account_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    description = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
-                    price_cents = table.Column<int>(type: "integer", nullable: false),
-                    currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false),
-                    print_count = table.Column<int>(type: "integer", nullable: false),
-                    paper_size = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
-                    lumabooth_preset_ref = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    active = table.Column<bool>(type: "boolean", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("pk_packages", x => x.id);
-                    table.ForeignKey(
-                        name: "fk_packages_client_accounts_client_account_id",
                         column: x => x.client_account_id,
                         principalTable: "client_accounts",
                         principalColumn: "id",
@@ -202,51 +207,94 @@ namespace PhotoBIZ.Api.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "booth_packages",
+                name: "booth_appearance_configs",
                 columns: table => new
                 {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     booth_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    package_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    active = table.Column<bool>(type: "boolean", nullable: false)
+                    theme_preset = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    primary_color = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    accent_color = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    background_image_url = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
+                    session_label = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    default_welcome_headline = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    default_welcome_subtitle = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_booth_packages", x => new { x.booth_id, x.package_id });
+                    table.PrimaryKey("pk_booth_appearance_configs", x => x.id);
                     table.ForeignKey(
-                        name: "fk_booth_packages_booths_booth_id",
+                        name: "fk_booth_appearance_configs_booths_booth_id",
                         column: x => x.booth_id,
                         principalTable: "booths",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Restrict);
-                    table.ForeignKey(
-                        name: "fk_booth_packages_packages_package_id",
-                        column: x => x.package_id,
-                        principalTable: "packages",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
-                name: "booth_terminal_configs",
+                name: "booth_offer_activations",
                 columns: table => new
                 {
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     booth_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    provider = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
-                    terminal_model = table.Column<string>(type: "character varying(120)", maxLength: 120, nullable: true),
-                    terminal_reference = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
-                    serial_or_asset_tag = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
-                    com_port = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: true),
+                    booth_offer_id = table.Column<Guid>(type: "uuid", nullable: false),
                     status = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
-                    last_connection_test_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    activated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
+                    deactivated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    starts_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    ends_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    session_allowance = table.Column<int>(type: "integer", nullable: true),
+                    sessions_used = table.Column<int>(type: "integer", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("pk_booth_terminal_configs", x => x.id);
+                    table.PrimaryKey("pk_booth_offer_activations", x => x.id);
                     table.ForeignKey(
-                        name: "fk_booth_terminal_configs_booths_booth_id",
+                        name: "fk_booth_offer_activations_booth_offers_booth_offer_id",
+                        column: x => x.booth_offer_id,
+                        principalTable: "booth_offers",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_booth_offer_activations_booths_booth_id",
                         column: x => x.booth_id,
                         principalTable: "booths",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "booth_payment_option_assignments",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    booth_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    client_payment_provider_config_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    client_maya_ecr_device_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    payment_method = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    status = table.Column<string>(type: "character varying(40)", maxLength: 40, nullable: false),
+                    runtime_enabled = table.Column<bool>(type: "boolean", nullable: false),
+                    assigned_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_booth_payment_option_assignments", x => x.id);
+                    table.ForeignKey(
+                        name: "fk_booth_payment_option_assignments_booths_booth_id",
+                        column: x => x.booth_id,
+                        principalTable: "booths",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_booth_payment_option_assignments_client_maya_ecr_devices_cl~",
+                        column: x => x.client_maya_ecr_device_id,
+                        principalTable: "client_maya_ecr_devices",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_booth_payment_option_assignments_client_payment_provider_co~",
+                        column: x => x.client_payment_provider_config_id,
+                        principalTable: "client_payment_provider_configs",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                 });
@@ -320,15 +368,19 @@ namespace PhotoBIZ.Api.Data.Migrations
                     client_account_id = table.Column<Guid>(type: "uuid", nullable: false),
                     location_id = table.Column<Guid>(type: "uuid", nullable: false),
                     booth_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    package_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    booth_offer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    booth_offer_activation_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    parent_transaction_id = table.Column<Guid>(type: "uuid", nullable: true),
                     approved_by_user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     transaction_number = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    transaction_type = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
                     payment_method = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
                     status = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     amount_cents = table.Column<int>(type: "integer", nullable: false),
                     currency = table.Column<string>(type: "character varying(3)", maxLength: 3, nullable: false),
-                    package_snapshot = table.Column<string>(type: "jsonb", nullable: false),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    offer_snapshot = table.Column<string>(type: "jsonb", nullable: false),
+                    extra_print_count = table.Column<int>(type: "integer", nullable: false),
+                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()"),
                     expires_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     paid_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     completed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
@@ -338,6 +390,18 @@ namespace PhotoBIZ.Api.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_transactions", x => x.id);
+                    table.ForeignKey(
+                        name: "fk_transactions_booth_offer_activations_booth_offer_activation~",
+                        column: x => x.booth_offer_activation_id,
+                        principalTable: "booth_offer_activations",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_transactions_booth_offers_booth_offer_id",
+                        column: x => x.booth_offer_id,
+                        principalTable: "booth_offers",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "fk_transactions_booths_booth_id",
                         column: x => x.booth_id,
@@ -357,9 +421,9 @@ namespace PhotoBIZ.Api.Data.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
-                        name: "fk_transactions_packages_package_id",
-                        column: x => x.package_id,
-                        principalTable: "packages",
+                        name: "fk_transactions_transactions_parent_transaction_id",
+                        column: x => x.parent_transaction_id,
+                        principalTable: "transactions",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
@@ -382,7 +446,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     welcome_headline = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     welcome_subtitle = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     session_label = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    assigned_package_ids = table.Column<string>(type: "jsonb", nullable: false),
                     started_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     ended_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
                 },
@@ -413,7 +476,7 @@ namespace PhotoBIZ.Api.Data.Migrations
                     provider_reference = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     status = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     raw_payload = table.Column<string>(type: "jsonb", nullable: false),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
                 },
                 constraints: table =>
                 {
@@ -442,9 +505,69 @@ namespace PhotoBIZ.Api.Data.Migrations
                 column: "user_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_booth_packages_package_id",
-                table: "booth_packages",
-                column: "package_id");
+                name: "ix_booth_appearance_configs_booth_id",
+                table: "booth_appearance_configs",
+                column: "booth_id",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_offer_activations_booth_offer_id_status",
+                table: "booth_offer_activations",
+                columns: new[] { "booth_offer_id", "status" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_offer_activations_one_active_per_booth",
+                table: "booth_offer_activations",
+                column: "booth_id",
+                unique: true,
+                filter: "status = 'ACTIVE'");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_offers_client_account_id_name",
+                table: "booth_offers",
+                columns: new[] { "client_account_id", "name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_offers_client_account_id_offer_type_active",
+                table: "booth_offers",
+                columns: new[] { "client_account_id", "offer_type", "active" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_assignments_unique_builtin_method",
+                table: "booth_payment_option_assignments",
+                columns: new[] { "booth_id", "payment_method" },
+                unique: true,
+                filter: "client_payment_provider_config_id IS NULL AND client_maya_ecr_device_id IS NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_assignments_unique_ecr_device",
+                table: "booth_payment_option_assignments",
+                columns: new[] { "booth_id", "payment_method", "client_maya_ecr_device_id" },
+                unique: true,
+                filter: "client_maya_ecr_device_id IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_assignments_unique_provider_config",
+                table: "booth_payment_option_assignments",
+                columns: new[] { "booth_id", "payment_method", "client_payment_provider_config_id" },
+                unique: true,
+                filter: "client_payment_provider_config_id IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_option_assignments_booth_id_runtime_enabled",
+                table: "booth_payment_option_assignments",
+                columns: new[] { "booth_id", "runtime_enabled" });
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_option_assignments_client_maya_ecr_device_id",
+                table: "booth_payment_option_assignments",
+                column: "client_maya_ecr_device_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_booth_payment_option_assignments_client_payment_provider_co~",
+                table: "booth_payment_option_assignments",
+                column: "client_payment_provider_config_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_booth_sessions_booth_id_status",
@@ -455,12 +578,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                 name: "ix_booth_sessions_transaction_id",
                 table: "booth_sessions",
                 column: "transaction_id");
-
-            migrationBuilder.CreateIndex(
-                name: "ix_booth_terminal_configs_booth_id_provider",
-                table: "booth_terminal_configs",
-                columns: new[] { "booth_id", "provider" },
-                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "ix_booths_client_account_id_code",
@@ -489,10 +606,15 @@ namespace PhotoBIZ.Api.Data.Migrations
                 column: "name");
 
             migrationBuilder.CreateIndex(
-                name: "ix_client_booth_themes_client_account_id",
-                table: "client_booth_themes",
-                column: "client_account_id",
+                name: "ix_client_maya_ecr_devices_client_account_id_device_id",
+                table: "client_maya_ecr_devices",
+                columns: new[] { "client_account_id", "device_id" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ix_client_maya_ecr_devices_client_account_id_status",
+                table: "client_maya_ecr_devices",
+                columns: new[] { "client_account_id", "status" });
 
             migrationBuilder.CreateIndex(
                 name: "ix_payment_configs_client_provider_type",
@@ -513,12 +635,6 @@ namespace PhotoBIZ.Api.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "ix_locations_client_account_id_name",
                 table: "locations",
-                columns: new[] { "client_account_id", "name" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "ix_packages_client_account_id_name",
-                table: "packages",
                 columns: new[] { "client_account_id", "name" },
                 unique: true);
 
@@ -549,6 +665,16 @@ namespace PhotoBIZ.Api.Data.Migrations
                 columns: new[] { "booth_id", "status" });
 
             migrationBuilder.CreateIndex(
+                name: "ix_transactions_booth_offer_activation_id",
+                table: "transactions",
+                column: "booth_offer_activation_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_transactions_booth_offer_id_transaction_type",
+                table: "transactions",
+                columns: new[] { "booth_offer_id", "transaction_type" });
+
+            migrationBuilder.CreateIndex(
                 name: "ix_transactions_client_account_id_status",
                 table: "transactions",
                 columns: new[] { "client_account_id", "status" });
@@ -564,9 +690,9 @@ namespace PhotoBIZ.Api.Data.Migrations
                 column: "location_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_transactions_package_id",
+                name: "ix_transactions_parent_transaction_id",
                 table: "transactions",
-                column: "package_id");
+                column: "parent_transaction_id");
 
             migrationBuilder.CreateIndex(
                 name: "ix_transactions_transaction_number",
@@ -599,19 +725,13 @@ namespace PhotoBIZ.Api.Data.Migrations
                 name: "audit_logs");
 
             migrationBuilder.DropTable(
-                name: "booth_packages");
+                name: "booth_appearance_configs");
+
+            migrationBuilder.DropTable(
+                name: "booth_payment_option_assignments");
 
             migrationBuilder.DropTable(
                 name: "booth_sessions");
-
-            migrationBuilder.DropTable(
-                name: "booth_terminal_configs");
-
-            migrationBuilder.DropTable(
-                name: "client_booth_themes");
-
-            migrationBuilder.DropTable(
-                name: "client_payment_provider_configs");
 
             migrationBuilder.DropTable(
                 name: "client_subscriptions");
@@ -620,16 +740,25 @@ namespace PhotoBIZ.Api.Data.Migrations
                 name: "payment_attempts");
 
             migrationBuilder.DropTable(
+                name: "client_maya_ecr_devices");
+
+            migrationBuilder.DropTable(
+                name: "client_payment_provider_configs");
+
+            migrationBuilder.DropTable(
                 name: "subscription_plans");
 
             migrationBuilder.DropTable(
                 name: "transactions");
 
             migrationBuilder.DropTable(
-                name: "packages");
+                name: "booth_offer_activations");
 
             migrationBuilder.DropTable(
                 name: "users");
+
+            migrationBuilder.DropTable(
+                name: "booth_offers");
 
             migrationBuilder.DropTable(
                 name: "booths");

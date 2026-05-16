@@ -6,9 +6,9 @@ PhotoBIZ
 
 ## Purpose
 
-PhotoBIZ is a multi-tenant SaaS platform for photobooth businesses in the Philippines. The Application Owner sells software subscriptions to client businesses. Each client uses PhotoBIZ to manage their own locations, booths, packages, staff, customer-facing Booth UI, payment approval workflow, transactions, and reports.
+PhotoBIZ is a multi-tenant SaaS platform for photobooth businesses in the Philippines. The Application Owner sells software subscriptions to client businesses. Each client uses PhotoBIZ to manage their own locations, booths, active booth offers, staff, customer-facing Booth UI, payment approval workflow, transactions, and reports.
 
-The booth workflow remains: customer chooses a package, chooses a payment method, payment is approved or confirmed, LumaBooth starts on Windows, photos are captured, prints are produced through LumaBooth, and digital copies are delivered through LumaBooth/Fotoshare.
+The booth workflow remains: customer reviews the booth's active offer, chooses a payment method when payment is required, payment is approved or confirmed, LumaBooth starts on Windows, photos are captured, prints are produced through LumaBooth, and digital copies are delivered through LumaBooth/Fotoshare.
 
 ## Current Operating Assumptions
 
@@ -18,8 +18,9 @@ The booth workflow remains: customer chooses a package, chooses a payment method
 - Subscription unit: per active booth.
 - Initial booth environment: mall or staffed retail location.
 - Initial staffing model: one cashier per booth.
-- Initial payment model: cash approval only.
+- Initial payment model: cash approval only for real transactions.
 - Coming soon payment model: `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`.
+- Payment setup model: client-level payment resources are registered first, then assigned per booth before they can appear in runtime payment choices.
 - Photo booth software: LumaBooth on Windows.
 - Digital delivery: LumaBooth/Fotoshare.
 - Starter hardware: DNP RX1 printer and Canon R50 camera.
@@ -28,13 +29,23 @@ The booth workflow remains: customer chooses a package, chooses a payment method
 - Booth UI: web application or kiosk-mode browser shown on the extended screen.
 - Central Web App: SaaS admin, client admin, and cashier/POS application.
 
+## LumaBooth Constraints
+
+PhotoBIZ MVP must respect the current LumaBooth operating model.
+
+- Each booth machine runs one active LumaBooth event/configuration at a time.
+- PhotoBIZ must not promise per-transaction LumaBooth template or package switching in MVP.
+- Template and layout choices available inside LumaBooth are controlled by the active LumaBooth event, not by PhotoBIZ Booth UI customer selection.
+- PhotoBIZ tracks the commercial booth offer, payment, allowance, session usage, eligible add-on print sales, tenant reporting, and auditability.
+- The Windows Agent may start the configured LumaBooth session type and may request additional print copies where the LumaBooth API supports it.
+
 ## Goals
 
 1. Let the Application Owner manage client accounts and manual per-booth subscriptions.
-2. Let Client Owners manage their own users, locations, booths, packages, active sessions, and reports.
+2. Let Client Owners manage their own users, locations, booths, booth offers, active sessions, and reports.
 3. Let Client Admins manage booth operations inside one client account.
 4. Let Cashiers approve payments and recover sessions for their assigned booth.
-5. Let customers select packages and payment methods on the Booth UI.
+5. Let customers review the booth's active offer and select available booth payment methods on the Booth UI when payment is required.
 6. Integrate with LumaBooth to start sessions and receive session completion events.
 7. Track tenant-isolated transactions, booth states, session states, audit logs, and reports.
 8. Support minimal tenant Booth UI customization for MVP.
@@ -51,7 +62,8 @@ The booth workflow remains: customer chooses a package, chooses a payment method
 - No customer accounts.
 - No loyalty system.
 - No arbitrary client CSS, custom layouts, or advanced theme builder.
-- No retake or extra-copy upsell flow.
+- No retake flow.
+- No extra print add-ons for time-unlimited or session-count offers.
 - No fully unattended recovery workflow.
 
 ## User Roles
@@ -81,11 +93,11 @@ Permissions:
 - Manage client users.
 - Manage locations.
 - Register, unregister, enable, disable, and end booths.
-- Create, edit, activate, and deactivate packages.
-- Assign packages to booths.
+- Create, edit, activate, and deactivate booth offers.
+- Activate exactly one booth offer per booth.
 - Manage active booth session appearance.
 - View transactions, reports, and audit logs for their client account.
-- Configure client-level payment/session settings allowed by PhotoBIZ.
+- Configure client-level payment resources and assign allowed payment options per booth.
 
 ### Client Admin
 
@@ -95,8 +107,9 @@ Permissions:
 
 - Manage Client Admin and Cashier users inside the client account.
 - Manage assigned client locations and booths.
-- Manage packages and booth package assignments.
+- Manage booth offers and active booth offer assignment.
 - Manage active session appearance.
+- Manage booth-level payment option assignments from active client payment resources.
 - View client transactions and reports.
 - Perform booth recovery actions.
 - Cannot manage subscription, billing status, or Application Owner support access.
@@ -150,7 +163,7 @@ Required MVP sections:
 - Users.
 - Locations.
 - Booths.
-- Packages.
+- Booth offers.
 - Session appearance.
 - Transactions.
 - Reports.
@@ -164,10 +177,9 @@ The Booth UI is the customer-facing interface shown on the booth's extended scre
 Required MVP screens:
 
 - Welcome screen.
-- Package selection.
-- Payment method selection.
+- Active offer review.
+- Payment method selection for payable per-session flows.
 - Cash payment waiting screen.
-- Coming soon cashless payment method preview.
 - Payment approved screen.
 - Starting session screen.
 - Session in progress or LumaBooth handoff screen.
@@ -178,8 +190,9 @@ Rules:
 
 - Booth UI is accessible only through a booth-scoped kiosk token.
 - Booth UI does not require cashier login or daily unlock.
-- Booth UI displays only active packages assigned to the booth.
+- Booth UI displays the booth's single active offer.
 - Booth UI reflects client-level branding and active session overrides.
+- Booth UI displays only booth-assigned payment methods that are enabled for runtime use.
 - Booth UI cannot directly approve payment or start LumaBooth.
 
 ### 3. Windows Booth Agent
@@ -207,18 +220,24 @@ Client-level customization:
 - Brand/display name.
 - Logo.
 - Background image.
-- Theme preset: `VINTAGE_FILM` or `MODERN_POP`.
 - Primary color.
 - Accent color.
 - Default welcome headline.
 - Default welcome subtitle.
+
+Booth-level customization:
+
+- PhotoBIZ-managed theme preset, such as `VINTAGE_FILM` or `MODERN_POP`.
+- Active booth offer.
+- Booth-specific session label, welcome headline, and welcome subtitle overrides.
 
 Active session overrides:
 
 - Session label.
 - Welcome headline.
 - Welcome subtitle.
-- Assigned packages.
+- Active booth offer.
+- Booth-level payment option assignments.
 
 Guardrails:
 
@@ -235,7 +254,7 @@ Guardrails:
 1. Application Owner creates a client account.
 2. Application Owner assigns a manual subscription plan and active booth allowance.
 3. Application Owner creates or invites the first Client Owner.
-4. Client Owner signs in and configures locations, users, packages, and booths.
+4. Client Owner signs in and configures locations, users, booth offers, and booths.
 
 ### Workflow B: Booth Registration To Live
 
@@ -245,44 +264,61 @@ Guardrails:
 4. System creates agent credentials and booth-scoped kiosk token.
 5. Windows Agent pairs with the booth record.
 6. Booth UI opens using the booth token.
-7. Client assigns active packages to the booth.
-8. Client configures client branding and active session appearance.
-9. Booth becomes available.
+7. Client activates exactly one booth offer for the booth.
+8. Client selects a PhotoBIZ-managed booth theme and active session appearance.
+9. Client assigns booth payment options from client-level resources.
+10. Booth becomes available.
 
-### Workflow C: Package Assignment To Booth
+### Workflow C: Active Offer Assignment To Booth
 
-1. Client Owner or Client Admin creates a package.
-2. Client Owner or Client Admin assigns package to one or more booths.
-3. Booth UI loads active packages assigned to its booth.
-4. Customer can choose only from those packages.
+1. Client Owner or Client Admin creates a booth offer.
+2. Client Owner or Client Admin activates the offer for one or more booths.
+3. Backend ensures each booth has at most one active offer at a time.
+4. Booth UI loads and displays the booth's active offer.
+5. If no active offer is configured, Booth UI shows an unavailable state and does not allow checkout or session start.
 
-### Workflow D: Cash Payment
+### Workflow D: Payment Setup And Booth Assignment
 
-1. Booth UI shows active packages.
-2. Customer chooses package.
-3. Customer chooses cash payment.
+1. Client Owner or Client Admin opens Payment Settings.
+2. Cash is available as the MVP runtime payment method.
+3. Client can draft one Maya Checkout QR configuration for the client account.
+4. Client can draft multiple Maya Terminal ECR device configurations for the client account, each with a client-visible terminal name and required `deviceId`.
+5. Client assigns payment options per booth.
+6. Maya QR can be assigned only when the client Maya QR resource exists and is active or verified.
+7. Maya ECR can be assigned only by selecting a specific active client ECR `deviceId`.
+8. Maya QR and Maya ECR remain locked for runtime payment until PhotoBIZ enables the future provider integrations.
+
+### Workflow E: Cash Payment
+
+1. Booth UI shows the active booth offer.
+2. Customer confirms the active offer.
+3. Customer chooses cash payment when the offer requires payment for a per-session purchase.
 4. Backend creates a transaction with status `PENDING_CASH`.
 5. Cashier sees the pending cash request in the Central Web App.
 6. Cashier collects cash.
 7. Cashier clicks `Approve Cash`.
 8. Backend marks transaction as `PAID`.
 9. Backend sends start-session command to the booth agent.
-10. Agent starts the correct LumaBooth session.
+10. Agent starts the configured LumaBooth session for the booth's active LumaBooth event.
 11. LumaBooth handles capture, printing, and Fotoshare sharing.
 12. Agent receives session completion signal.
 13. Backend marks transaction as `COMPLETED`.
 14. Booth UI returns to welcome screen.
 
-### Workflow E: Coming Soon Maya Setup
+For `TIME_UNLIMITED` and `SESSION_COUNT` offers, plan activation is cashier-side and cash-only in the MVP. Once a timed or session-count offer is active and paid, Booth UI skips payment and offer review screens and follows welcome, LumaBooth handoff, and return-to-welcome states.
+
+### Workflow F: Coming Soon Maya Setup
 
 1. Client Owner opens Payment Settings.
 2. Client Owner sees `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR` as coming soon.
-3. Client Owner can review the future setup checklist for Maya Business credentials and ECR terminal requirements.
-4. Cashless payment methods remain unavailable to customers until PhotoBIZ enables real Maya integration in a future phase.
+3. Client Owner can draft Maya Business credentials and one Maya Checkout QR configuration.
+4. Client Owner can draft multiple Maya Terminal ECR device records with `deviceId` values.
+5. Client Owner or Client Admin assigns configured payment resources per booth.
+6. Cashless payment methods remain unavailable to customers and cashiers until PhotoBIZ enables real Maya integration in a future phase.
 
-### Workflow F: Transaction Expiration
+### Workflow G: Transaction Expiration
 
-1. Customer chooses a package and payment method.
+1. Customer confirms the active booth offer and chooses a payment method when payment is required.
 2. Transaction enters a pending payment status.
 3. If payment is not approved before the configured expiration window, backend marks it `EXPIRED`.
 4. Booth UI displays expiration message briefly.
@@ -293,28 +329,62 @@ Default MVP expiration:
 
 - Pending cash: 5 minutes.
 
-### Workflow G: Session Recovery
+### Workflow H: Session Recovery
 
 1. Agent or backend detects that the booth is stuck, offline, or in an error state.
 2. Cashier sees an alert in POS view.
 3. Cashier can cancel, retry, or return booth to welcome.
 4. All manual recovery actions are written to audit logs.
 
-## Package Requirements
+## Booth Offer Requirements
 
-MVP package fields:
+MVP booth offer types:
+
+- `PER_SESSION`: configurable pay-per-session offer package. Each package has its own name, description, price, included print entitlement, LumaBooth session mode, and optional post-session extra print add-on price.
+- `TIME_UNLIMITED`: configurable timed offer package. Each package has its own name, description, price, duration, included print entitlement per session, and LumaBooth session mode. Extra print add-ons are not allowed.
+- `SESSION_COUNT`: configurable session-count offer package. Each package has its own name, description, price, session allowance, included print entitlement per session, and LumaBooth session mode. Extra print add-ons are not allowed.
+
+Clients may create multiple packages for each offer type. A booth can activate exactly one package at a time from the full active package catalog, regardless of offer type.
+
+MVP booth offer fields:
 
 - Client account.
 - Name.
 - Description.
+- Offer type.
 - Price in PHP.
-- Number of prints.
-- Paper size.
+- Included print entitlement: `2 pcs 6x2` or `1 pc 6x4`.
+- Duration in hours, required only for `TIME_UNLIMITED`.
+- Session allowance, required only for `SESSION_COUNT`.
+- Extra print add-on eligibility, true only for `PER_SESSION`.
+- Extra print add-on price in PHP, required only when add-ons are enabled.
 - LumaBooth session mode or preset reference.
 - Active/inactive status.
-- Assigned booth list.
 
-Package details must be snapshotted into transactions so later package edits do not change historical records.
+Active offer assignment fields:
+
+- Booth.
+- Booth offer.
+- Status.
+- Activated timestamp.
+- Deactivated timestamp.
+- Starts timestamp, required for timed offers.
+- Ends timestamp, required for timed offers.
+- Session allowance and sessions used, required for session-count offers.
+
+Booth offer activation uses a single dropdown/select control in admin workflows. Booth offer details must be snapshotted into transactions so later offer edits do not change historical records.
+
+## Extra Print Add-On Requirements
+
+Post-session extra print add-ons are supported only for completed `PER_SESSION` transactions.
+
+Rules:
+
+- Add-on transactions must be linked to the original completed session transaction.
+- Add-on transactions do not start a new LumaBooth capture session.
+- Add-on approval and payment must follow the cash payment authority rules for MVP.
+- The Windows Agent may request additional LumaBooth print copies after backend payment approval.
+- Add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offers.
 
 ## Booth Requirements
 
@@ -329,14 +399,15 @@ MVP booth fields:
 - Agent pairing status.
 - Kiosk token status.
 - Last heartbeat timestamp.
-- Active package list.
+- Active booth offer.
+- Assigned payment options.
 - Current booth state.
 
 Booth states:
 
 - `OFFLINE`
 - `WELCOME`
-- `PACKAGE_SELECTED`
+- `OFFER_CONFIRMED`
 - `PAYMENT_METHOD_SELECTED`
 - `PAYMENT_PENDING`
 - `PAID`
@@ -369,7 +440,10 @@ Each transaction must store:
 - Location.
 - Booth.
 - Cashier or approving user, when applicable.
-- Package snapshot.
+- Offer snapshot.
+- Parent transaction, when the transaction is a post-session extra print add-on.
+- Transaction type: session purchase, plan activation, covered plan session, or extra print add-on.
+- Extra print copy count, when applicable.
 - Payment method.
 - Payment status.
 - Session status.
@@ -398,7 +472,7 @@ Client reports:
 - Cash sales.
 - Transactions by booth.
 - Transactions by location.
-- Package sales counts.
+- Booth offer sales and usage counts.
 - Failed, expired, and cancelled transactions.
 
 Future reports:
@@ -429,7 +503,7 @@ Future reports:
 - Offline booths.
 - Pending payment approvals.
 - Failed or expired transactions.
-- Top packages sold.
+- Top booth offers sold.
 - Sales by location.
 - Recent transactions.
 - Current booth statuses.
@@ -438,12 +512,14 @@ Future reports:
 
 - Assigned booth name and status.
 - Current transaction card.
-- Package chosen by customer.
+- Active booth offer.
 - Amount due.
-- Payment method.
+- Payment method, filtered by booth assignment and runtime availability.
 - Countdown until expiration.
 - `Approve Cash` action.
 - `Cancel Transaction` action.
+- Cash-only plan activation checkout for `TIME_UNLIMITED` and `SESSION_COUNT` during MVP.
+- Future Maya QR/ECR methods visible only as locked assigned options until provider integration is enabled.
 - Today's sales.
 - Today's completed sessions.
 - Recent transactions for the assigned booth.
@@ -451,12 +527,21 @@ Future reports:
 
 ## Payment Requirements
 
+Payment configuration has two levels:
+
+1. Client-level resources define what the client account has registered.
+2. Booth-level assignments define which of those resources a booth may use when the method is runtime-enabled.
+
+Backend payment validation must check booth-level assignment, provider/resource status, and runtime feature availability. Client-level setup alone is never enough to expose a payment method in Booth UI or Cashier POS.
+
 ### Cash MVP
 
 Cash is approved manually by the cashier.
 
 Requirements:
 
+- Cash is the only real MVP payment method.
+- Cash can be assigned per booth and is the only payment option that can be runtime-enabled in MVP.
 - Payment approval requires an authenticated cashier, Client Admin, or Client Owner.
 - Approval must write an audit log.
 - Approval must include timestamp and approving user ID.
@@ -468,13 +553,15 @@ Requirements:
 
 Future requirements:
 
+- Client account can have one Maya Checkout QR configuration.
 - Client Owner supplies Maya Business account name.
 - Client Owner supplies Maya public API key.
 - Client Owner supplies Maya secret API key, stored encrypted and never returned to frontend clients.
 - PhotoBIZ provides a webhook URL for the client to register in Maya Business Manager.
+- Booths can assign Maya Checkout QR only after the client-level resource exists and is active or verified.
 - Maya webhooks become the source of truth for payment success, failure, expiration, and cancellation.
 - Payment attempts table supports auditability and retries.
-- Booth UI displays this option only after the client payment config is verified and enabled.
+- Booth UI and Cashier POS display this option only after client payment config is verified, assigned to the booth, and runtime provider integration is enabled.
 
 ### Coming Soon Maya Terminal ECR
 
@@ -483,11 +570,12 @@ Future requirements:
 Future requirements:
 
 - Client has a verified Maya Business account.
-- Client has an active supported Maya terminal.
+- Client can register multiple active supported Maya terminal devices.
+- Each terminal device stores a client-visible terminal name and required `deviceId`.
 - Client has access to the Maya ECR Integration Kit.
-- Client assigns the terminal to a PhotoBIZ booth.
+- Client assigns specific terminal `deviceId` values to PhotoBIZ booths.
 - Windows Booth Agent stores local ECR connection settings, such as COM port.
-- Booth UI displays this option only after client payment config and booth terminal config are verified and enabled.
+- Booth UI and Cashier POS display this option only after client payment config, selected booth ECR device assignment, and runtime provider integration are verified and enabled.
 
 ## Audit Log Requirements
 
@@ -498,12 +586,13 @@ Audit logs should capture:
 - Subscription creation/update/status changes.
 - User creation/update/deactivation.
 - Client Booth UI theme changes.
-- Package creation/update/deactivation.
+- Booth offer creation/update/deactivation.
 - Booth registration/unregistration/end booth.
-- Package assignment changes.
+- Active booth offer assignment changes.
+- Booth payment option assignment changes.
 - Cash payment approval.
 - Maya payment configuration changes.
-- Maya ECR terminal configuration changes.
+- Maya ECR device configuration changes.
 - Transaction cancellation.
 - Manual recovery actions.
 - Role changes.
@@ -528,12 +617,12 @@ The MVP is considered complete when:
 
 1. Application Owner can create a client account.
 2. Application Owner can assign manual subscription status and active booth allowance.
-3. Client Owner can create a location, booth, user, and package inside their client account.
-4. Client Owner or Client Admin can assign packages to a booth.
+3. Client Owner can create a location, booth, user, and booth offer inside their client account.
+4. Client Owner or Client Admin can activate exactly one booth offer for a booth.
 5. Cashier can be assigned to exactly one booth.
-6. Booth UI displays only active packages assigned to its booth.
+6. Booth UI displays only the booth's active offer.
 7. Booth UI displays client branding and active session text.
-8. Customer can choose package and cash payment.
+8. Customer can confirm the active offer and choose cash payment when payment is required.
 9. Cashier can approve cash payment.
 10. Pending cash payments expire after the configured timeout.
 11. Paid transactions command the booth agent to start a LumaBooth session.
@@ -542,9 +631,12 @@ The MVP is considered complete when:
 14. Application Owner dashboard shows client and subscription health.
 15. Client Owner dashboard shows client sales and booth status.
 16. Cashier dashboard shows only the assigned booth.
-17. Maya Checkout QR and Maya Terminal ECR are visible only as coming soon setup flows.
+17. Maya Checkout QR and Maya Terminal ECR are visible only as coming soon setup flows and locked booth assignment options.
+18. Per-session transactions can accept post-session extra print add-ons.
+19. Time-unlimited and session-count offers reject extra print add-ons.
+20. Booth payment options are filtered by booth assignment, and cash is the only runtime-enabled MVP payment option.
 
 ## Open Decisions
 
-- Exact LumaBooth API command format and preset mapping.
+- Exact LumaBooth API command format, session mode mapping, print-copy command behavior, and event trigger payload mapping.
 - Exact Maya production verification steps with the client's Maya account manager.

@@ -63,6 +63,6 @@ Local endpoints:
 
 ## Product Summary
 
-The Application Owner sells PhotoBIZ subscriptions to client businesses on a per-active-booth basis. Clients manage their own locations, booths, packages, staff, active session appearance, transactions, and reports.
+The Application Owner sells PhotoBIZ subscriptions to client businesses on a per-active-booth basis. Clients manage their own locations, booths, configurable booth offer packages, staff, booth-level appearance, payment option assignments, transactions, and reports.
 
-Customers use a booth screen to choose a package, select cash payment, complete cashier approval, and start a LumaBooth session. A nearby cashier approves cash payments for MVP. Maya Checkout QR and Maya Terminal ECR are documented as coming soon setup flows. LumaBooth handles capture, printing through a DNP RX1 printer, and digital sharing through LumaBooth/Fotoshare.
+For MVP, customers use the Booth UI to review the booth's active offer and complete cash payment when payment is required. Time-unlimited and session-count plans are activated by the cashier, then the Booth UI goes straight from welcome to LumaBooth and back. Maya Checkout QR and Maya Terminal ECR are documented as locked setup flows for future integration. LumaBooth handles capture, printing through a DNP RX1 printer, and digital sharing through LumaBooth/Fotoshare.
