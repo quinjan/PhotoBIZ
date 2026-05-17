@@ -15,6 +15,94 @@ namespace PhotoBIZ.Api.Tests;
 public sealed class PhotoBizManagementApiTests
 {
     [Fact]
+    public async Task ApplicationOwnerCanOnboardClientWithOwnerCredentials()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var ownerEmail = await factory.SeedApplicationOwnerAsync();
+        await LoginAsync(client, ownerEmail);
+
+        var response = await client.PostAsJsonAsync("/api/admin/clients/onboard", new
+        {
+            clientName = "The Memory Box PH",
+            ownerName = "Julie Santos",
+            ownerEmail = "julie@memorybox.test",
+            ownerPassword = PhotoBizApiFactory.Password
+        });
+
+        response.EnsureSuccessStatusCode();
+        var onboarded = await response.Content.ReadFromJsonAsync<ClientOnboardingResponse>();
+
+        Assert.NotNull(onboarded);
+        Assert.Equal("The Memory Box PH", onboarded.Client.Name);
+        Assert.Equal(StatusValues.User.ClientOwner, onboarded.Owner.Role);
+        Assert.Equal(onboarded.Client.Id, onboarded.Owner.ClientAccountId);
+
+        await LoginAsync(client, "julie@memorybox.test");
+        var session = await client.GetFromJsonAsync<AuthSessionResponse>("/api/auth/session");
+
+        Assert.NotNull(session);
+        Assert.Equal(StatusValues.User.ClientOwner, session.Role);
+        Assert.Equal(onboarded.Client.Id, session.ClientAccountId);
+    }
+
+    [Fact]
+    public async Task ApplicationOwnerCanCreateAndUpdateSubscriptionDefinition()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var ownerEmail = await factory.SeedApplicationOwnerAsync();
+        await LoginAsync(client, ownerEmail);
+
+        var createResponse = await client.PostAsJsonAsync("/api/admin/subscription-plans", new
+        {
+            name = "Per Booth MVP",
+            pricePerBoothCents = 200000,
+            currency = "PHP"
+        });
+
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionPlanSummary>();
+
+        Assert.NotNull(created);
+        Assert.Equal("Per Booth MVP", created.Name);
+        Assert.Equal(200000, created.PricePerBoothCents);
+        Assert.True(created.Active);
+
+        var updateResponse = await client.PutAsJsonAsync($"/api/admin/subscription-plans/{created.Id}", new
+        {
+            name = "Launch Subscription",
+            pricePerBoothCents = 250000,
+            currency = "PHP",
+            active = false
+        });
+
+        updateResponse.EnsureSuccessStatusCode();
+        var updated = await updateResponse.Content.ReadFromJsonAsync<SubscriptionPlanSummary>();
+
+        Assert.NotNull(updated);
+        Assert.Equal(created.Id, updated.Id);
+        Assert.Equal("Launch Subscription", updated.Name);
+        Assert.Equal(250000, updated.PricePerBoothCents);
+        Assert.False(updated.Active);
+
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        var overviewSubscription = Assert.Single(
+            overview.SubscriptionPlans,
+            item => item.Id == created.Id);
+        Assert.Equal("Launch Subscription", overviewSubscription.Name);
+        Assert.False(overviewSubscription.Active);
+    }
+
+    [Fact]
     public async Task CreateBoothRejectsWhenSubscriptionAllowanceIsReached()
     {
         await using var factory = new PhotoBizApiFactory();

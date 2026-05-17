@@ -1,196 +1,529 @@
-<main class="admin-shell">
-  @if (!session()) {
-    <section class="login-card">
-      <p class="eyebrow">PhotoBIZ</p>
-      <h1>Operations Console</h1>
-      <label>
-        Email
+@if (!session()) {
+  <main class="auth-screen">
+    <section class="auth-hero">
+      <div class="auth-brand-lockup">
+        <div class="auth-brand-mark">PB</div>
+        <div class="auth-brand-name">PhotoBIZ</div>
+      </div>
+    </section>
+    <section class="auth-panel">
+      <div>
+        <h1 class="admin-title">Sign in</h1>
+      </div>
+      <label class="field">
+        <span>EMAIL</span>
         <input [ngModel]="loginEmail()" (ngModelChange)="loginEmail.set($event)" />
       </label>
-      <label>
-        Password
+      <label class="field">
+        <span>PASSWORD</span>
         <input
           type="password"
           [ngModel]="loginPassword()"
           (ngModelChange)="loginPassword.set($event)"
         />
       </label>
-      <button type="button" (click)="login()">Sign In</button>
+      <button type="button" class="button primary fill" (click)="login()">Sign In</button>
       @if (error()) {
         <p class="error">{{ error() }}</p>
       }
     </section>
-  } @else {
-    <aside class="sidebar">
-      <div>
-        <p class="eyebrow">PhotoBIZ</p>
-        <h1>Operations</h1>
+  </main>
+} @else {
+  <main class="admin-shell">
+    <aside class="side">
+      <div class="brand">
+        <div class="brand-mark">PB</div>
+        <span>PhotoBIZ</span>
       </div>
-      <nav>
+      <nav class="nav">
         @for (item of visibleNavItems(); track item.key) {
           <button
             type="button"
+            class="nav-item"
             [class.active]="activeView() === item.key"
             (click)="setView(item.key)"
           >
-            {{ item.label }}
+            <span class="nav-icon">-</span>{{ item.label }}
           </button>
         }
       </nav>
-      <div class="session-card">
+      <div class="side-footer">
         <strong>{{ session()?.name }}</strong>
         <span>{{ session()?.role }}</span>
-        <button type="button" class="ghost" (click)="logout()">Sign Out</button>
+        <button type="button" class="button dark" (click)="logout()">Sign Out</button>
       </div>
     </aside>
 
-    <section class="workspace">
+    <section class="main">
       <header class="topbar">
         <div>
-          <h2>{{ activeViewTitle() }}</h2>
-          <span>{{ message() }}</span>
+          <p class="eyebrow">
+            @if (isApplicationOwner()) {
+              Application Owner / Platform view
+            } @else {
+              {{ session()?.role }}
+            }
+          </p>
+          <h1 class="admin-title">{{ activeViewTitle() }}</h1>
         </div>
-        <strong>{{ loading() ? 'Working' : 'Ready' }}</strong>
+        <div class="top-actions page-actions">
+          @if (isApplicationOwner() && activeView() === 'clients') {
+            <button type="button" class="button primary" (click)="openClientModal()">
+              + New Client
+            </button>
+          }
+          @if (isApplicationOwner() && activeView() === 'subscriptions') {
+            <button type="button" class="button primary" (click)="startNewSubscriptionDefinition()">
+              + Add Subscription
+            </button>
+          }
+          @if (isApplicationOwner() && activeView() === 'client-detail') {
+            @if (selectedClient(); as client) {
+              @if (client.status === 'SUSPENDED') {
+                <button
+                  type="button"
+                  class="button green-button"
+                  (click)="updateClientStatus(client, 'ACTIVE')"
+                >
+                  Activate Client
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="button danger"
+                  (click)="updateClientStatus(client, 'SUSPENDED')"
+                >
+                  Suspend Client
+                </button>
+              }
+              <button type="button" class="button" (click)="updateClientStatus(client, 'ARCHIVED')">
+                Archive
+              </button>
+            }
+          }
+        </div>
       </header>
 
       @if (error()) {
         <p class="error banner">{{ error() }}</p>
       }
 
-      @if (activeView() === 'dashboard') {
-        <section class="metric-grid">
-          <article>
-            <span>Active booths</span>
-            <strong>{{ overview()?.reports?.platform?.activeBooths ?? activeBooths().length }}</strong>
-          </article>
-          <article>
-            <span>Offline booths</span>
-            <strong>{{ overview()?.reports?.platform?.offlineBooths ?? offlineBooths().length }}</strong>
-          </article>
-          <article>
-            <span>Pending cash</span>
-            <strong>{{ overview()?.reports?.sales?.pendingCashCount ?? pendingTransactions().length }}</strong>
-          </article>
-          <article>
-            <span>Gross sales</span>
-            <strong>{{ formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? grossSalesCents()) }}</strong>
-          </article>
-        </section>
+      @if (isApplicationOwner()) {
+        @if (activeView() === 'dashboard') {
+          <section class="metric-grid">
+            <article class="card">
+              <span class="metric-label">Active clients</span>
+              <strong class="metric-value">{{
+                overview()?.reports?.platform?.activeClients ?? 0
+              }}</strong>
+              <span class="metric-note"
+                >{{ overview()?.reports?.platform?.trialSubscriptions ?? 0 }} trial accounts</span
+              >
+            </article>
+            <article class="card">
+              <span class="metric-label">Manual MRR</span>
+              <strong class="metric-value">{{
+                formatMoney(overview()?.reports?.platform?.manualMrrCents ?? 0)
+              }}</strong>
+              <span class="metric-note">Monthly price per booth across client subscriptions</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Total assigned booths</span>
+              <strong class="metric-value">{{
+                overview()?.reports?.platform?.activeBooths ?? 0
+              }}</strong>
+              <span class="metric-note">Active subscribed booth seats</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Suspended clients</span>
+              <strong class="metric-value">{{
+                overview()?.reports?.platform?.suspendedSubscriptions ?? 0
+              }}</strong>
+              <span class="metric-note amber">New sessions blocked</span>
+            </article>
+          </section>
 
-        <section class="content-grid two">
-          <article class="panel">
-            <header>
-              <h3>Booth Status</h3>
-            </header>
-            <div class="table-list">
-              @for (booth of overview()?.booths ?? []; track booth.id) {
-                <div class="row">
-                  <div>
-                    <strong>{{ booth.name }}</strong>
-                    <span>{{ locationNameFor(booth.locationId) }} / {{ booth.code }}</span>
+          <section class="split">
+            <article class="card">
+              <div class="section-head">
+                <h2 class="section-title">Client Health</h2>
+                <button type="button" class="button" (click)="setView('clients')">
+                  View clients
+                </button>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th>Status</th>
+                    <th>Booths</th>
+                    <th>Allowance</th>
+                    <th>Owner</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (client of platformClients(); track client.id) {
+                    @let subscription = latestSubscriptionFor(client.id);
+                    <tr>
+                      <td>
+                        <strong>{{ client.name }}</strong>
+                      </td>
+                      <td>
+                        <span
+                          class="status"
+                          [class.green]="client.status === 'ACTIVE'"
+                          [class.red]="client.status !== 'ACTIVE'"
+                          ><span class="dot"></span>{{ client.status }}</span
+                        >
+                      </td>
+                      <td>{{ activeBoothCountForClient(client.id) }}</td>
+                      <td>{{ subscription?.activeBoothAllowance ?? 0 }}</td>
+                      <td>{{ ownerForClient(client.id)?.name ?? 'No owner' }}</td>
+                      <td>
+                        <button type="button" class="button" (click)="viewClient(client)">
+                          Manage
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </article>
+
+            <article class="card">
+              <div class="section-head"><h2 class="section-title">Subscription Status</h2></div>
+              <div class="report-bars">
+                <div class="bar-row">
+                  <span>Active</span>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill"
+                      [style.width.%]="overview()?.reports?.platform?.activeSubscriptions ? 78 : 0"
+                    ></div>
                   </div>
-                  <span class="pill">{{ booth.currentState }}</span>
+                  <strong>{{ overview()?.reports?.platform?.activeSubscriptions ?? 0 }}</strong>
                 </div>
-              }
-            </div>
-          </article>
+                <div class="bar-row">
+                  <span>Trial</span>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill"
+                      [style.width.%]="overview()?.reports?.platform?.trialSubscriptions ? 24 : 0"
+                    ></div>
+                  </div>
+                  <strong>{{ overview()?.reports?.platform?.trialSubscriptions ?? 0 }}</strong>
+                </div>
+                <div class="bar-row">
+                  <span>Past Due</span>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill amber-fill"
+                      [style.width.%]="overview()?.reports?.platform?.pastDueSubscriptions ? 18 : 0"
+                    ></div>
+                  </div>
+                  <strong>{{ overview()?.reports?.platform?.pastDueSubscriptions ?? 0 }}</strong>
+                </div>
+                <div class="bar-row">
+                  <span>Suspended</span>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill red-fill"
+                      [style.width.%]="
+                        overview()?.reports?.platform?.suspendedSubscriptions ? 18 : 0
+                      "
+                    ></div>
+                  </div>
+                  <strong>{{ overview()?.reports?.platform?.suspendedSubscriptions ?? 0 }}</strong>
+                </div>
+              </div>
+            </article>
+          </section>
+        }
 
-          <article class="panel">
-            <header>
-              <h3>Recent Transactions</h3>
-            </header>
-            <div class="table-list">
-              @for (transaction of overview()?.transactions ?? []; track transaction.id) {
-                <div class="row">
+        @if (activeView() === 'clients') {
+          <section class="card">
+            <div class="section-head grid-head">
+              <h2 class="section-title">Subscribed Clients</h2>
+              <input
+                class="search"
+                placeholder="Search client, owner, status"
+                [ngModel]="clientSearch()"
+                (ngModelChange)="clientSearch.set($event)"
+              />
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Owner</th>
+                  <th>Subscription</th>
+                  <th>Booths</th>
+                  <th>Allowance</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (client of platformClients(); track client.id) {
+                  @let owner = ownerForClient(client.id);
+                  @let subscription = latestSubscriptionFor(client.id);
+                  <tr>
+                    <td>
+                      <strong>{{ client.name }}</strong
+                      ><br /><span class="booth-meta">{{ client.id }}</span>
+                    </td>
+                    <td>{{ owner?.name ?? 'No owner' }}</td>
+                    <td>{{ planNameFor(subscription?.subscriptionPlanId ?? null) }}</td>
+                    <td>{{ activeBoothCountForClient(client.id) }}</td>
+                    <td>{{ subscription?.activeBoothAllowance ?? 0 }}</td>
+                    <td>
+                      <span
+                        class="status"
+                        [class.green]="client.status === 'ACTIVE'"
+                        [class.red]="client.status !== 'ACTIVE'"
+                        ><span class="dot"></span>{{ client.status }}</span
+                      >
+                    </td>
+                    <td>
+                      <button type="button" class="button" (click)="viewClient(client)">
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
+
+        @if (activeView() === 'client-detail') {
+          @if (selectedClient(); as client) {
+            @let subscription = latestSubscriptionFor(client.id);
+            @let owner = ownerForClient(client.id);
+            <section class="metric-grid three">
+              <article class="card">
+                <span class="metric-label">Subscription</span>
+                <strong class="metric-value compact">{{ subscription?.status ?? 'NONE' }}</strong>
+                <span class="metric-note">{{
+                  planNameFor(subscription?.subscriptionPlanId ?? null)
+                }}</span>
+              </article>
+              <article class="card">
+                <span class="metric-label">Booth usage</span>
+                <strong class="metric-value"
+                  >{{ activeBoothCountForClient(client.id) }} /
+                  {{ subscription?.activeBoothAllowance ?? 0 }}</strong
+                >
+                <span class="metric-note">Active booth allowance</span>
+              </article>
+              <article class="card">
+                <span class="metric-label">Client status</span>
+                <strong class="metric-value compact">{{ client.status }}</strong>
+                <span class="metric-note">Tenant access state</span>
+              </article>
+            </section>
+
+            <section class="split detail-layout">
+              <article class="card">
+                <div class="section-head">
+                  <h2 class="section-title">Client Profile</h2>
+                </div>
+                <div class="form-row">
+                  <label class="field"
+                    ><span>CLIENT NAME</span><input [value]="client.name" readonly
+                  /></label>
+                  <label class="field"
+                    ><span>OWNER EMAIL</span><input [value]="owner?.email ?? 'No owner'" readonly
+                  /></label>
+                </div>
+                <div class="assignment-panel">
                   <div>
-                    <strong>{{ transaction.transactionNumber }}</strong>
-                    <span
-                      >{{ boothNameFor(transaction.boothId) }} /
-                      {{ formatMoney(transaction.amountCents) }}</span
+                    <span class="metric-label">Assigned Subscription</span>
+                    <strong>{{ planNameFor(subscription?.subscriptionPlanId ?? null) }}</strong>
+                    <span class="booth-meta"
+                      >{{ subscription?.status ?? 'NONE' }} /
+                      {{ subscription?.activeBoothAllowance ?? 0 }} booth allowance /
+                      {{ formatMoney(subscriptionMonthlyTotalCents(subscription)) }} monthly</span
                     >
                   </div>
-                  <span class="pill">{{ transaction.status }}</span>
+                  @if (subscription) {
+                    <button type="button" class="button" (click)="openSubscriptionModal(client.id)">
+                      Change Subscription
+                    </button>
+                  } @else {
+                    <button
+                      type="button"
+                      class="button primary"
+                      (click)="openSubscriptionModal(client.id)"
+                    >
+                      Assign Subscription
+                    </button>
+                  }
+                </div>
+              </article>
+
+              <article class="card">
+                <div class="section-head"><h2 class="section-title">Booths</h2></div>
+                <div class="booth-list">
+                  @for (booth of overview()?.booths ?? []; track booth.id) {
+                    @if (booth.clientAccountId === client.id) {
+                      <div class="booth-row">
+                        <div>
+                          <strong>{{ booth.name }}</strong>
+                          <span>{{ booth.code }} / {{ booth.currentState }}</span>
+                        </div>
+                        <span class="status green"
+                          ><span class="dot"></span>{{ booth.status }}</span
+                        >
+                      </div>
+                    }
+                  }
+                </div>
+              </article>
+            </section>
+          }
+        }
+
+        @if (activeView() === 'subscriptions') {
+          <section class="card">
+            <div class="section-head grid-head">
+              <h2 class="section-title">Subscriptions</h2>
+              <span class="booth-meta">Price per booth is per month.</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Subscription</th>
+                  <th>Price Per Booth</th>
+                  <th>Status</th>
+                  <th>Assigned Clients</th>
+                  <th>Assigned Allowance</th>
+                  <th>Monthly MRR</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (subscription of overview()?.subscriptionPlans ?? []; track subscription.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ subscription.name }}</strong
+                      ><br /><span class="booth-meta">{{ subscription.id }}</span>
+                    </td>
+                    <td>{{ formatMoney(subscription.pricePerBoothCents) }} / month</td>
+                    <td>
+                      <span
+                        class="status"
+                        [class.green]="subscription.active"
+                        [class.red]="!subscription.active"
+                      >
+                        <span class="dot"></span>{{ subscription.active ? 'ACTIVE' : 'INACTIVE' }}
+                      </span>
+                    </td>
+                    <td>{{ assignedClientCountForSubscription(subscription.id) }}</td>
+                    <td>{{ assignedAllowanceForSubscription(subscription.id) }}</td>
+                    <td>{{ formatMoney(subscriptionDefinitionMrrCents(subscription.id)) }}</td>
+                    <td>
+                      <button type="button" class="button" (click)="viewSubscription(subscription)">
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
+
+        @if (activeView() === 'subscription-detail') {
+          <section class="form-layout">
+            <article class="card form-card">
+              <div class="form-row">
+                <label class="field">
+                  <span>SUBSCRIPTION</span>
+                  <input
+                    [ngModel]="planName()"
+                    name="subscriptionName"
+                    (ngModelChange)="planName.set($event)"
+                  />
+                </label>
+                <label class="field">
+                  <span>STATUS</span>
+                  <select
+                    [ngModel]="subscriptionActive()"
+                    name="subscriptionActive"
+                    (ngModelChange)="subscriptionActive.set($event)"
+                  >
+                    <option [ngValue]="true">ACTIVE</option>
+                    <option [ngValue]="false">INACTIVE</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row">
+                <label class="field">
+                  <span>PRICE PER BOOTH / MONTH</span>
+                  <input
+                    type="number"
+                    min="0"
+                    [ngModel]="planPrice() / 100"
+                    name="subscriptionPrice"
+                    (ngModelChange)="setPlanPriceFromPesos($event)"
+                  />
+                </label>
+                <label class="field">
+                  <span>CURRENCY</span>
+                  <input value="PHP" readonly />
+                </label>
+              </div>
+              <div class="top-actions">
+                <button type="button" class="button primary" (click)="saveSubscriptionDefinition()">
+                  Save Subscription
+                </button>
+                <button type="button" class="button" (click)="setView('subscriptions')">
+                  Cancel
+                </button>
+              </div>
+            </article>
+            <article class="card">
+              <div class="section-head">
+                <h2 class="section-title">Subscription Usage</h2>
+                <span class="booth-meta">Client assignments use this monthly booth price.</span>
+              </div>
+              @if (selectedSubscriptionDefinition(); as subscription) {
+                <div class="metric-grid single">
+                  <article class="metric-tile">
+                    <span class="metric-label">Assigned clients</span>
+                    <strong class="metric-value">{{
+                      assignedClientCountForSubscription(subscription.id)
+                    }}</strong>
+                  </article>
+                  <article class="metric-tile">
+                    <span class="metric-label">Assigned booth allowance</span>
+                    <strong class="metric-value">{{
+                      assignedAllowanceForSubscription(subscription.id)
+                    }}</strong>
+                  </article>
+                  <article class="metric-tile">
+                    <span class="metric-label">Monthly MRR</span>
+                    <strong class="metric-value">{{
+                      formatMoney(subscriptionDefinitionMrrCents(subscription.id))
+                    }}</strong>
+                  </article>
+                </div>
+              } @else {
+                <div class="danger-zone">
+                  Create the subscription first, then assign it from a client account detail page.
                 </div>
               }
-            </div>
-          </article>
-        </section>
-      }
+            </article>
+          </section>
+        }
 
-      @if (activeView() === 'reports') {
-        <section class="metric-grid">
-          <article>
-            <span>Today sales</span>
-            <strong>{{ formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? 0) }}</strong>
-          </article>
-          <article>
-            <span>Today sessions</span>
-            <strong>{{ overview()?.reports?.sales?.todayCompletedSessions ?? 0 }}</strong>
-          </article>
-          <article>
-            <span>Cash sales</span>
-            <strong>{{ formatMoney(overview()?.reports?.sales?.todayCashSalesCents ?? 0) }}</strong>
-          </article>
-          <article>
-            <span>Manual MRR</span>
-            <strong>{{ formatMoney(overview()?.reports?.platform?.manualMrrCents ?? 0) }}</strong>
-          </article>
-        </section>
-
-        <section class="content-grid two">
-          <article class="panel">
-            <header><h3>Booth Sales</h3></header>
+        @if (activeView() === 'audit') {
+          <section class="card">
+            <div class="section-head"><h2 class="section-title">Client Subscription Audit</h2></div>
             <div class="table-list">
-              @for (booth of overview()?.reports?.boothSales ?? []; track booth.boothId) {
-                <div class="row">
-                  <div>
-                    <strong>{{ booth.boothName }}</strong>
-                    <span>{{ booth.completedSessions }} sessions</span>
-                  </div>
-                  <span class="pill">{{ formatMoney(booth.grossSalesCents) }}</span>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Offer Sales</h3></header>
-            <div class="table-list">
-              @for (offer of overview()?.reports?.offerSales ?? []; track offer.offerId) {
-                <div class="row">
-                  <div>
-                    <strong>{{ offer.offerName }}</strong>
-                    <span>{{ offer.offerType }} / {{ offer.completedSessions }} sessions</span>
-                  </div>
-                  <span class="pill">{{ formatMoney(offer.grossSalesCents) }}</span>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel span-two">
-            <header><h3>Location Sales</h3></header>
-            <div class="table-list">
-              @for (location of overview()?.reports?.locationSales ?? []; track location.locationId) {
-                <div class="row">
-                  <div>
-                    <strong>{{ location.locationName }}</strong>
-                    <span>{{ location.completedSessions }} sessions</span>
-                  </div>
-                  <span class="pill">{{ formatMoney(location.grossSalesCents) }}</span>
-                </div>
-              }
-            </div>
-          </article>
-        </section>
-      }
-
-      @if (activeView() === 'audit') {
-        <section class="content-grid two">
-          <article class="panel span-two">
-            <header><h3>Recent Audit Events</h3></header>
-            <div class="table-list">
-              @for (audit of overview()?.auditLogs ?? []; track audit.id) {
+              @for (audit of subscriptionAuditLogs(); track audit.id) {
                 <div class="row">
                   <div>
                     <strong>{{ audit.action }}</strong>
@@ -200,432 +533,543 @@
                 </div>
               }
             </div>
-          </article>
-        </section>
-      }
-
-      @if (activeView() === 'setup') {
-        <section class="content-grid three">
-          <article class="panel">
-            <header><h3>Client</h3></header>
-            <label
-              >Client name <input [ngModel]="clientName()" (ngModelChange)="clientName.set($event)"
-            /></label>
-            <button type="button" (click)="createClient()">Create Client</button>
-          </article>
-
-          <article class="panel">
-            <header><h3>Subscription</h3></header>
-            <label
-              >Plan name <input [ngModel]="planName()" (ngModelChange)="planName.set($event)"
-            /></label>
-            <label
-              >Price
-              <input type="number" [ngModel]="planPrice()" (ngModelChange)="planPrice.set(+$event)"
-            /></label>
-            <label
-              >Booth allowance
-              <input
-                type="number"
-                [ngModel]="subscriptionAllowance()"
-                (ngModelChange)="subscriptionAllowance.set(+$event)"
-            /></label>
-            <div class="actions">
-              <button type="button" (click)="createPlan()">Create Plan</button>
-              <button type="button" class="secondary" (click)="assignSubscription()">Assign</button>
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Users</h3></header>
-            <label
-              >Owner name <input [ngModel]="ownerName()" (ngModelChange)="ownerName.set($event)"
-            /></label>
-            <label
-              >Owner email <input [ngModel]="ownerEmail()" (ngModelChange)="ownerEmail.set($event)"
-            /></label>
-            <label
-              >Cashier email
-              <input [ngModel]="cashierEmail()" (ngModelChange)="cashierEmail.set($event)"
-            /></label>
-            <div class="actions">
-              <button type="button" (click)="createOwner()">Create Owner</button>
-              <button type="button" class="secondary" (click)="createCashier()">
-                Create Cashier
-              </button>
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Location</h3></header>
-            <label
-              >Location name
-              <input [ngModel]="locationName()" (ngModelChange)="locationName.set($event)"
-            /></label>
-            <button type="button" (click)="createLocation()">Create Location</button>
-          </article>
-
-          <article class="panel">
-            <header><h3>Booth</h3></header>
-            <label
-              >Booth name <input [ngModel]="boothName()" (ngModelChange)="boothName.set($event)"
-            /></label>
-            <label
-              >Booth code <input [ngModel]="boothCode()" (ngModelChange)="boothCode.set($event)"
-            /></label>
-            <button type="button" (click)="createBooth()">Create Booth</button>
-          </article>
-
-          <article class="panel">
-            <header><h3>Offer</h3></header>
-            <label
-              >Offer name <input [ngModel]="offerName()" (ngModelChange)="offerName.set($event)"
-            /></label>
-            <label
-              >Price
-              <input
-                type="number"
-                [ngModel]="offerPrice()"
-                (ngModelChange)="offerPrice.set(+$event)"
-            /></label>
-            <div class="actions">
-              <button type="button" (click)="createOffer()">Create Offer</button>
-              <button type="button" class="secondary" (click)="activateOffer()">Activate</button>
-            </div>
-          </article>
-        </section>
-
-        @if (boothSecret()) {
-          <section class="panel secret-panel">
-            <header><h3>Booth Credentials</h3></header>
-            <code>Kiosk token: {{ boothSecret()?.kioskToken }}</code>
-            <code>Agent credential: {{ boothSecret()?.agentCredential }}</code>
           </section>
         }
-      }
+      } @else {
+        @if (activeView() === 'dashboard') {
+          <section class="metric-grid">
+            <article class="card">
+              <span class="metric-label">Active booths</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.platform?.activeBooths ?? activeBooths().length
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Offline booths</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.platform?.offlineBooths ?? offlineBooths().length
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Pending cash</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.sales?.pendingCashCount ?? pendingTransactions().length
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Gross sales</span
+              ><strong class="metric-value">{{
+                formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? grossSalesCents())
+              }}</strong>
+            </article>
+          </section>
 
-      @if (activeView() === 'clients') {
-        <section class="content-grid two">
-          <article class="panel">
-            <header><h3>Clients</h3></header>
-            <div class="table-list">
-              @for (client of overview()?.clients ?? []; track client.id) {
-                <div class="row">
-                  <div>
-                    <strong>{{ client.name }}</strong>
-                    <span>{{ client.status }}</span>
+          <section class="content-grid two">
+            <article class="card">
+              <header><h3 class="section-title">Booth Status</h3></header>
+              <div class="table-list">
+                @for (booth of overview()?.booths ?? []; track booth.id) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ booth.name }}</strong
+                      ><span>{{ locationNameFor(booth.locationId) }} / {{ booth.code }}</span>
+                    </div>
+                    <span class="pill">{{ booth.currentState }}</span>
                   </div>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      class="secondary"
-                      (click)="updateClientStatus(client, 'ACTIVE')"
-                    >
-                      Activate
-                    </button>
-                    <button
-                      type="button"
-                      class="warning"
-                      (click)="updateClientStatus(client, 'SUSPENDED')"
-                    >
-                      Suspend
-                    </button>
-                    <button
-                      type="button"
-                      class="ghost"
-                      (click)="updateClientStatus(client, 'ARCHIVED')"
-                    >
-                      Archive
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Subscriptions</h3></header>
-            <div class="table-list">
-              @for (subscription of overview()?.subscriptions ?? []; track subscription.id) {
-                <div class="row">
-                  <div>
-                    <strong>{{ clientNameFor(subscription.clientAccountId) }}</strong>
-                    <span
-                      >{{ subscription.status }} /
-                      {{ subscription.activeBoothAllowance }} booths</span
-                    >
-                  </div>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      class="secondary"
-                      (click)="updateSubscription(subscription, 'ACTIVE')"
-                    >
-                      Active
-                    </button>
-                    <button
-                      type="button"
-                      class="warning"
-                      (click)="updateSubscription(subscription, 'PAST_DUE')"
-                    >
-                      Past Due
-                    </button>
-                    <button
-                      type="button"
-                      class="ghost"
-                      (click)="
-                        updateSubscription(
-                          subscription,
-                          subscription.status,
-                          subscription.activeBoothAllowance + 1
-                        )
-                      "
-                    >
-                      +1 Booth
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel span-two">
-            <header><h3>Users</h3></header>
-            <div class="table-list">
-              @for (user of overview()?.users ?? []; track user.id) {
-                <div class="row">
-                  <div>
-                    <strong>{{ user.name }}</strong>
-                    <span
-                      >{{ user.role }} / {{ user.status }} /
-                      {{ boothNameFor(user.assignedBoothId) }}</span
-                    >
-                  </div>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      class="secondary"
-                      (click)="updateUserStatus(user, 'ACTIVE')"
-                    >
-                      Activate
-                    </button>
-                    <button
-                      type="button"
-                      class="ghost"
-                      (click)="updateUserStatus(user, 'INACTIVE')"
-                    >
-                      Deactivate
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </article>
-        </section>
-      }
-
-      @if (activeView() === 'booths') {
-        <section class="content-grid two">
-          <article class="panel span-two">
-            <header><h3>Booths</h3></header>
-            <div class="table-list">
-              @for (booth of overview()?.booths ?? []; track booth.id) {
-                <div class="row">
-                  <div>
-                    <strong>{{ booth.name }}</strong>
-                    <span
-                      >{{ booth.code }} / {{ booth.status }} / {{ booth.currentState }} / Offer:
-                      {{ activeOfferFor(booth.id)?.name ?? 'None' }}</span
-                    >
-                  </div>
-                  <div class="actions">
-                    <button type="button" class="secondary" (click)="activateOffer(booth.id)">
-                      Activate Offer
-                    </button>
-                    <button type="button" (click)="assignCash(booth.id)">Cash</button>
-                    <button
-                      type="button"
-                      class="secondary"
-                      (click)="updateBoothStatus(booth, 'ACTIVE')"
-                    >
-                      Enable
-                    </button>
-                    <button
-                      type="button"
-                      class="ghost"
-                      (click)="updateBoothStatus(booth, 'INACTIVE')"
-                    >
-                      Disable
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Offers</h3></header>
-            <div class="table-list">
-              @for (offer of overview()?.offers ?? []; track offer.id) {
-                <div class="row compact">
-                  <div>
-                    <strong>{{ offer.name }}</strong>
-                    <span
-                      >{{ offer.offerType }} / {{ formatMoney(offer.priceCents) }} /
-                      {{ offer.active ? 'ACTIVE' : 'INACTIVE' }}</span
-                    >
-                  </div>
-                  <div class="actions">
-                    <button
-                      type="button"
-                      class="secondary"
-                      (click)="updateOfferActive(offer, true)"
-                    >
-                      Enable
-                    </button>
-                    <button type="button" class="ghost" (click)="updateOfferActive(offer, false)">
-                      Disable
-                    </button>
-                  </div>
-                </div>
-              }
-            </div>
-          </article>
-
-          <article class="panel">
-            <header><h3>Payment Assignments</h3></header>
-            <div class="table-list">
-              @for (assignment of overview()?.paymentAssignments ?? []; track assignment.id) {
-                <div class="row compact">
-                  <div>
-                    <strong>{{ boothNameFor(assignment.boothId) }}</strong>
-                    <span
-                      >{{ assignment.paymentMethod }} / {{ assignment.status }} / Runtime
-                      {{ assignment.runtimeEnabled ? 'ON' : 'OFF' }}</span
-                    >
-                  </div>
-                  <button type="button" class="ghost" (click)="disablePayment(assignment)">
-                    Disable
-                  </button>
-                </div>
-              }
-            </div>
-          </article>
-        </section>
-      }
-
-      @if (activeView() === 'pos') {
-        <section class="content-grid two">
-          <article class="panel pos-card">
-            @if (assignedBooth(); as booth) {
-              <header>
-                <h3>{{ booth.name }}</h3>
-                <span class="pill">{{ booth.currentState }}</span>
-              </header>
-            } @else {
-              <header>
-                <h3>Assigned Booth</h3>
-                <span class="pill">OFFLINE</span>
-              </header>
-            }
-            @if (cashierTransaction(); as transaction) {
-              <strong>{{ transaction.transactionNumber }}</strong>
-              <p>
-                {{ transaction.transactionType }} / {{ transaction.status }} /
-                {{ transaction.paymentMethod }} /
-                {{ formatMoney(transaction.amountCents) }}
-                @if (transaction.extraPrintCount > 0) {
-                  / {{ transaction.extraPrintCount }} copies
-                }
-              </p>
-              <div class="actions">
-                @if (transaction.status === 'PENDING_CASH') {
-                  <button type="button" (click)="approveCash(transaction.id)">Approve Cash</button>
-                  <button type="button" class="warning" (click)="cancelTransaction(transaction.id)">
-                    Cancel
-                  </button>
-                }
-                @if (assignedBooth(); as booth) {
-                  <button type="button" class="secondary" (click)="returnBoothToWelcome(booth.id)">
-                    Return To Welcome
-                  </button>
                 }
               </div>
-            } @else {
-              <p>No active payment request.</p>
-              @if (extraPrintCandidate(); as transaction) {
-                <div class="status-panel">
-                  <strong>Extra Prints</strong>
-                  <span>{{ transaction.transactionNumber }}</span>
-                  <label>
-                    Copies
-                    <select
-                      [ngModel]="extraPrintCopies()"
-                      (ngModelChange)="extraPrintCopies.set(+$event)"
-                    >
-                      @for (copyCount of copyOptions(); track copyCount) {
-                        <option [ngValue]="copyCount">{{ copyCount }}</option>
-                      }
-                    </select>
-                  </label>
-                  <p>Total {{ formatMoney(extraPrintTotalCents()) }}</p>
-                  <button type="button" (click)="createExtraPrintAddOn(transaction.id)">
-                    Create Extra Prints
-                  </button>
-                </div>
-              }
-              @if (assignedBooth(); as booth) {
-                <button type="button" class="secondary" (click)="returnBoothToWelcome(booth.id)">
-                  Return To Welcome
-                </button>
-              }
-            }
-          </article>
+            </article>
 
-          <article class="panel">
-            <header><h3>Booth Transactions</h3></header>
-            <div class="table-list">
-              @if (assignedBooth(); as booth) {
-                @for (transaction of overview()?.transactions ?? []; track transaction.id) {
-                  @if (transaction.boothId === booth.id) {
-                    <div class="row">
-                      <div>
-                        <strong>{{ transaction.transactionNumber }}</strong>
-                        <span
-                          >{{ transaction.transactionType }} / {{ transaction.status }} /
-                          {{ formatMoney(transaction.amountCents) }}
-                          @if (transaction.extraPrintCount > 0) {
-                            / {{ transaction.extraPrintCount }} copies
-                          }</span
-                        >
-                      </div>
-                      <span class="pill">{{ transaction.paymentMethod }}</span>
-                    </div>
-                  }
-                }
-              } @else {
+            <article class="card">
+              <header><h3 class="section-title">Recent Transactions</h3></header>
+              <div class="table-list">
                 @for (transaction of overview()?.transactions ?? []; track transaction.id) {
                   <div class="row">
                     <div>
-                      <strong>{{ transaction.transactionNumber }}</strong>
-                      <span
+                      <strong>{{ transaction.transactionNumber }}</strong
+                      ><span
+                        >{{ boothNameFor(transaction.boothId) }} /
+                        {{ formatMoney(transaction.amountCents) }}</span
+                      >
+                    </div>
+                    <span class="pill">{{ transaction.status }}</span>
+                  </div>
+                }
+              </div>
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'reports') {
+          <section class="metric-grid">
+            <article class="card">
+              <span class="metric-label">Today sales</span
+              ><strong class="metric-value">{{
+                formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? 0)
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Today sessions</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.sales?.todayCompletedSessions ?? 0
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Cash sales</span
+              ><strong class="metric-value">{{
+                formatMoney(overview()?.reports?.sales?.todayCashSalesCents ?? 0)
+              }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Manual MRR</span
+              ><strong class="metric-value">{{
+                formatMoney(overview()?.reports?.platform?.manualMrrCents ?? 0)
+              }}</strong>
+            </article>
+          </section>
+
+          <section class="content-grid two">
+            <article class="card">
+              <header><h3 class="section-title">Booth Sales</h3></header>
+              <div class="table-list">
+                @for (booth of overview()?.reports?.boothSales ?? []; track booth.boothId) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ booth.boothName }}</strong
+                      ><span>{{ booth.completedSessions }} sessions</span>
+                    </div>
+                    <span class="pill">{{ formatMoney(booth.grossSalesCents) }}</span>
+                  </div>
+                }
+              </div>
+            </article>
+
+            <article class="card">
+              <header><h3 class="section-title">Offer Sales</h3></header>
+              <div class="table-list">
+                @for (offer of overview()?.reports?.offerSales ?? []; track offer.offerId) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ offer.offerName }}</strong
+                      ><span>{{ offer.offerType }} / {{ offer.completedSessions }} sessions</span>
+                    </div>
+                    <span class="pill">{{ formatMoney(offer.grossSalesCents) }}</span>
+                  </div>
+                }
+              </div>
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'audit') {
+          <section class="card">
+            <header><h3 class="section-title">Recent Audit Events</h3></header>
+            <div class="table-list">
+              @for (audit of overview()?.auditLogs ?? []; track audit.id) {
+                <div class="row">
+                  <div>
+                    <strong>{{ audit.action }}</strong
+                    ><span>{{ audit.entityType }} / {{ formatDate(audit.createdAt) }}</span>
+                  </div>
+                  <span class="pill">{{ audit.entityId ? 'Recorded' : 'System' }}</span>
+                </div>
+              }
+            </div>
+          </section>
+        }
+
+        @if (activeView() === 'setup') {
+          <section class="content-grid three">
+            <article class="card">
+              <header><h3 class="section-title">Client</h3></header>
+              <label class="field"
+                ><span>Client name</span
+                ><input [ngModel]="clientName()" (ngModelChange)="clientName.set($event)"
+              /></label>
+              <button type="button" class="button primary" (click)="createClient()">
+                Create Client
+              </button>
+            </article>
+            <article class="card">
+              <header><h3 class="section-title">Subscription</h3></header>
+              <label class="field"
+                ><span>Subscription name</span
+                ><input [ngModel]="planName()" (ngModelChange)="planName.set($event)"
+              /></label>
+              <label class="field"
+                ><span>Price</span
+                ><input
+                  type="number"
+                  [ngModel]="planPrice()"
+                  (ngModelChange)="planPrice.set(+$event)"
+              /></label>
+              <label class="field"
+                ><span>Booth allowance</span
+                ><input
+                  type="number"
+                  [ngModel]="subscriptionAllowance()"
+                  (ngModelChange)="subscriptionAllowance.set(+$event)"
+              /></label>
+              <div class="top-actions">
+                <button type="button" class="button primary" (click)="createPlan()">
+                  Create Subscription</button
+                ><button type="button" class="button" (click)="assignSubscription()">Assign</button>
+              </div>
+            </article>
+            <article class="card">
+              <header><h3 class="section-title">Users</h3></header>
+              <label class="field"
+                ><span>Owner name</span
+                ><input [ngModel]="ownerName()" (ngModelChange)="ownerName.set($event)"
+              /></label>
+              <label class="field"
+                ><span>Owner email</span
+                ><input [ngModel]="ownerEmail()" (ngModelChange)="ownerEmail.set($event)"
+              /></label>
+              <label class="field"
+                ><span>Cashier email</span
+                ><input [ngModel]="cashierEmail()" (ngModelChange)="cashierEmail.set($event)"
+              /></label>
+              <div class="top-actions">
+                <button type="button" class="button primary" (click)="createOwner()">
+                  Create Owner</button
+                ><button type="button" class="button" (click)="createCashier()">
+                  Create Cashier
+                </button>
+              </div>
+            </article>
+            <article class="card">
+              <header><h3 class="section-title">Location</h3></header>
+              <label class="field"
+                ><span>Location name</span
+                ><input [ngModel]="locationName()" (ngModelChange)="locationName.set($event)"
+              /></label>
+              <button type="button" class="button primary" (click)="createLocation()">
+                Create Location
+              </button>
+            </article>
+            <article class="card">
+              <header><h3 class="section-title">Booth</h3></header>
+              <label class="field"
+                ><span>Booth name</span
+                ><input [ngModel]="boothName()" (ngModelChange)="boothName.set($event)"
+              /></label>
+              <label class="field"
+                ><span>Booth code</span
+                ><input [ngModel]="boothCode()" (ngModelChange)="boothCode.set($event)"
+              /></label>
+              <button type="button" class="button primary" (click)="createBooth()">
+                Create Booth
+              </button>
+            </article>
+            <article class="card">
+              <header><h3 class="section-title">Offer</h3></header>
+              <label class="field"
+                ><span>Offer name</span
+                ><input [ngModel]="offerName()" (ngModelChange)="offerName.set($event)"
+              /></label>
+              <label class="field"
+                ><span>Price</span
+                ><input
+                  type="number"
+                  [ngModel]="offerPrice()"
+                  (ngModelChange)="offerPrice.set(+$event)"
+              /></label>
+              <div class="top-actions">
+                <button type="button" class="button primary" (click)="createOffer()">
+                  Create Offer</button
+                ><button type="button" class="button" (click)="activateOffer()">Activate</button>
+              </div>
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'clients') {
+          <section class="content-grid two">
+            <article class="card">
+              <header><h3 class="section-title">Clients</h3></header>
+              <div class="table-list">
+                @for (client of overview()?.clients ?? []; track client.id) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ client.name }}</strong
+                      ><span>{{ client.status }}</span>
+                    </div>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        (click)="updateClientStatus(client, 'ACTIVE')"
+                      >
+                        Activate</button
+                      ><button
+                        type="button"
+                        class="button warning"
+                        (click)="updateClientStatus(client, 'SUSPENDED')"
+                      >
+                        Suspend</button
+                      ><button
+                        type="button"
+                        class="button"
+                        (click)="updateClientStatus(client, 'ARCHIVED')"
+                      >
+                        Archive
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'booths') {
+          <section class="content-grid two">
+            <article class="card span-two">
+              <header><h3 class="section-title">Booths</h3></header>
+              <div class="table-list">
+                @for (booth of overview()?.booths ?? []; track booth.id) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ booth.name }}</strong
+                      ><span
+                        >{{ booth.code }} / {{ booth.status }} / {{ booth.currentState }} / Offer:
+                        {{ activeOfferFor(booth.id)?.name ?? 'None' }}</span
+                      >
+                    </div>
+                    <div class="top-actions">
+                      <button type="button" class="button" (click)="activateOffer(booth.id)">
+                        Activate Offer</button
+                      ><button type="button" class="button primary" (click)="assignCash(booth.id)">
+                        Cash</button
+                      ><button
+                        type="button"
+                        class="button"
+                        (click)="updateBoothStatus(booth, 'ACTIVE')"
+                      >
+                        Enable</button
+                      ><button
+                        type="button"
+                        class="button warning"
+                        (click)="updateBoothStatus(booth, 'INACTIVE')"
+                      >
+                        Disable
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'pos') {
+          <section class="content-grid two">
+            <article class="card pos-card">
+              @if (assignedBooth(); as booth) {
+                <header>
+                  <h3 class="section-title">{{ booth.name }}</h3>
+                  <span class="pill">{{ booth.currentState }}</span>
+                </header>
+              } @else {
+                <header>
+                  <h3 class="section-title">Assigned Booth</h3>
+                  <span class="pill">OFFLINE</span>
+                </header>
+              }
+              @if (cashierTransaction(); as transaction) {
+                <strong>{{ transaction.transactionNumber }}</strong>
+                <p>
+                  {{ transaction.transactionType }} / {{ transaction.status }} /
+                  {{ transaction.paymentMethod }} / {{ formatMoney(transaction.amountCents) }}
+                  @if (transaction.extraPrintCount > 0) {
+                    / {{ transaction.extraPrintCount }} copies
+                  }
+                </p>
+                <div class="top-actions">
+                  @if (transaction.status === 'PENDING_CASH') {
+                    <button
+                      type="button"
+                      class="button primary"
+                      (click)="approveCash(transaction.id)"
+                    >
+                      Approve Cash
+                    </button>
+                    <button
+                      type="button"
+                      class="button warning"
+                      (click)="cancelTransaction(transaction.id)"
+                    >
+                      Cancel
+                    </button>
+                  }
+                  @if (assignedBooth(); as booth) {
+                    <button type="button" class="button" (click)="returnBoothToWelcome(booth.id)">
+                      Return To Welcome
+                    </button>
+                  }
+                </div>
+              } @else {
+                <p>No active payment request.</p>
+                @if (extraPrintCandidate(); as transaction) {
+                  <div class="status-panel">
+                    <strong>Extra Prints</strong>
+                    <span>{{ transaction.transactionNumber }}</span>
+                    <label class="field">
+                      <span>Copies</span>
+                      <select
+                        [ngModel]="extraPrintCopies()"
+                        (ngModelChange)="extraPrintCopies.set(+$event)"
+                      >
+                        @for (copyCount of copyOptions(); track copyCount) {
+                          <option [ngValue]="copyCount">{{ copyCount }}</option>
+                        }
+                      </select>
+                    </label>
+                    <p>Total {{ formatMoney(extraPrintTotalCents()) }}</p>
+                    <button
+                      type="button"
+                      class="button primary"
+                      (click)="createExtraPrintAddOn(transaction.id)"
+                    >
+                      Create Extra Prints
+                    </button>
+                  </div>
+                }
+              }
+            </article>
+
+            <article class="card">
+              <header><h3 class="section-title">Booth Transactions</h3></header>
+              <div class="table-list">
+                @for (transaction of overview()?.transactions ?? []; track transaction.id) {
+                  <div class="row">
+                    <div>
+                      <strong>{{ transaction.transactionNumber }}</strong
+                      ><span
                         >{{ transaction.transactionType }} / {{ transaction.status }} /
                         {{ formatMoney(transaction.amountCents) }}
                         @if (transaction.extraPrintCount > 0) {
                           / {{ transaction.extraPrintCount }} copies
-                        }</span
-                      >
+                        }
+                      </span>
                     </div>
                     <span class="pill">{{ transaction.paymentMethod }}</span>
                   </div>
                 }
-              }
-            </div>
-          </article>
-        </section>
+              </div>
+            </article>
+          </section>
+        }
       }
     </section>
+  </main>
+
+  @if (clientModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); onboardClient()">
+        <div class="section-head">
+          <h2 class="section-title">New Client</h2>
+          <button type="button" class="button" (click)="closeClientModal()">Close</button>
+        </div>
+        <label class="field"
+          ><span>CLIENT NAME</span
+          ><input
+            [ngModel]="clientName()"
+            name="clientName"
+            (ngModelChange)="clientName.set($event)"
+        /></label>
+        <div class="form-row">
+          <label class="field"
+            ><span>OWNER NAME</span
+            ><input
+              [ngModel]="ownerName()"
+              name="ownerName"
+              (ngModelChange)="ownerName.set($event)"
+          /></label>
+          <label class="field"
+            ><span>OWNER EMAIL</span
+            ><input
+              [ngModel]="ownerEmail()"
+              name="ownerEmail"
+              (ngModelChange)="ownerEmail.set($event)"
+          /></label>
+        </div>
+        <label class="field"
+          ><span>OWNER PASSWORD</span
+          ><input
+            type="password"
+            [ngModel]="ownerPassword()"
+            name="ownerPassword"
+            (ngModelChange)="ownerPassword.set($event)"
+        /></label>
+        <button type="submit" class="button primary fill">Create Client And Owner</button>
+      </form>
+    </section>
   }
-</main>
+
+  @if (subscriptionModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); assignSubscription()">
+        <div class="section-head">
+          <h2 class="section-title">Assign Subscription</h2>
+          <button type="button" class="button" (click)="closeSubscriptionModal()">Close</button>
+        </div>
+        <label class="field">
+          <span>CLIENT</span>
+          <select
+            [ngModel]="subscriptionClientId() ?? selectedClientId()"
+            name="subscriptionClientId"
+            (ngModelChange)="subscriptionClientId.set($event)"
+          >
+            @for (client of overview()?.clients ?? []; track client.id) {
+              <option [ngValue]="client.id">{{ client.name }}</option>
+            }
+          </select>
+        </label>
+        <label class="field">
+          <span>SUBSCRIPTION</span>
+          <select
+            [ngModel]="subscriptionPlanId() ?? selectedPlanId()"
+            name="subscriptionPlanId"
+            (ngModelChange)="subscriptionPlanId.set($event)"
+          >
+            @for (plan of overview()?.subscriptionPlans ?? []; track plan.id) {
+              <option [ngValue]="plan.id">
+                {{ plan.name }} / {{ formatMoney(plan.pricePerBoothCents) }} per booth monthly
+              </option>
+            }
+          </select>
+        </label>
+        <div class="form-row">
+          <label class="field">
+            <span>STATUS</span>
+            <select
+              [ngModel]="subscriptionStatus()"
+              name="subscriptionStatus"
+              (ngModelChange)="subscriptionStatus.set($event)"
+            >
+              <option value="TRIAL">TRIAL</option>
+              <option value="ACTIVE">ACTIVE</option>
+              <option value="PAST_DUE">PAST_DUE</option>
+              <option value="SUSPENDED">SUSPENDED</option>
+              <option value="CANCELLED">CANCELLED</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>ACTIVE BOOTH ALLOWANCE</span>
+            <input
+              type="number"
+              [ngModel]="subscriptionAllowance()"
+              name="subscriptionAllowance"
+              (ngModelChange)="subscriptionAllowance.set(+$event)"
+            />
+          </label>
+        </div>
+        <button type="submit" class="button primary fill">Create Subscription</button>
+      </form>
+    </section>
+  }
+}
 
 <router-outlet />

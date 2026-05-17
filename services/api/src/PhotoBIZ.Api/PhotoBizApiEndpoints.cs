@@ -22,8 +22,10 @@ public static class PhotoBizApiEndpoints
         var admin = app.MapGroup("/api/admin").RequireAuthorization();
         admin.MapGet("/overview", GetOverviewAsync);
         admin.MapPost("/clients", CreateClientAsync);
+        admin.MapPost("/clients/onboard", CreateClientWithOwnerAsync);
         admin.MapPut("/clients/{clientId:guid}", UpdateClientAsync);
         admin.MapPost("/subscription-plans", CreateSubscriptionPlanAsync);
+        admin.MapPut("/subscription-plans/{subscriptionPlanId:guid}", UpdateSubscriptionPlanAsync);
         admin.MapPost("/subscriptions", CreateSubscriptionAsync);
         admin.MapPut("/subscriptions/{subscriptionId:guid}", UpdateSubscriptionAsync);
         admin.MapPost("/users", CreateUserAsync);
@@ -157,7 +159,10 @@ public static class PhotoBizApiEndpoints
         var offers = await ApplyClientScope(dbContext.BoothOffers.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
         var activations = await ApplyScopedBoothIds(dbContext.BoothOfferActivations.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var paymentAssignments = await ApplyScopedBoothIds(dbContext.BoothPaymentOptionAssignments.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
-        var subscriptions = await ApplyClientScope(dbContext.ClientSubscriptions.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
+        var subscriptions = await ApplyClientScope(dbContext.ClientSubscriptions.AsNoTracking(), currentUser, item => item.ClientAccountId)
+            .OrderBy(item => item.StartsOn)
+            .ThenBy(item => item.Id)
+            .ToListAsync(cancellationToken);
         var subscriptionPlans = await dbContext.SubscriptionPlans.AsNoTracking().OrderBy(item => item.Name).ToListAsync(cancellationToken);
         var reportTransactions = await ApplyScopedBoothIds(dbContext.Transactions.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId)
             .ToListAsync(cancellationToken);
@@ -217,6 +222,80 @@ public static class PhotoBizApiEndpoints
         return TypedResults.Ok(new ClientSummary(client.Id, client.Name, client.Status));
     }
 
+    private static async Task<Results<Ok<ClientOnboardingResponse>, ForbidHttpResult, ValidationProblem>> CreateClientWithOwnerAsync(
+        CreateClientWithOwnerRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        IPasswordHasher<ApplicationUser> passwordHasher,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsApplicationOwner)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var clientName = request.ClientName?.Trim() ?? string.Empty;
+        var ownerName = request.OwnerName?.Trim() ?? string.Empty;
+        var ownerEmail = request.OwnerEmail?.Trim() ?? string.Empty;
+        var ownerPassword = request.OwnerPassword ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(clientName) ||
+            string.IsNullOrWhiteSpace(ownerName) ||
+            string.IsNullOrWhiteSpace(ownerEmail) ||
+            string.IsNullOrWhiteSpace(ownerPassword))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["client"] = ["Client name, owner name, owner email, and owner password are required."]
+            });
+        }
+
+        var emailExists = await dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(item => item.Email == ownerEmail, cancellationToken);
+
+        if (emailExists)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["ownerEmail"] = ["A user with this email already exists."]
+            });
+        }
+
+        var client = new ClientAccount
+        {
+            Id = Guid.NewGuid(),
+            Name = clientName,
+            Status = StatusValues.ClientAccount.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var owner = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            ClientAccountId = client.Id,
+            Name = ownerName,
+            Email = ownerEmail,
+            Role = StatusValues.User.ClientOwner,
+            Status = StatusValues.User.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        owner.PasswordHash = passwordHasher.HashPassword(owner, ownerPassword);
+
+        dbContext.ClientAccounts.Add(client);
+        dbContext.Users.Add(owner);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(currentUser, "client.onboarded", nameof(ClientAccount), client.Id, new { client.Name, OwnerEmail = owner.Email }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "user.created", nameof(ApplicationUser), owner.Id, new { owner.Email, owner.Role, owner.ClientAccountId }, cancellationToken);
+
+        return TypedResults.Ok(new ClientOnboardingResponse(
+            new ClientSummary(client.Id, client.Name, client.Status),
+            new UserSummary(owner.Id, owner.ClientAccountId, owner.Name, owner.Email, owner.Role, owner.Status, owner.AssignedBoothId)));
+    }
+
     private static async Task<Results<Ok<ClientSummary>, ForbidHttpResult, ValidationProblem>> UpdateClientAsync(
         Guid clientId,
         UpdateClientRequest request,
@@ -260,7 +339,7 @@ public static class PhotoBizApiEndpoints
         return TypedResults.Ok(new ClientSummary(client.Id, client.Name, client.Status));
     }
 
-    private static async Task<Results<Ok<SubscriptionPlanSummary>, ForbidHttpResult>> CreateSubscriptionPlanAsync(
+    private static async Task<Results<Ok<SubscriptionPlanSummary>, ForbidHttpResult, ValidationProblem>> CreateSubscriptionPlanAsync(
         CreateSubscriptionPlanRequest request,
         ClaimsPrincipal principal,
         PhotoBizDbContext dbContext,
@@ -272,6 +351,19 @@ public static class PhotoBizApiEndpoints
         if (!currentUser.IsApplicationOwner)
         {
             return TypedResults.Forbid();
+        }
+
+        var validationProblem = await ValidateSubscriptionPlanRequestAsync(
+            dbContext,
+            request.Name,
+            request.PricePerBoothCents,
+            request.Currency,
+            null,
+            cancellationToken);
+
+        if (validationProblem is not null)
+        {
+            return validationProblem;
         }
 
         var plan = new SubscriptionPlan
@@ -286,6 +378,56 @@ public static class PhotoBizApiEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
 
         await auditService.WriteAsync(currentUser, "subscription_plan.created", nameof(SubscriptionPlan), plan.Id, new { plan.Name }, cancellationToken);
+
+        return TypedResults.Ok(new SubscriptionPlanSummary(plan.Id, plan.Name, plan.PricePerBoothCents, plan.Currency, plan.Active));
+    }
+
+    private static async Task<Results<Ok<SubscriptionPlanSummary>, ForbidHttpResult, ValidationProblem>> UpdateSubscriptionPlanAsync(
+        Guid subscriptionPlanId,
+        UpdateSubscriptionPlanRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsApplicationOwner)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var validationProblem = await ValidateSubscriptionPlanRequestAsync(
+            dbContext,
+            request.Name,
+            request.PricePerBoothCents,
+            request.Currency,
+            subscriptionPlanId,
+            cancellationToken);
+
+        if (validationProblem is not null)
+        {
+            return validationProblem;
+        }
+
+        var plan = await dbContext.SubscriptionPlans.SingleOrDefaultAsync(item => item.Id == subscriptionPlanId, cancellationToken);
+
+        if (plan is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["subscriptionPlanId"] = ["Subscription was not found."]
+            });
+        }
+
+        plan.Name = request.Name.Trim();
+        plan.PricePerBoothCents = request.PricePerBoothCents;
+        plan.Currency = request.Currency.Trim().ToUpperInvariant();
+        plan.Active = request.Active;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(currentUser, "subscription_plan.updated", nameof(SubscriptionPlan), plan.Id, new { plan.Name, plan.PricePerBoothCents, plan.Active }, cancellationToken);
 
         return TypedResults.Ok(new SubscriptionPlanSummary(plan.Id, plan.Name, plan.PricePerBoothCents, plan.Currency, plan.Active));
     }
@@ -2262,6 +2404,59 @@ public static class PhotoBizApiEndpoints
         return value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
     }
 
+    private static async Task<ValidationProblem?> ValidateSubscriptionPlanRequestAsync(
+        PhotoBizDbContext dbContext,
+        string name,
+        int pricePerBoothCents,
+        string currency,
+        Guid? existingSubscriptionPlanId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedName = name?.Trim() ?? string.Empty;
+        var normalizedCurrency = currency?.Trim().ToUpperInvariant() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["name"] = ["Subscription name is required."]
+            });
+        }
+
+        if (pricePerBoothCents < 0)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["pricePerBoothCents"] = ["Price per booth cannot be negative."]
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedCurrency))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["currency"] = ["Currency is required."]
+            });
+        }
+
+        var nameExists = await dbContext.SubscriptionPlans
+            .AsNoTracking()
+            .AnyAsync(
+                item => item.Name == normalizedName &&
+                    (!existingSubscriptionPlanId.HasValue || item.Id != existingSubscriptionPlanId.Value),
+                cancellationToken);
+
+        if (nameExists)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["name"] = ["A subscription with this name already exists."]
+            });
+        }
+
+        return null;
+    }
+
     private static bool IsKnownClientUserRole(string role)
     {
         return role is StatusValues.User.ClientOwner or StatusValues.User.ClientAdmin or StatusValues.User.Cashier;
@@ -2346,6 +2541,7 @@ public sealed record ClientSummary(Guid Id, string Name, string Status);
 public sealed record SubscriptionPlanSummary(Guid Id, string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record ClientSubscriptionSummary(Guid Id, Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance);
 public sealed record UserSummary(Guid Id, Guid? ClientAccountId, string Name, string Email, string Role, string Status, Guid? AssignedBoothId);
+public sealed record ClientOnboardingResponse(ClientSummary Client, UserSummary Owner);
 public sealed record LocationSummary(Guid Id, Guid ClientAccountId, string Name, string? Address, string Status);
 public sealed record BoothSummary(Guid Id, Guid ClientAccountId, Guid LocationId, string Name, string Code, string Status, string CurrentState, DateTimeOffset? LastHeartbeatAt);
 public sealed record OfferSummary(
@@ -2431,8 +2627,10 @@ public sealed record AuditLogSummary(
     DateTimeOffset CreatedAt);
 
 public sealed record CreateClientRequest(string Name);
+public sealed record CreateClientWithOwnerRequest(string? ClientName, string? OwnerName, string? OwnerEmail, string? OwnerPassword);
 public sealed record UpdateClientRequest(string Name, string Status);
 public sealed record CreateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency);
+public sealed record UpdateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record CreateSubscriptionRequest(Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance, string? Notes);
 public sealed record UpdateSubscriptionRequest(string Status, int ActiveBoothAllowance, DateOnly? EndsOn, string? Notes);
 public sealed record CreateUserRequest(Guid? ClientAccountId, Guid? AssignedBoothId, string Name, string Email, string Password, string Role);

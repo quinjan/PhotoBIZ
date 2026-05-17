@@ -23,6 +23,13 @@ type SubscriptionSummary = {
   readonly status: string;
   readonly activeBoothAllowance: number;
 };
+type SubscriptionPlanSummary = {
+  readonly id: string;
+  readonly name: string;
+  readonly pricePerBoothCents: number;
+  readonly currency: string;
+  readonly active: boolean;
+};
 type UserSummary = {
   readonly id: string;
   readonly clientAccountId: string | null;
@@ -142,13 +149,7 @@ type AuditLogSummary = {
 type Overview = {
   readonly session: Session;
   readonly clients: readonly ClientSummary[];
-  readonly subscriptionPlans: readonly {
-    id: string;
-    name: string;
-    pricePerBoothCents: number;
-    currency: string;
-    active: boolean;
-  }[];
+  readonly subscriptionPlans: readonly SubscriptionPlanSummary[];
   readonly subscriptions: readonly SubscriptionSummary[];
   readonly users: readonly UserSummary[];
   readonly locations: readonly LocationSummary[];
@@ -173,7 +174,17 @@ type BoothSecret = {
   readonly agentCredential: string;
 };
 
-type ViewKey = 'dashboard' | 'setup' | 'clients' | 'booths' | 'pos' | 'reports' | 'audit';
+type ViewKey =
+  | 'dashboard'
+  | 'subscriptions'
+  | 'subscription-detail'
+  | 'clients'
+  | 'client-detail'
+  | 'setup'
+  | 'booths'
+  | 'pos'
+  | 'reports'
+  | 'audit';
 
 @Component({
   selector: 'app-root',
@@ -199,6 +210,7 @@ export class App {
   protected readonly clientName = signal('The Memory Box');
   protected readonly planName = signal('Starter Booth');
   protected readonly planPrice = signal(150000);
+  protected readonly subscriptionActive = signal(true);
   protected readonly subscriptionAllowance = signal(2);
   protected readonly locationName = signal('SM Manila');
   protected readonly boothName = signal('Booth A');
@@ -213,6 +225,14 @@ export class App {
   protected readonly offerPrice = signal(25000);
   protected readonly offerMode = signal('SESSION_STANDARD');
   protected readonly extraPrintCopies = signal(1);
+  protected readonly clientSearch = signal('');
+  protected readonly clientModalOpen = signal(false);
+  protected readonly selectedClientDetailId = signal<string | null>(null);
+  protected readonly subscriptionModalOpen = signal(false);
+  protected readonly selectedSubscriptionDetailId = signal<string | null>(null);
+  protected readonly subscriptionClientId = signal<string | null>(null);
+  protected readonly subscriptionPlanId = signal<string | null>(null);
+  protected readonly subscriptionStatus = signal('ACTIVE');
 
   protected readonly selectedClientId = computed(() => this.overview()?.clients[0]?.id ?? null);
   protected readonly selectedPlanId = computed(
@@ -275,14 +295,54 @@ export class App {
     const candidate = this.extraPrintCandidate();
     return (candidate?.extraPrintUnitPriceCents ?? 0) * this.extraPrintCopies();
   });
+  protected readonly isApplicationOwner = computed(
+    () => this.session()?.role === 'APPLICATION_OWNER',
+  );
+  protected readonly platformClients = computed(() => {
+    const search = this.clientSearch().trim().toLowerCase();
+    const clients = this.overview()?.clients ?? [];
+
+    if (!search) {
+      return clients;
+    }
+
+    return clients.filter((client) => {
+      const owner = this.ownerForClient(client.id);
+      const subscription = this.latestSubscriptionFor(client.id);
+      return [client.name, client.status, owner?.name, owner?.email, subscription?.status]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
+    });
+  });
+  protected readonly subscriptionAuditLogs = computed(
+    () =>
+      this.overview()?.auditLogs.filter(
+        (audit) =>
+          audit.entityType === 'ClientSubscription' ||
+          audit.action.startsWith('client_subscription.'),
+      ) ?? [],
+  );
+  protected readonly selectedClient = computed(() => {
+    const clients = this.overview()?.clients ?? [];
+    const selectedId = this.selectedClientDetailId() ?? clients[0]?.id ?? null;
+    return clients.find((client) => client.id === selectedId) ?? null;
+  });
+  protected readonly selectedSubscriptionDefinition = computed(() => {
+    const selectedId = this.selectedSubscriptionDetailId();
+    return (
+      this.overview()?.subscriptionPlans.find((subscription) => subscription.id === selectedId) ??
+      null
+    );
+  });
   private readonly navItems: readonly { key: ViewKey; label: string }[] = [
     { key: 'dashboard', label: 'Dashboard' },
+    { key: 'subscriptions', label: 'Subscriptions' },
     { key: 'setup', label: 'Setup' },
     { key: 'clients', label: 'Clients' },
     { key: 'booths', label: 'Booths' },
     { key: 'pos', label: 'Cashier POS' },
     { key: 'reports', label: 'Reports' },
-    { key: 'audit', label: 'Audit' },
+    { key: 'audit', label: 'Audit Log' },
   ];
   protected readonly visibleNavItems = computed(() =>
     this.navItems.filter((item) => this.canAccessView(item.key)),
@@ -347,6 +407,46 @@ export class App {
     });
   }
 
+  protected openClientModal(): void {
+    this.clientModalOpen.set(true);
+  }
+
+  protected closeClientModal(): void {
+    this.clientModalOpen.set(false);
+  }
+
+  protected openSubscriptionModal(clientId?: string): void {
+    this.subscriptionClientId.set(clientId ?? this.selectedClientId());
+    this.subscriptionPlanId.set(this.selectedPlanId());
+    this.subscriptionStatus.set('ACTIVE');
+    this.subscriptionModalOpen.set(true);
+  }
+
+  protected closeSubscriptionModal(): void {
+    this.subscriptionModalOpen.set(false);
+  }
+
+  protected async onboardClient(): Promise<void> {
+    await this.run(async () => {
+      await firstValueFrom(
+        this.http.post(
+          `${App.apiBaseUrl}/api/admin/clients/onboard`,
+          {
+            clientName: this.clientName(),
+            ownerName: this.ownerName(),
+            ownerEmail: this.ownerEmail(),
+            ownerPassword: this.ownerPassword(),
+          },
+          { withCredentials: true },
+        ),
+      );
+      await this.loadOverview();
+      this.clientModalOpen.set(false);
+      this.activeView.set('clients');
+      this.message.set('Client and owner credentials created.');
+    });
+  }
+
   protected async updateClientStatus(client: ClientSummary, status: string): Promise<void> {
     await this.run(async () => {
       await firstValueFrom(
@@ -371,13 +471,62 @@ export class App {
         ),
       );
       await this.loadOverview();
-      this.message.set('Subscription plan created.');
+      this.message.set('Subscription created.');
+    });
+  }
+
+  protected startNewSubscriptionDefinition(): void {
+    this.selectedSubscriptionDetailId.set(null);
+    this.planName.set('Per Booth MVP');
+    this.planPrice.set(200000);
+    this.subscriptionActive.set(true);
+    this.activeView.set('subscription-detail');
+  }
+
+  protected setPlanPriceFromPesos(value: number | string): void {
+    this.planPrice.set(Math.max(0, Math.round(Number(value || 0) * 100)));
+  }
+
+  protected async saveSubscriptionDefinition(): Promise<void> {
+    const selectedSubscription = this.selectedSubscriptionDefinition();
+
+    await this.run(async () => {
+      if (selectedSubscription) {
+        await firstValueFrom(
+          this.http.put(
+            `${App.apiBaseUrl}/api/admin/subscription-plans/${selectedSubscription.id}`,
+            {
+              name: this.planName(),
+              pricePerBoothCents: this.planPrice(),
+              currency: selectedSubscription.currency,
+              active: this.subscriptionActive(),
+            },
+            { withCredentials: true },
+          ),
+        );
+        this.message.set('Subscription updated.');
+      } else {
+        await firstValueFrom(
+          this.http.post(
+            `${App.apiBaseUrl}/api/admin/subscription-plans`,
+            { name: this.planName(), pricePerBoothCents: this.planPrice(), currency: 'PHP' },
+            { withCredentials: true },
+          ),
+        );
+        this.message.set('Subscription created.');
+      }
+
+      await this.loadOverview();
+      this.activeView.set('subscriptions');
     });
   }
 
   protected async assignSubscription(): Promise<void> {
-    if (!this.selectedClientId() || !this.selectedPlanId()) {
-      this.error.set('Create a client and plan first.');
+    const clientAccountId = this.subscriptionClientId() ?? this.selectedClientId();
+    const subscriptionPlanId = this.subscriptionPlanId() ?? this.selectedPlanId();
+
+    if (!clientAccountId || !subscriptionPlanId) {
+      this.error.set('Create a client and subscription first.');
       return;
     }
 
@@ -386,9 +535,9 @@ export class App {
         this.http.post(
           `${App.apiBaseUrl}/api/admin/subscriptions`,
           {
-            clientAccountId: this.selectedClientId(),
-            subscriptionPlanId: this.selectedPlanId(),
-            status: 'ACTIVE',
+            clientAccountId,
+            subscriptionPlanId,
+            status: this.subscriptionStatus(),
             activeBoothAllowance: this.subscriptionAllowance(),
             notes: 'MVP subscription',
           },
@@ -396,6 +545,7 @@ export class App {
         ),
       );
       await this.loadOverview();
+      this.subscriptionModalOpen.set(false);
       this.message.set('Client subscription assigned.');
     });
   }
@@ -707,6 +857,102 @@ export class App {
     return this.overview()?.clients.find((client) => client.id === clientId)?.name ?? 'Platform';
   }
 
+  protected ownerForClient(clientId: string): UserSummary | null {
+    return (
+      this.overview()?.users.find(
+        (user) => user.clientAccountId === clientId && user.role === 'CLIENT_OWNER',
+      ) ?? null
+    );
+  }
+
+  protected latestSubscriptionFor(clientId: string): SubscriptionSummary | null {
+    const subscriptions =
+      this.overview()?.subscriptions.filter(
+        (subscription) => subscription.clientAccountId === clientId,
+      ) ?? [];
+
+    return subscriptions.at(-1) ?? null;
+  }
+
+  protected planNameFor(planId: string | null): string {
+    if (!planId) {
+      return 'No subscription';
+    }
+
+    return (
+      this.overview()?.subscriptionPlans.find((plan) => plan.id === planId)?.name ??
+      'Unknown subscription'
+    );
+  }
+
+  protected planPriceFor(planId: string | null): number {
+    if (!planId) {
+      return 0;
+    }
+
+    return (
+      this.overview()?.subscriptionPlans.find((plan) => plan.id === planId)?.pricePerBoothCents ?? 0
+    );
+  }
+
+  protected subscriptionMonthlyTotalCents(subscription: SubscriptionSummary | null): number {
+    if (!subscription) {
+      return 0;
+    }
+
+    return this.planPriceFor(subscription.subscriptionPlanId) * subscription.activeBoothAllowance;
+  }
+
+  protected assignedClientCountForSubscription(subscriptionPlanId: string): number {
+    return new Set(
+      (this.overview()?.subscriptions ?? [])
+        .filter((subscription) => subscription.subscriptionPlanId === subscriptionPlanId)
+        .map((subscription) => subscription.clientAccountId),
+    ).size;
+  }
+
+  protected assignedAllowanceForSubscription(subscriptionPlanId: string): number {
+    return (this.overview()?.subscriptions ?? [])
+      .filter((subscription) => subscription.subscriptionPlanId === subscriptionPlanId)
+      .reduce((total, subscription) => total + subscription.activeBoothAllowance, 0);
+  }
+
+  protected subscriptionDefinitionMrrCents(subscriptionPlanId: string): number {
+    return (this.overview()?.subscriptions ?? [])
+      .filter(
+        (subscription) =>
+          subscription.subscriptionPlanId === subscriptionPlanId &&
+          ['TRIAL', 'ACTIVE', 'PAST_DUE'].includes(subscription.status),
+      )
+      .reduce(
+        (total, subscription) =>
+          total +
+          this.planPriceFor(subscription.subscriptionPlanId) * subscription.activeBoothAllowance,
+        0,
+      );
+  }
+
+  protected activeBoothCountForClient(clientId: string): number {
+    return (
+      this.overview()?.booths.filter(
+        (booth) => booth.clientAccountId === clientId && booth.status === 'ACTIVE',
+      ).length ?? 0
+    );
+  }
+
+  protected viewClient(client: ClientSummary): void {
+    this.selectedClientDetailId.set(client.id);
+    this.activeView.set('client-detail');
+  }
+
+  protected viewSubscription(subscription: SubscriptionPlanSummary): void {
+    this.selectedSubscriptionDetailId.set(subscription.id);
+    this.planName.set(subscription.name);
+    this.planPrice.set(subscription.pricePerBoothCents);
+    this.subscriptionActive.set(subscription.active);
+    this.activeView.set('subscription-detail');
+  }
+
   protected locationNameFor(locationId: string): string {
     return (
       this.overview()?.locations.find((location) => location.id === locationId)?.name ??
@@ -747,6 +993,16 @@ export class App {
 
   protected activeViewTitle(): string {
     switch (this.activeView()) {
+      case 'dashboard':
+        return this.isApplicationOwner() ? 'PhotoBIZ Platform Dashboard' : 'Admin Web';
+      case 'subscriptions':
+        return 'Subscriptions';
+      case 'subscription-detail':
+        return this.selectedSubscriptionDefinition() ? 'Subscription Detail' : 'Add Subscription';
+      case 'clients':
+        return 'Client Accounts';
+      case 'client-detail':
+        return 'Client Account Detail';
       case 'pos':
         return 'Cashier POS';
       case 'reports':
@@ -760,6 +1016,17 @@ export class App {
 
   protected canAccessView(view: ViewKey): boolean {
     const role = this.session()?.role;
+
+    if (role === 'APPLICATION_OWNER') {
+      return (
+        view === 'dashboard' ||
+        view === 'subscriptions' ||
+        view === 'subscription-detail' ||
+        view === 'clients' ||
+        view === 'client-detail' ||
+        view === 'audit'
+      );
+    }
 
     if (role === 'CASHIER') {
       return view === 'dashboard' || view === 'pos' || view === 'reports' || view === 'audit';

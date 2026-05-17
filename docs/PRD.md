@@ -81,6 +81,7 @@ The Application Owner is the PhotoBIZ platform owner.
 Permissions:
 
 - Manage all client accounts.
+- Create the first Client Owner credentials while onboarding a new client account.
 - Create, edit, suspend, reactivate, and archive clients.
 - Manage manual subscriptions and per-booth allowances.
 - View platform-wide client, booth, and subscription health.
@@ -136,7 +137,7 @@ Permissions:
 
 ## Subscription Model
 
-MVP subscriptions are manually managed by the Application Owner.
+MVP subscriptions are manually managed by the Application Owner. A Subscription is the reusable catalog definition with a name, active/inactive state, currency, and monthly price per active booth. A client subscription assignment links a client account to one Subscription and records status plus active booth allowance.
 
 Subscription statuses:
 
@@ -148,8 +149,9 @@ Subscription statuses:
 
 Rules:
 
-- Subscription allowance is based on active booth count.
-- Client accounts cannot activate more booths than their subscription allowance.
+- Subscription price per booth is monthly and is used for Application Owner MRR estimates.
+- Client subscription allowance is based on active booth count.
+- Client accounts cannot activate more booths than their assigned subscription allowance.
 - Suspended clients cannot start new booth sessions.
 - Suspended or cancelled clients retain historical transactions and reports unless access is explicitly restricted by the Application Owner.
 - Subscription changes are audit logged.
@@ -163,7 +165,9 @@ Required MVP sections:
 - Login.
 - Application Owner platform dashboard.
 - Client accounts.
-- Manual subscription editor.
+- Subscription catalog list and editor.
+- Client account subscription assignment controls.
+- Application Owner subscription audit log.
 - Client Owner dashboard.
 - Cashier POS view.
 - Users.
@@ -261,10 +265,9 @@ Guardrails:
 
 ### Workflow A: Client Subscription Setup
 
-1. Application Owner creates a client account.
-2. Application Owner assigns a manual subscription plan and active booth allowance.
-3. Application Owner creates or invites the first Client Owner.
-4. Client Owner signs in and configures locations, users, booth offers, and booths.
+1. Application Owner creates a client account and first Client Owner credentials in the same onboarding flow.
+2. Application Owner creates or selects a Subscription, then assigns it to the client with manual status and active booth allowance.
+3. Client Owner signs in and configures locations, users, booth offers, and booths.
 
 ### Workflow B: Booth Registration To Live
 
@@ -509,9 +512,10 @@ Future reports:
 - Active clients.
 - Active booths.
 - Trial, active, past-due, suspended, and cancelled subscriptions.
-- Manual MRR estimate.
+- Manual MRR estimate based on assigned client subscriptions and their monthly price per booth.
 - Clients over booth allowance.
-- Recent platform audit events.
+- Client health.
+- Subscription-focused audit events.
 
 ### Client Owner Dashboard
 
@@ -639,8 +643,8 @@ Audit logs should capture:
 
 The MVP is considered complete when:
 
-1. Application Owner can create a client account.
-2. Application Owner can assign manual subscription status and active booth allowance.
+1. Application Owner can create a client account with first Client Owner credentials.
+2. Application Owner can define Subscriptions and assign manual subscription status and active booth allowance to clients.
 3. Client Owner can create a location, booth, user, and booth offer inside their client account.
 4. Client Owner or Client Admin can activate exactly one booth offer for a booth.
 5. Cashier can be assigned to exactly one booth.

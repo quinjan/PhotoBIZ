@@ -50,9 +50,8 @@ sequenceDiagram
   participant A as Windows Agent
   participant B as Booth UI
 
-  AO->>API: Create client account
-  AO->>API: Assign manual per-booth subscription
-  AO->>API: Create/invite Client Owner
+  AO->>API: Create client account and first Client Owner credentials
+  AO->>API: Create subscription definition and assign client subscription
   CO->>API: Create location, users, booth offers
   CO->>API: Register booth
   API->>API: Validate subscription status and booth allowance
@@ -302,7 +301,8 @@ Responsibilities:
 - Authentication screens.
 - Application Owner platform dashboard.
 - Client account management.
-- Manual subscription management.
+- Application Owner client onboarding, including first Client Owner credential creation.
+- Subscription catalog and client subscription assignment management.
 - Client Owner dashboard.
 - Cashier POS view.
 - User management.
@@ -315,7 +315,7 @@ Responsibilities:
 - Reports.
 - Audit logs.
 
-The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
+The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
 
 ### Booth UI
 
@@ -359,7 +359,7 @@ Responsibilities:
 - Tenant isolation.
 - Role-based access control.
 - Client account APIs.
-- Manual subscription APIs.
+- Subscription definition and client subscription assignment APIs.
 - Client/location/booth/user/booth-offer APIs.
 - Client payment resource and booth payment option assignment APIs.
 - Booth UI config API.

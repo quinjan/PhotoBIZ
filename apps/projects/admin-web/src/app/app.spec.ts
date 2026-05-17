@@ -17,13 +17,59 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the operations headline', async () => {
+  it('should render the sign in screen', async () => {
     const fixture = TestBed.createComponent(App);
 
     await fixture.whenStable();
 
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Operations Console');
+    expect(compiled.textContent).toContain('PhotoBIZ');
+    expect(compiled.querySelector('h1')?.textContent).toContain('Sign in');
+  });
+
+  it('should limit application owner navigation to platform management views', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+
+    const app = fixture.componentInstance as unknown as {
+      session: { set: (value: unknown) => void };
+      overview: { set: (value: unknown) => void };
+    };
+    const session = {
+      userId: 'owner-id',
+      name: 'Platform Owner',
+      email: 'platform@photobiz.local',
+      role: 'APPLICATION_OWNER',
+      clientAccountId: null,
+      assignedBoothId: null,
+    };
+
+    app.session.set(session);
+    app.overview.set({
+      session,
+      clients: [],
+      subscriptionPlans: [],
+      subscriptions: [],
+      users: [],
+      locations: [],
+      booths: [],
+      offers: [],
+      activations: [],
+      paymentAssignments: [],
+      transactions: [],
+      reports: emptyReports(),
+      auditLogs: [],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    const navLabels = Array.from(compiled.querySelectorAll('.nav-item')).map((item) =>
+      item.textContent?.trim(),
+    );
+
+    expect(navLabels).toEqual(['-Dashboard', '-Subscriptions', '-Clients', '-Audit Log']);
   });
 
   it('should render booth offline state from the overview API', async () => {
