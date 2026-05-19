@@ -56,7 +56,9 @@ sequenceDiagram
   CO->>API: Register booth
   API->>API: Validate subscription status and booth allowance
   API-->>CO: Agent credential + kiosk token
-  A->>API: Pair booth agent
+  A->>API: Pair booth agent with agent credential
+  A->>API: Request Booth UI launch token
+  A->>B: Open Chrome kiosk mode at Booth UI URL with token
   B->>API: Load booth config with kiosk token
   API-->>B: Client branding, booth theme, active offer, assigned runtime payment options
 ```
@@ -107,11 +109,13 @@ sequenceDiagram
   B->>API: GET /booth-ui/config with kiosk token
   API->>DB: Resolve booth, client account, subscription, active session, agent heartbeat
   API->>API: Validate booth token, subscription session permission, and effective booth state
-  API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state
-  B->>B: Apply CSS variables and render current state
+  API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state, recent terminal transaction
+  B->>B: Select the configured theme renderer and render current state
 ```
 
 Booth UI token access is separate from Windows Agent availability. A valid kiosk token may still load Booth UI config when the agent is closed, but the backend treats the booth as `OFFLINE` when the booth has no agent heartbeat or the last heartbeat is older than 60 seconds. While effective booth state is `OFFLINE`, Booth UI must show an agent-offline unavailable state and the backend must reject new kiosk transactions.
+
+Booth registration issues one-time booth credentials. Because raw credentials are not stored after issue, Admin Web can re-issue credentials from Manage Booth; re-issue rotates both the Agent credential and kiosk token and invalidates the previous Agent credential. On startup, an authenticated Windows Agent identifies the booth by configured booth code plus Agent credential, requests a fresh booth-scoped kiosk token from `/api/agent/booth-ui-launch`, then launches Chrome in kiosk mode at the configured Booth UI URL with the token in the first path segment, for example `http://localhost:4201/{token}`. The Agent uses an isolated Chrome user data directory for kiosk launches so an existing normal Chrome profile/window cannot downgrade the launch into a browser with address-bar controls.
 
 The backend also enforces one active kiosk transaction per booth. A booth must not create a new session purchase while another transaction for that booth is still in a non-terminal state such as `CREATED`, `PENDING_CASH`, `PAID`, `STARTING_SESSION`, `IN_SESSION`, or `SESSION_FAILED`. Cashier manual recovery through `return-to-welcome` resolves that inconsistency by cancelling the active booth transaction and returning the booth to `WELCOME`.
 
@@ -124,10 +128,11 @@ Minimum `GET /booth-ui/config` response shape:
     "logoUrl": null
   },
   "theme": {
-    "preset": "VINTAGE_FILM",
-    "primaryColor": "#2f6868",
+    "preset": "VINTAGE",
+    "primaryColor": "#4f2d1d",
     "accentColor": "#f5d27e",
-    "backgroundImageUrl": "/assets/themes/memory-box.jpg",
+    "backgroundImageUrl": null,
+    "backgroundImageDataUrl": "data:image/png;base64,...",
     "fontMode": "serif"
   },
   "session": {
@@ -147,7 +152,12 @@ Minimum `GET /booth-ui/config` response shape:
     "currency": "PHP",
     "includedPrintEntitlement": "2 pcs 6x2 or 1 pc 6x4",
     "allowsExtraPrintAddOn": true,
-    "extraPrintPriceCents": 5000
+    "extraPrintPriceCents": 5000,
+    "activationStatus": "ACTIVE",
+    "startsAt": null,
+    "endsAt": null,
+    "sessionAllowance": null,
+    "sessionsUsed": 0
   },
   "paymentOptions": [
     {
@@ -155,11 +165,20 @@ Minimum `GET /booth-ui/config` response shape:
       "label": "Cash",
       "runtimeEnabled": true
     }
-  ]
+  ],
+  "recentTransaction": null
 }
 ```
 
 If no active offer is configured for the booth, `activeOffer` is `null`, `paymentOptions` is empty, and Booth UI must show an unavailable state. Runtime payment options are filtered from booth-level payment assignments, not client-level payment setup alone. In MVP, `CASH` is the only payment method that can be returned with `runtimeEnabled: true`.
+
+For non-per-session packages, Manage Booth selection and paid activation are separate. Selecting a `TIME_UNLIMITED` or `SESSION_COUNT` package creates a booth offer activation with `PENDING_PAYMENT`; Booth UI returns that package in `activeOffer` with `activationStatus: "PENDING_PAYMENT"`, empty `paymentOptions`, and customer-facing cashier messaging. Cashier POS creates a cash-only `PLAN_ACTIVATION` transaction through `POST /api/cashier/booths/{boothId}/plan-activation`. Cash approval marks the activation `ACTIVE`, starts `startsAt`/`endsAt` for timed plans or resets the session allowance counter for session-count plans, and does not emit an Agent command. Active paid timed/session-count packages create zero-amount `COVERED_PLAN_SESSION` transactions from the existing Booth UI transaction route; those transactions are the ones that command the Agent to start LumaBooth.
+
+The Booth UI completed prompt is package-aware. `PER_SESSION` completed sessions may show the extra-print cashier prompt and a `No Extra Prints` action that posts to `/api/booth-ui/return-to-welcome`. Booth UI also starts its own 15-second completed-prompt timer and calls the same return path when the timer wins. The return path is de-duplicated. Timer-triggered return failures retry quietly; customer button-triggered failures must show a clear error while staying on the completed screen and retrying. Booth UI must not locally fake `WELCOME` while the API still reports `COMPLETED`; it stays on the completed screen until the backend command succeeds or config reports `WELCOME`. The endpoint is kiosk-token scoped and idempotently returns the booth to `WELCOME` for the latest completed session when no newer active booth transaction exists, so old failed history does not block it and it remains safe if the worker has already auto-reset the booth. `TIME_UNLIMITED` and `SESSION_COUNT` completed sessions must show normal completion copy only, because extra print add-ons are not valid for covered-plan sessions.
+
+`recentTransaction` is populated only for short-lived customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED`. Booth UI uses it to show a clear recovery screen after cashier cancellation, payment failure, or payment expiration even when the booth has already reset to `WELCOME`.
+
+Booth themes are PhotoBIZ-owned presets: `VINTAGE`, `CLEAN_MODERN`, and `POP`. The shared Booth UI stage selects a preset-specific Angular presentation component instead of accepting arbitrary tenant CSS or ad hoc color inputs. Theme colors, typography, and button styling come from the selected preset. Booth-level background images are optional uploads stored as constrained PNG/JPEG/WebP data URLs, with backend size/type validation.
 
 ## LumaBooth Integration Constraints
 
@@ -203,6 +222,11 @@ Agent configuration keys:
 - `PhotoBIZ:LumaBooth:StartTimeoutSeconds`
 - `PhotoBIZ:Display:LumaBoothWindowTitle`
 - `PhotoBIZ:Display:BoothUiWindowTitle`
+- `PhotoBIZ:Display:BoothUiBaseUrl`
+- `PhotoBIZ:Display:ChromeExecutablePath`
+- `PhotoBIZ:Display:ChromeUserDataDir`
+- `PhotoBIZ:Display:LaunchBoothUiOnStartup`
+- `PhotoBIZ:Display:KioskMode`
 
 Payment setup has two levels:
 
@@ -217,7 +241,10 @@ Payment setup has two levels:
 ```mermaid
 stateDiagram-v2
   [*] --> WELCOME
+  WELCOME --> PAYMENT_PENDING: Cashier creates PLAN_ACTIVATION
+  PAYMENT_PENDING --> WELCOME: Cashier approves PLAN_ACTIVATION
   WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
+  WELCOME --> PAID: Customer starts COVERED_PLAN_SESSION
   OFFER_CONFIRMED --> PENDING_CASH: Customer chooses cash
   OFFER_CONFIRMED --> CANCELLED: Cashier return-to-welcome recovery
   PENDING_CASH --> PAID: Cashier approves cash
@@ -315,7 +342,9 @@ Responsibilities:
 - Reports.
 - Audit logs.
 
-The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
+The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Recent dashboard and Cashier POS history surfaces present these records as booth activity, grouping paid sales separately from session usage so zero-amount `COVERED_PLAN_SESSION` rows display as included covered sessions rather than PHP 0 sales. Session-count covered-session activity rows use a historical sequence number for that transaction, so older rows do not repeat the activation's current `sessionsUsed` total. The dashboard Booth Status list also shows package context: session-count packages display the latest completed covered-session sequence and timed packages display minutes remaining plus the exact expiration time in Philippine time. The full Transactions page remains the ledger-style transaction view. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Client Owner and Client Admin navigation is scoped to their tenant operations: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, and Audit Log. Packages are the client-facing UI label for booth offers and include the tenant-scoped print entitlement list used by package creation/editing. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
+Client owners and client admins may create cashier users before booth assignment; the actual cashier-to-booth link is set during booth registration in the Admin Web flow. Cashier operational permissions are stored on the user record and returned through the session and overview APIs. Admin Web user detail management edits the cashier permission flags for approving cash, cancelling transactions, and returning the assigned booth to welcome. Backend cashier endpoints enforce those flags for cashier users; Client Owner/Admin roles continue to rely on role-based authorization for the same operational recovery paths.
+The Admin Web Booths page is an inventory table, not an inline operations panel. Manage Booth is the only setup surface for booth record edits, cashier reassignment, active package selection, cash payment assignment, and Booth UI appearance. The detail surface uses two tabs: Details for booth record, assigned cashier, active package, and payment setup; Session Setup for session copy, theme preset, background image upload, and preview. `/api/admin/overview` includes tenant-scoped booth appearance summaries so the detail page can load current appearance without calling the kiosk-token endpoint. Booth updates may change the assigned cashier, but the backend must enforce same-tenant users, `CASHIER` role, and one booth per cashier.
 
 ### Booth UI
 
@@ -327,7 +356,7 @@ Responsibilities:
 
 - Authenticate with booth-scoped kiosk token.
 - Load client branding, booth theme, and session config from backend.
-- Map theme values to CSS variables.
+- Select the configured shared theme component (`VINTAGE`, `CLEAN_MODERN`, or `POP`) and render the state.
 - Display welcome screen.
 - Display the booth's active offer.
 - Let customer select only booth-assigned runtime-enabled payment methods for payable per-session flows.
@@ -341,6 +370,7 @@ Rules:
 - Booth UI must not require cashier login during daily use.
 - Booth UI must not directly approve payment or start LumaBooth.
 - Booth UI must not accept arbitrary CSS or script customization.
+- Booth UI and Admin Web preview must use the same pure stage presentation component and the same effective config shape as `GET /api/booth-ui/config`. Admin preview may hide kiosk-only token controls, but must share theme-specific layout, state visuals, offer rendering, and button styling with the kiosk app.
 
 ### Backend API
 
@@ -391,6 +421,7 @@ Responsibilities:
 - Report session state.
 - Manage local recovery.
 - Manage Booth UI and LumaBooth app/window focus on the booth laptop.
+- Request fresh Booth UI kiosk launch tokens and open Chrome in kiosk mode for the customer-facing Booth UI.
 
 ## Repository Structure
 
@@ -419,6 +450,7 @@ erDiagram
   CLIENT_ACCOUNT ||--o{ LOCATION : owns
   CLIENT_ACCOUNT ||--o{ USER : has
   CLIENT_ACCOUNT ||--o{ BOOTH_OFFER : defines
+  CLIENT_ACCOUNT ||--o{ PRINT_ENTITLEMENT : defines
   CLIENT_ACCOUNT ||--o{ CLIENT_SUBSCRIPTION : subscribes
   CLIENT_ACCOUNT ||--o{ CLIENT_PAYMENT_PROVIDER_CONFIG : configures
   CLIENT_ACCOUNT ||--o{ CLIENT_MAYA_ECR_DEVICE : registers
@@ -472,6 +504,7 @@ erDiagram
     string primary_color
     string accent_color
     string background_image_url
+    text background_image_data_url
     string default_welcome_headline
     string default_welcome_subtitle
   }
@@ -558,6 +591,14 @@ erDiagram
     int extra_print_price_cents
     string lumabooth_session_mode
     bool active
+  }
+
+  PRINT_ENTITLEMENT {
+    uuid id
+    uuid client_account_id
+    string name
+    string status
+    datetime created_at
   }
 
   BOOTH_OFFER_ACTIVATION {
@@ -752,6 +793,7 @@ flowchart TB
 - Repository: single repository containing Angular apps, ASP.NET Core API, Windows Agent, and documentation.
 - Frontend workspace: one Angular workspace containing two separate applications: `admin-web` and `booth-ui`.
 - Shared frontend code lives in Angular workspace libraries for API clients, DTOs, validation helpers, constants, and reusable UI primitives.
+- The Booth UI stage renderer is a shared Angular presentation component consumed by both `admin-web` preview and `booth-ui` kiosk rendering to prevent visual drift.
 - Admin Web: Angular 21 + TypeScript + Angular Material.
 - Booth UI: Angular 21 + TypeScript, optimized for kiosk browser use.
 - Backend API: ASP.NET Core on .NET 10 LTS.
@@ -762,7 +804,7 @@ flowchart TB
 - Cache/locks/backplane: Redis.
 - Windows Agent: .NET 10 LTS Windows Service.
 - Admin authentication: email/password login with secure HttpOnly cookie sessions.
-- Booth UI authentication: booth-scoped kiosk token issued during booth pairing. No cashier unlock/login is required to show the Booth UI.
+- Booth UI authentication: booth-scoped kiosk token issued during booth registration or Agent launch. No cashier unlock/login is required to show the Booth UI.
 - Agent authentication: booth agent credential issued during pairing.
 - Agent availability: the backend treats a booth as `OFFLINE` when the agent has not heartbeated within 60 seconds. Agent heartbeat restores an offline booth to `WELCOME`; kiosk token access remains valid but transaction creation is blocked while offline.
 - Hosting: DigitalOcean Singapore VPS using Docker Compose.
@@ -787,7 +829,7 @@ Each booth is paired to exactly one environment.
 - Treat booth agents as privileged clients.
 - Enforce tenant isolation for all client-scoped data.
 - Validate subscription status and booth allowance before activating booths or starting sessions.
-- Validate colors and image URLs for Booth UI themes.
+- Validate Booth UI theme presets and uploaded background image data URLs.
 - Validate booth payment option assignments before creating or advancing payment attempts.
 - Reject arbitrary client CSS, scripts, or layout definitions.
 - All payment approvals and subscription changes must be audited.

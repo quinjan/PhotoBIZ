@@ -130,10 +130,16 @@ Permissions:
 - View only the assigned booth.
 - View current booth state.
 - View pending payment requests for the assigned booth.
-- Approve cash payments.
-- Cancel or expire a pending transaction.
+- Approve cash payments when the saved cashier permission is enabled.
+- Cancel or expire a pending transaction when the saved cashier permission is enabled.
 - View today's transactions and sales for the assigned booth.
-- Trigger basic recovery actions, such as returning booth to welcome screen and clearing a stuck active booth transaction.
+- Trigger basic recovery actions, such as returning booth to welcome screen and clearing a stuck active booth transaction, when the saved cashier permission is enabled.
+
+Cashier workflow note:
+
+- Cashier user records may be created before booth assignment.
+- Cashier-to-booth assignment happens during booth registration in the Admin Web workflow.
+- Client Owner/Admin user detail management persists cashier permissions for approve cash, cancel transaction, and return booth to welcome.
 
 ## Subscription Model
 
@@ -180,6 +186,18 @@ Required MVP sections:
 - Settings.
 - Audit logs.
 
+Role-specific navigation:
+
+- Application Owner: Dashboard, Subscriptions, Clients, Audit Log.
+- Client Owner and Client Admin: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, Audit Log.
+- Cashier: Dashboard, Cashier POS, Reports, Audit Log.
+
+In the client tenant UI, Packages is the user-facing label for booth offers. The Packages section also owns the client-scoped print entitlement list used by package forms.
+
+The Booths section is an inventory-first workflow. The list shows every booth with location, booth code, effective agent state, active package, runtime payment status, assigned cashier, lifecycle status, and a Manage action. Registration captures only MVP booth record fields: booth name, booth code, location, and optional assigned cashier. After creation, PhotoBIZ shows the one-time kiosk token and Windows Agent credential; Manage Booth can re-issue booth credentials when staff need to configure or recover the Windows Agent. Re-issuing credentials rotates both the Agent credential and kiosk token, and the old Agent credential stops working. Hardware inventory fields such as camera, printer, and notes are intentionally out of MVP scope.
+
+The Manage Booth page owns booth record edits, cashier assignment, active package selection, cash payment assignment, and Booth UI appearance. It uses two tabs: Details for the booth record, package, and payment assignment; Session Setup for session label, welcome copy, theme, background image upload, and preview. The management preview must render through the same Booth UI stage presentation contract as the kiosk app, using current unsaved form values for preview and persisting appearance changes through the booth appearance endpoint.
+
 ### 2. Booth UI
 
 The Booth UI is the customer-facing interface shown on the booth's extended screen.
@@ -195,11 +213,15 @@ Required MVP screens:
 - Session in progress or LumaBooth handoff screen.
 - Completed session prompt for 15 seconds: "Need extra prints? Please go to the cashier."
 - Expired transaction screen.
+- Cancelled payment/request screen.
+- Payment failed screen.
 - Error/recovery screen.
 
 Rules:
 
 - Booth UI is accessible only through a booth-scoped kiosk token.
+- Booth UI accepts the kiosk token from the first URL path segment, such as `http://localhost:4201/{token}`. The customer-facing Booth UI does not expose a manual kiosk token input.
+- Booth UI may receive a short-lived `recentTransaction` from config for customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED`, and must show a clear status screen instead of silently returning to welcome.
 - Booth UI does not require cashier login or daily unlock.
 - Booth UI remains accessible with a valid kiosk token when the Windows Agent is closed, but it must show an agent-offline unavailable state and block transaction start.
 - Booth UI displays the booth's single active offer.
@@ -207,6 +229,7 @@ Rules:
 - Booth UI reflects client-level branding and active session overrides.
 - Booth UI displays only booth-assigned payment methods that are enabled for runtime use.
 - Booth UI cannot directly approve payment or start LumaBooth.
+- Admin Web Booth preview and Booth UI kiosk rendering share the same presentation component and `/api/booth-ui/config` data shape. Admin preview may omit kiosk-only controls, but stage layout, typography, preset colors, offer display, button styling, and state visuals must match the customer-facing Booth UI.
 
 ### 3. Windows Booth Agent
 
@@ -215,6 +238,8 @@ The Windows Booth Agent runs locally on the booth laptop.
 Responsibilities:
 
 - Authenticate and pair with a booth record.
+- Request a fresh booth-scoped Booth UI launch token after successful pairing or startup.
+- Launch Chrome in kiosk mode to the configured Booth UI URL with the launch token, using an isolated Chrome profile so customers cannot access normal browser controls.
 - Maintain heartbeat connection with backend.
 - Be treated as offline when no heartbeat has been received or the last heartbeat is older than 60 seconds.
 - Receive commands from backend.
@@ -233,17 +258,16 @@ Client-level customization:
 
 - Brand/display name.
 - Logo.
-- Background image.
-- Primary color.
-- Accent color.
 - Default welcome headline.
 - Default welcome subtitle.
 
 Booth-level customization:
 
-- PhotoBIZ-managed theme preset, such as `VINTAGE_FILM` or `MODERN_POP`.
+- PhotoBIZ-managed theme preset: `VINTAGE`, `CLEAN_MODERN`, or `POP`.
 - Active booth offer.
 - Booth-specific session label, welcome headline, and welcome subtitle overrides.
+- Optional background image upload, stored as a constrained PNG/JPEG/WebP data URL and rendered by the selected theme.
+- Theme colors, typography, and button styling are owned by PhotoBIZ presets. Tenants do not choose arbitrary primary/accent colors in MVP.
 
 Active session overrides:
 
@@ -258,6 +282,7 @@ Guardrails:
 - No arbitrary CSS.
 - No custom layouts.
 - No uploaded executable/script content.
+- No arbitrary remote image URLs for Booth UI theme backgrounds in MVP.
 - Colors and image URLs must be validated.
 - Theme changes are client-scoped and audit logged.
 
@@ -275,8 +300,8 @@ Guardrails:
 2. Client Owner or Client Admin registers a booth.
 3. Backend validates subscription status and active booth allowance.
 4. System creates agent credentials and booth-scoped kiosk token.
-5. Windows Agent pairs with the booth record.
-6. Booth UI opens using the booth token.
+5. Windows Agent pairs with the booth record using the Agent credential.
+6. Windows Agent requests a fresh Booth UI launch token and opens Chrome in kiosk mode to the Booth UI token URL.
 7. Client activates exactly one booth offer for the booth.
 8. Client selects a PhotoBIZ-managed booth theme and active session appearance.
 9. Client assigns booth payment options from client-level resources.
@@ -316,10 +341,10 @@ Guardrails:
 11. LumaBooth handles capture, printing, and Fotoshare sharing.
 12. LumaBooth sends URL trigger events to the Agent's local listener; `session_start` reports backend session started and `session_end` reports backend session completed.
 13. Backend marks transaction as `COMPLETED`.
-14. Booth UI shows a 15-second completed prompt telling the customer to go to the cashier for extra prints if needed.
-15. If no extra print add-on is created, the worker returns the booth to welcome after the prompt.
+14. For `PER_SESSION`, Booth UI shows a 15-second completed prompt telling the customer to go to the cashier for extra prints if needed, with a `No Extra Prints` action that immediately returns the booth to welcome.
+15. Whichever happens first, the `No Extra Prints` click or the 15-second Booth UI timer, commands the backend to return the booth to welcome. Timer retries stay quiet; a failed customer click shows a clear error and keeps the completed screen until the backend accepts the return. The backend worker remains a fallback reset.
 
-For `TIME_UNLIMITED` and `SESSION_COUNT` offers, plan activation is cashier-side and cash-only in the MVP. Once a timed or session-count offer is active and paid, Booth UI skips payment and offer review screens and follows welcome, LumaBooth handoff, and return-to-welcome states.
+For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the package. The selected package is saved as `PENDING_PAYMENT` and is not usable until the assigned cashier clicks `Activate Package` in POS, creating one cash `PLAN_ACTIVATION` transaction for the package price. Cash approval completes that payment transaction, starts the timed window or session allowance, and marks the activation `ACTIVE`. Once a timed or session-count offer is active and paid, Booth UI creates zero-amount `COVERED_PLAN_SESSION` transactions, skips payment selection, and follows welcome, LumaBooth handoff, and return-to-welcome states. Completed covered sessions must not show the extra-print prompt because extra print add-ons are not available for those package types. `PLAN_ACTIVATION` transactions never command the Windows Agent.
 
 ### Workflow F: Coming Soon Maya Setup
 
@@ -362,6 +387,8 @@ MVP booth offer types:
 
 Clients may create multiple packages for each offer type. A booth can activate exactly one package at a time from the full active package catalog, regardless of offer type.
 
+Clients manage a tenant-scoped print entitlement list under Packages. The package form uses active print entitlements as its dropdown options. New client accounts start with common MVP defaults, including `2 pcs 6x2 or 1 pc 6x4`, `2 pcs 6x2`, and `1 pc 6x4`. Print entitlements can be activated or deactivated; inactive entitlements remain available for historical package records but are not offered for new package selection.
+
 MVP booth offer fields:
 
 - Client account.
@@ -369,7 +396,7 @@ MVP booth offer fields:
 - Description.
 - Offer type.
 - Price in PHP.
-- Included print entitlement: `2 pcs 6x2` or `1 pc 6x4`.
+- Included print entitlement: selected from the active client print entitlement list.
 - Duration in hours, required only for `TIME_UNLIMITED`.
 - Session allowance, required only for `SESSION_COUNT`.
 - Extra print add-on eligibility, true only for `PER_SESSION`.
@@ -528,25 +555,27 @@ Future reports:
 - Failed or expired transactions.
 - Top booth offers sold.
 - Sales by location.
-- Recent transactions.
+- Recent booth activity with All, Sales, and Sessions filters. Covered plan sessions display as included usage, not PHP 0 sales; session-count rows show the historical used-session sequence for that completed session.
 - Current booth statuses.
+- Current booth statuses include the active package context. Session-count packages show the latest completed covered-session sequence, such as `2 of 5 used`; timed packages show minutes remaining and the exact expiration timestamp in Philippine time.
 - Recent client audit events.
 
 ### Cashier POS View
 
 - Assigned booth name and status.
-- Current transaction card.
+- Current payment request card.
 - Active booth offer.
 - Amount due.
 - Payment method, filtered by booth assignment and runtime availability.
 - Countdown until expiration.
 - `Approve Cash` action.
 - `Cancel Transaction` action.
-- Cash-only plan activation checkout for `TIME_UNLIMITED` and `SESSION_COUNT` during MVP.
+- `Activate Package` action when the assigned booth has a selected `TIME_UNLIMITED` or `SESSION_COUNT` package in `PENDING_PAYMENT` and no other non-terminal transaction.
+- Cash-only plan activation checkout for `TIME_UNLIMITED` and `SESSION_COUNT` during MVP; approval activates the package but does not start LumaBooth.
 - Future Maya QR/ECR methods visible only as locked assigned options until provider integration is enabled.
 - Today's sales.
 - Today's completed sessions.
-- Recent transactions for the assigned booth.
+- Assigned booth activity with All, Sales, and Sessions filters. Payment actions stay transaction-oriented; history uses activity wording and session-count rows show the historical used-session sequence.
 - Extra print controls for the latest eligible completed per-session transaction, including a 1 to 5 copy selector and computed cash total.
 - Assigned-booth sales summary and cashier-owned audit events.
 - Basic recovery action: return to welcome screen.

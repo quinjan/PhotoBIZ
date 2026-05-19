@@ -1,0 +1,26 @@
+:host {
+  display: block;
+  min-height: 100%;
+  position: relative;
+}
+
+.stage-slot {
+  left: 50%;
+  max-width: 880px;
+  position: absolute;
+  transform: translateX(-50%);
+  width: min(100% - 32px, 880px);
+  z-index: 2;
+}
+
+.stage-token-slot {
+  top: 16px;
+}
+
+.stage-error-slot {
+  bottom: 16px;
+}
+
+.stage-slot:empty {
+  display: none;
+}

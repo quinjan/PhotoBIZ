@@ -12,6 +12,8 @@ namespace PhotoBIZ.Api;
 
 public static class PhotoBizApiEndpoints
 {
+    private static readonly TimeSpan RecentBoothTerminalTransactionVisibility = TimeSpan.FromMinutes(5);
+
     public static void MapPhotoBizApi(this IEndpointRouteBuilder app)
     {
         var auth = app.MapGroup("/api/auth");
@@ -34,8 +36,11 @@ public static class PhotoBizApiEndpoints
         admin.MapPut("/locations/{locationId:guid}", UpdateLocationAsync);
         admin.MapPost("/booths", CreateBoothAsync);
         admin.MapPut("/booths/{boothId:guid}", UpdateBoothAsync);
+        admin.MapPost("/booths/{boothId:guid}/credentials", IssueBoothCredentialsAsync);
         admin.MapPost("/offers", CreateOfferAsync);
         admin.MapPut("/offers/{offerId:guid}", UpdateOfferAsync);
+        admin.MapPost("/print-entitlements", CreatePrintEntitlementAsync);
+        admin.MapPut("/print-entitlements/{printEntitlementId:guid}", UpdatePrintEntitlementAsync);
         admin.MapPost("/booths/{boothId:guid}/activate-offer", ActivateOfferAsync);
         admin.MapPut("/booths/{boothId:guid}/appearance", UpdateAppearanceAsync);
         admin.MapPost("/booths/{boothId:guid}/payment-options", AssignPaymentOptionAsync);
@@ -45,16 +50,19 @@ public static class PhotoBizApiEndpoints
         boothUi.MapGet("/config", GetBoothConfigAsync);
         boothUi.MapPost("/transactions", CreateBoothTransactionAsync);
         boothUi.MapPost("/transactions/{transactionId:guid}/payment-method", SelectPaymentMethodAsync);
+        boothUi.MapPost("/return-to-welcome", ReturnBoothUiToWelcomeAsync);
 
         var cashier = app.MapGroup("/api/cashier").RequireAuthorization();
         cashier.MapPost("/transactions/{transactionId:guid}/approve-cash", ApproveCashAsync);
         cashier.MapPost("/transactions/{transactionId:guid}/cancel", CancelTransactionAsync);
         cashier.MapPost("/transactions/{parentTransactionId:guid}/extra-prints", CreateExtraPrintAddOnAsync);
+        cashier.MapPost("/booths/{boothId:guid}/plan-activation", CreatePlanActivationAsync);
         cashier.MapPost("/booths/{boothId:guid}/return-to-welcome", ReturnBoothToWelcomeAsync);
 
         var agent = app.MapGroup("/api/agent");
         agent.MapPost("/pair", PairAgentAsync);
         agent.MapPost("/heartbeat", AgentHeartbeatAsync);
+        agent.MapPost("/booth-ui-launch", CreateAgentBoothUiLaunchAsync);
         agent.MapGet("/commands/next", GetNextAgentCommandAsync);
         agent.MapPost("/transactions/{transactionId:guid}/session-started", AgentSessionStartedAsync);
         agent.MapPost("/transactions/{transactionId:guid}/session-completed", AgentSessionCompletedAsync);
@@ -157,8 +165,13 @@ public static class PhotoBizApiEndpoints
         }
         var scopedBoothIds = booths.Select(item => item.Id).ToArray();
         var offers = await ApplyClientScope(dbContext.BoothOffers.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
+        var printEntitlements = await ApplyClientScope(dbContext.PrintEntitlements.AsNoTracking(), currentUser, item => item.ClientAccountId)
+            .OrderByDescending(item => item.Status == StatusValues.PrintEntitlement.Active)
+            .ThenBy(item => item.Name)
+            .ToListAsync(cancellationToken);
         var activations = await ApplyScopedBoothIds(dbContext.BoothOfferActivations.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var paymentAssignments = await ApplyScopedBoothIds(dbContext.BoothPaymentOptionAssignments.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
+        var appearanceConfigs = await ApplyScopedBoothIds(dbContext.BoothAppearanceConfigs.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var subscriptions = await ApplyClientScope(dbContext.ClientSubscriptions.AsNoTracking(), currentUser, item => item.ClientAccountId)
             .OrderBy(item => item.StartsOn)
             .ThenBy(item => item.Id)
@@ -166,10 +179,10 @@ public static class PhotoBizApiEndpoints
         var subscriptionPlans = await dbContext.SubscriptionPlans.AsNoTracking().OrderBy(item => item.Name).ToListAsync(cancellationToken);
         var reportTransactions = await ApplyScopedBoothIds(dbContext.Transactions.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId)
             .ToListAsync(cancellationToken);
-        var transactions = reportTransactions
+        var transactions = ToTransactionSummaries(reportTransactions)
             .OrderByDescending(item => item.CreatedAt)
             .Take(25)
-            .ToList();
+            .ToArray();
         var auditLogs = await ApplyAuditLogScope(dbContext.AuditLogs.AsNoTracking(), currentUser)
             .OrderByDescending(item => item.CreatedAt)
             .Take(25)
@@ -177,18 +190,27 @@ public static class PhotoBizApiEndpoints
         var now = DateTimeOffset.UtcNow;
         var boothSummaries = booths.Select(booth => new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, PhotoBizBoothAvailability.GetEffectiveState(booth, now), booth.LastHeartbeatAt)).ToArray();
 
+        var sessionUser = users.Single(item => item.Id == currentUser.UserId);
+
         return TypedResults.Ok(new AdminOverviewResponse(
-            new AuthSessionResponse(currentUser.UserId, users.Single(item => item.Id == currentUser.UserId).Name, users.Single(item => item.Id == currentUser.UserId).Email, currentUser.Role, currentUser.ClientAccountId, currentUser.AssignedBoothId),
+            ToSessionResponse(sessionUser),
             clients.Select(client => new ClientSummary(client.Id, client.Name, client.Status)).ToArray(),
             subscriptionPlans.Select(plan => new SubscriptionPlanSummary(plan.Id, plan.Name, plan.PricePerBoothCents, plan.Currency, plan.Active)).ToArray(),
             subscriptions.Select(subscription => new ClientSubscriptionSummary(subscription.Id, subscription.ClientAccountId, subscription.SubscriptionPlanId, subscription.Status, subscription.ActiveBoothAllowance)).ToArray(),
-            users.Select(user => new UserSummary(user.Id, user.ClientAccountId, user.Name, user.Email, user.Role, user.Status, user.AssignedBoothId)).ToArray(),
+            users.Select(ToUserSummary).ToArray(),
             locations.Select(location => new LocationSummary(location.Id, location.ClientAccountId, location.Name, location.Address, location.Status)).ToArray(),
             boothSummaries,
             offers.Select(ToOfferSummary).ToArray(),
-            activations.Select(activation => new OfferActivationSummary(activation.Id, activation.BoothId, activation.BoothOfferId, activation.Status)).ToArray(),
+            printEntitlements.Select(ToPrintEntitlementSummary).ToArray(),
+            activations.Select(ToOfferActivationSummary).ToArray(),
             paymentAssignments.Select(assignment => new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status)).ToArray(),
-            ToTransactionSummaries(transactions).ToArray(),
+            appearanceConfigs.Select(config =>
+            {
+                var normalizedTheme = NormalizeThemePreset(config.ThemePreset);
+                var scheme = GetThemeScheme(normalizedTheme);
+                return new BoothAppearanceSummary(config.Id, config.BoothId, normalizedTheme, scheme.PrimaryColor, scheme.AccentColor, config.BackgroundImageUrl, config.BackgroundImageDataUrl, config.SessionLabel, config.DefaultWelcomeHeadline, config.DefaultWelcomeSubtitle);
+            }).ToArray(),
+            transactions,
             BuildReportSummary(clients, subscriptions, subscriptionPlans, boothSummaries, offers, locations, reportTransactions, now),
             auditLogs.Select(auditLog => new AuditLogSummary(auditLog.Id, auditLog.ClientAccountId, auditLog.UserId, auditLog.Action, auditLog.EntityType, auditLog.EntityId, auditLog.Metadata, auditLog.CreatedAt)).ToArray()));
     }
@@ -215,6 +237,7 @@ public static class PhotoBizApiEndpoints
             CreatedAt = DateTimeOffset.UtcNow
         };
         dbContext.ClientAccounts.Add(client);
+        AddDefaultPrintEntitlements(dbContext, client.Id);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         await auditService.WriteAsync(currentUser, "client.created", nameof(ClientAccount), client.Id, new { client.Name }, cancellationToken);
@@ -286,6 +309,7 @@ public static class PhotoBizApiEndpoints
 
         dbContext.ClientAccounts.Add(client);
         dbContext.Users.Add(owner);
+        AddDefaultPrintEntitlements(dbContext, client.Id);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         await auditService.WriteAsync(currentUser, "client.onboarded", nameof(ClientAccount), client.Id, new { client.Name, OwnerEmail = owner.Email }, cancellationToken);
@@ -293,7 +317,7 @@ public static class PhotoBizApiEndpoints
 
         return TypedResults.Ok(new ClientOnboardingResponse(
             new ClientSummary(client.Id, client.Name, client.Status),
-            new UserSummary(owner.Id, owner.ClientAccountId, owner.Name, owner.Email, owner.Role, owner.Status, owner.AssignedBoothId)));
+            ToUserSummary(owner)));
     }
 
     private static async Task<Results<Ok<ClientSummary>, ForbidHttpResult, ValidationProblem>> UpdateClientAsync(
@@ -613,16 +637,8 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        if (request.Role == StatusValues.User.Cashier)
+        if (request.Role == StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
         {
-            if (!request.AssignedBoothId.HasValue)
-            {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["assignedBoothId"] = ["Cashiers must be assigned to exactly one booth."]
-                });
-            }
-
             var boothIsInClient = await dbContext.Booths
                 .AsNoTracking()
                 .AnyAsync(item => item.Id == request.AssignedBoothId.Value && item.ClientAccountId == clientAccountId.Value, cancellationToken);
@@ -635,7 +651,7 @@ public static class PhotoBizApiEndpoints
                 });
             }
         }
-        else if (request.AssignedBoothId.HasValue)
+        else if (request.Role != StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -652,6 +668,9 @@ public static class PhotoBizApiEndpoints
             Email = request.Email.Trim(),
             Role = request.Role,
             Status = StatusValues.User.Active,
+            CanApproveCash = IsCashierPermissionEnabled(request.Role, request.CanApproveCash),
+            CanReturnBoothToWelcome = IsCashierPermissionEnabled(request.Role, request.CanReturnBoothToWelcome),
+            CanCancelTransaction = IsCashierPermissionEnabled(request.Role, request.CanCancelTransaction),
             CreatedAt = DateTimeOffset.UtcNow
         };
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
@@ -661,7 +680,7 @@ public static class PhotoBizApiEndpoints
 
         await auditService.WriteAsync(currentUser, "user.created", nameof(ApplicationUser), user.Id, new { user.Email, user.Role }, cancellationToken);
 
-        return TypedResults.Ok(new UserSummary(user.Id, user.ClientAccountId, user.Name, user.Email, user.Role, user.Status, user.AssignedBoothId));
+        return TypedResults.Ok(ToUserSummary(user));
     }
 
     private static async Task<Results<Ok<UserSummary>, ForbidHttpResult, ValidationProblem>> UpdateUserAsync(
@@ -715,16 +734,8 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
-        if (request.Role == StatusValues.User.Cashier)
+        if (request.Role == StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
         {
-            if (!request.AssignedBoothId.HasValue)
-            {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["assignedBoothId"] = ["Cashiers must be assigned to exactly one booth."]
-                });
-            }
-
             var boothIsInClient = await dbContext.Booths
                 .AsNoTracking()
                 .AnyAsync(item => item.Id == request.AssignedBoothId.Value && item.ClientAccountId == user.ClientAccountId.Value, cancellationToken);
@@ -737,7 +748,7 @@ public static class PhotoBizApiEndpoints
                 });
             }
         }
-        else if (request.AssignedBoothId.HasValue)
+        else if (request.Role != StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -750,12 +761,15 @@ public static class PhotoBizApiEndpoints
         user.Role = request.Role;
         user.Status = request.Status;
         user.AssignedBoothId = request.Role == StatusValues.User.Cashier ? request.AssignedBoothId : null;
+        user.CanApproveCash = IsCashierPermissionEnabled(request.Role, request.CanApproveCash);
+        user.CanReturnBoothToWelcome = IsCashierPermissionEnabled(request.Role, request.CanReturnBoothToWelcome);
+        user.CanCancelTransaction = IsCashierPermissionEnabled(request.Role, request.CanCancelTransaction);
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await auditService.WriteAsync(currentUser, "user.updated", nameof(ApplicationUser), user.Id, new { user.Email, user.Role, user.Status, user.AssignedBoothId }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "user.updated", nameof(ApplicationUser), user.Id, new { user.Email, user.Role, user.Status, user.AssignedBoothId, user.CanApproveCash, user.CanReturnBoothToWelcome, user.CanCancelTransaction }, cancellationToken);
 
-        return TypedResults.Ok(new UserSummary(user.Id, user.ClientAccountId, user.Name, user.Email, user.Role, user.Status, user.AssignedBoothId));
+        return TypedResults.Ok(ToUserSummary(user));
     }
 
     private static async Task<Results<Ok<LocationSummary>, ForbidHttpResult, ValidationProblem>> CreateLocationAsync(
@@ -883,6 +897,39 @@ public static class PhotoBizApiEndpoints
             return subscriptionValidation;
         }
 
+        ApplicationUser? cashier = null;
+
+        if (request.CashierUserId.HasValue)
+        {
+            cashier = await dbContext.Users.SingleOrDefaultAsync(
+                item => item.Id == request.CashierUserId.Value && item.ClientAccountId == clientAccountId,
+                cancellationToken);
+
+            if (cashier is null)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned cashier must exist in the selected client account."]
+                });
+            }
+
+            if (cashier.Role != StatusValues.User.Cashier)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned user must have the CASHIER role."]
+                });
+            }
+
+            if (cashier.AssignedBoothId.HasValue)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned cashier is already linked to another booth."]
+                });
+            }
+        }
+
         var kioskToken = tokenHasher.GenerateOpaqueToken();
         var agentCredential = tokenHasher.GenerateOpaqueToken();
 
@@ -904,9 +951,9 @@ public static class PhotoBizApiEndpoints
         {
             Id = Guid.NewGuid(),
             BoothId = booth.Id,
-            ThemePreset = StatusValues.Theme.VintageFilm,
-            PrimaryColor = "#2f6868",
-            AccentColor = "#f5d27e",
+            ThemePreset = StatusValues.Theme.Vintage,
+            PrimaryColor = GetThemeScheme(StatusValues.Theme.Vintage).PrimaryColor,
+            AccentColor = GetThemeScheme(StatusValues.Theme.Vintage).AccentColor,
             DefaultWelcomeHeadline = "Step Into The Memory Box",
             DefaultWelcomeSubtitle = "Review today's booth offer, pay at the counter, then strike your best pose."
         });
@@ -921,9 +968,14 @@ public static class PhotoBizApiEndpoints
             AssignedAt = DateTimeOffset.UtcNow
         });
 
+        if (cashier is not null)
+        {
+            cashier.AssignedBoothId = booth.Id;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await auditService.WriteAsync(currentUser, "booth.created", nameof(Booth), booth.Id, new { booth.Name, booth.Code }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "booth.created", nameof(Booth), booth.Id, new { booth.Name, booth.Code, request.CashierUserId }, cancellationToken);
 
         return TypedResults.Ok(new CreateBoothResponse(
             new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, booth.CurrentState, booth.LastHeartbeatAt),
@@ -977,6 +1029,39 @@ public static class PhotoBizApiEndpoints
             });
         }
 
+        ApplicationUser? requestedCashier = null;
+
+        if (request.CashierUserId.HasValue)
+        {
+            requestedCashier = await dbContext.Users.SingleOrDefaultAsync(
+                item => item.Id == request.CashierUserId.Value && item.ClientAccountId == booth.ClientAccountId,
+                cancellationToken);
+
+            if (requestedCashier is null)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned cashier must exist in the booth's client account."]
+                });
+            }
+
+            if (requestedCashier.Role != StatusValues.User.Cashier)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned user must have the CASHIER role."]
+                });
+            }
+
+            if (requestedCashier.AssignedBoothId.HasValue && requestedCashier.AssignedBoothId.Value != booth.Id)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["cashierUserId"] = ["Assigned cashier is already linked to another booth."]
+                });
+            }
+        }
+
         if (booth.Status != StatusValues.Booth.Active && request.Status == StatusValues.Booth.Active)
         {
             var subscriptionValidation = await ValidateSubscriptionAllowsNewBoothAsync(dbContext, booth.ClientAccountId, cancellationToken);
@@ -991,6 +1076,20 @@ public static class PhotoBizApiEndpoints
         booth.Name = request.Name.Trim();
         booth.Code = request.Code.Trim().ToUpperInvariant();
         booth.Status = request.Status;
+
+        var existingCashier = await dbContext.Users.SingleOrDefaultAsync(
+            item => item.ClientAccountId == booth.ClientAccountId && item.AssignedBoothId == booth.Id,
+            cancellationToken);
+
+        if (existingCashier is not null && existingCashier.Id != request.CashierUserId)
+        {
+            existingCashier.AssignedBoothId = null;
+        }
+
+        if (requestedCashier is not null)
+        {
+            requestedCashier.AssignedBoothId = booth.Id;
+        }
 
         if (request.Status == StatusValues.Booth.Inactive)
         {
@@ -1009,9 +1108,39 @@ public static class PhotoBizApiEndpoints
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await auditService.WriteAsync(currentUser, "booth.updated", nameof(Booth), booth.Id, new { booth.Name, booth.Code, booth.Status }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "booth.updated", nameof(Booth), booth.Id, new { booth.Name, booth.Code, booth.Status, request.CashierUserId }, cancellationToken);
 
         return TypedResults.Ok(new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, booth.CurrentState, booth.LastHeartbeatAt));
+    }
+
+    private static async Task<Results<Ok<BoothCredentialResponse>, ForbidHttpResult>> IssueBoothCredentialsAsync(
+        Guid boothId,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizTokenHasher tokenHasher,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsClientScopedAdmin)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var booth = await LoadScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var credentials = RotateBoothCredentials(booth, tokenHasher);
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditService.WriteAsync(currentUser, "booth.credentials_issued", nameof(Booth), booth.Id, new { booth.Code }, cancellationToken);
+
+        return TypedResults.Ok(credentials);
     }
 
     private static async Task<Results<Ok<OfferSummary>, ForbidHttpResult, ValidationProblem>> CreateOfferAsync(
@@ -1162,6 +1291,96 @@ public static class PhotoBizApiEndpoints
         return TypedResults.Ok(ToOfferSummary(offer));
     }
 
+    private static async Task<Results<Ok<PrintEntitlementSummary>, ForbidHttpResult, ValidationProblem>> CreatePrintEntitlementAsync(
+        CreatePrintEntitlementRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsClientScopedAdmin)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var clientAccountId = currentUser.IsApplicationOwner ? request.ClientAccountId : currentUser.ClientAccountId!.Value;
+        var validation = await ValidatePrintEntitlementRequestAsync(dbContext, clientAccountId, request.Name, null, cancellationToken);
+
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        var entitlement = new PrintEntitlement
+        {
+            Id = Guid.NewGuid(),
+            ClientAccountId = clientAccountId,
+            Name = request.Name.Trim(),
+            Status = StatusValues.PrintEntitlement.Active,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        dbContext.PrintEntitlements.Add(entitlement);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(currentUser, "print_entitlement.created", nameof(PrintEntitlement), entitlement.Id, new { entitlement.Name }, cancellationToken);
+
+        return TypedResults.Ok(ToPrintEntitlementSummary(entitlement));
+    }
+
+    private static async Task<Results<Ok<PrintEntitlementSummary>, ForbidHttpResult, ValidationProblem>> UpdatePrintEntitlementAsync(
+        Guid printEntitlementId,
+        UpdatePrintEntitlementRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsClientScopedAdmin)
+        {
+            return TypedResults.Forbid();
+        }
+
+        if (!IsKnownPrintEntitlementStatus(request.Status))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["status"] = ["Print entitlement status is not supported."]
+            });
+        }
+
+        var entitlement = await ApplyClientScope(dbContext.PrintEntitlements, currentUser, item => item.ClientAccountId)
+            .SingleOrDefaultAsync(item => item.Id == printEntitlementId, cancellationToken);
+
+        if (entitlement is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["printEntitlementId"] = ["Print entitlement was not found in the selected client account."]
+            });
+        }
+
+        var validation = await ValidatePrintEntitlementRequestAsync(dbContext, entitlement.ClientAccountId, request.Name, entitlement.Id, cancellationToken);
+
+        if (validation is not null)
+        {
+            return validation;
+        }
+
+        entitlement.Name = request.Name.Trim();
+        entitlement.Status = request.Status;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(currentUser, "print_entitlement.updated", nameof(PrintEntitlement), entitlement.Id, new { entitlement.Name, entitlement.Status }, cancellationToken);
+
+        return TypedResults.Ok(ToPrintEntitlementSummary(entitlement));
+    }
+
     private static async Task<Results<Ok<OfferActivationSummary>, ForbidHttpResult, ValidationProblem>> ActivateOfferAsync(
         Guid boothId,
         ActivateOfferRequest request,
@@ -1215,16 +1434,30 @@ public static class PhotoBizApiEndpoints
             activation.DeactivatedAt = DateTimeOffset.UtcNow;
         }
 
+        var existingPending = await dbContext.BoothOfferActivations
+            .Where(item => item.BoothId == boothId && item.Status == StatusValues.OfferActivation.PendingPayment)
+            .ToListAsync(cancellationToken);
+
+        foreach (var activation in existingPending)
+        {
+            activation.Status = StatusValues.OfferActivation.Cancelled;
+            activation.DeactivatedAt = DateTimeOffset.UtcNow;
+        }
+
+        var activationStatus = activeOffer.OfferType == StatusValues.OfferType.PerSession
+            ? StatusValues.OfferActivation.Active
+            : StatusValues.OfferActivation.PendingPayment;
+
         var newActivation = new BoothOfferActivation
         {
             Id = Guid.NewGuid(),
             BoothId = booth.Id,
             BoothOfferId = activeOffer.Id,
-            Status = StatusValues.OfferActivation.Active,
+            Status = activationStatus,
             ActivatedAt = DateTimeOffset.UtcNow,
             SessionAllowance = activeOffer.SessionAllowance,
-            StartsAt = activeOffer.OfferType == StatusValues.OfferType.TimeUnlimited ? DateTimeOffset.UtcNow : null,
-            EndsAt = activeOffer.OfferType == StatusValues.OfferType.TimeUnlimited && activeOffer.DurationHours.HasValue
+            StartsAt = activationStatus == StatusValues.OfferActivation.Active && activeOffer.OfferType == StatusValues.OfferType.TimeUnlimited ? DateTimeOffset.UtcNow : null,
+            EndsAt = activationStatus == StatusValues.OfferActivation.Active && activeOffer.OfferType == StatusValues.OfferType.TimeUnlimited && activeOffer.DurationHours.HasValue
                 ? DateTimeOffset.UtcNow.AddHours(activeOffer.DurationHours.Value)
                 : null
         };
@@ -1233,7 +1466,7 @@ public static class PhotoBizApiEndpoints
 
         await auditService.WriteAsync(currentUser, "booth_offer.activated", nameof(BoothOfferActivation), newActivation.Id, new { BoothId = booth.Id, BoothOfferId = activeOffer.Id }, cancellationToken);
 
-        return TypedResults.Ok(new OfferActivationSummary(newActivation.Id, newActivation.BoothId, newActivation.BoothOfferId, newActivation.Status));
+        return TypedResults.Ok(ToOfferActivationSummary(newActivation));
     }
 
     private static async Task<Results<Ok, ForbidHttpResult, ValidationProblem>> UpdateAppearanceAsync(
@@ -1250,11 +1483,19 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
-        if (!IsValidHexColor(request.PrimaryColor) || !IsValidHexColor(request.AccentColor))
+        if (!IsKnownThemePreset(request.ThemePreset))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["theme"] = ["Theme colors must be valid hex values."]
+                ["themePreset"] = ["Theme preset is not supported."]
+            });
+        }
+
+        if (!IsValidImageDataUrl(request.BackgroundImageDataUrl))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["backgroundImage"] = ["Background image must be a PNG, JPEG, or WebP data image up to 2 MB."]
             });
         }
 
@@ -1280,10 +1521,13 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        appearance.ThemePreset = request.ThemePreset;
-        appearance.PrimaryColor = request.PrimaryColor;
-        appearance.AccentColor = request.AccentColor;
-        appearance.BackgroundImageUrl = request.BackgroundImageUrl;
+        var normalizedTheme = NormalizeThemePreset(request.ThemePreset);
+        var themeScheme = GetThemeScheme(normalizedTheme);
+        appearance.ThemePreset = normalizedTheme;
+        appearance.PrimaryColor = themeScheme.PrimaryColor;
+        appearance.AccentColor = themeScheme.AccentColor;
+        appearance.BackgroundImageUrl = null;
+        appearance.BackgroundImageDataUrl = request.BackgroundImageDataUrl;
         appearance.SessionLabel = request.SessionLabel;
         appearance.DefaultWelcomeHeadline = request.DefaultWelcomeHeadline;
         appearance.DefaultWelcomeSubtitle = request.DefaultWelcomeSubtitle;
@@ -1433,6 +1677,13 @@ public static class PhotoBizApiEndpoints
 
         var now = DateTimeOffset.UtcNow;
         var effectiveBoothState = PhotoBizBoothAvailability.GetEffectiveState(booth, now);
+        var client = await dbContext.ClientAccounts.SingleAsync(item => item.Id == booth.ClientAccountId, cancellationToken);
+        var appearance = await dbContext.BoothAppearanceConfigs.SingleOrDefaultAsync(item => item.BoothId == booth.Id, cancellationToken);
+        var recentTransaction = await GetRecentBoothTerminalTransactionAsync(
+            dbContext,
+            booth.Id,
+            now,
+            cancellationToken);
         var subscription = await dbContext.ClientSubscriptions
             .Where(item => item.ClientAccountId == booth.ClientAccountId)
             .OrderByDescending(item => item.StartsOn)
@@ -1440,22 +1691,24 @@ public static class PhotoBizApiEndpoints
 
         if (subscription is null || subscription.Status is StatusValues.Subscription.Suspended or StatusValues.Subscription.Cancelled)
         {
-            return TypedResults.Ok(ToUnavailableConfig(booth, effectiveBoothState, "Subscription inactive"));
+            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, "Subscription inactive", recentTransaction));
         }
 
-        var activeActivation = await dbContext.BoothOfferActivations
+        var selectedActivation = await dbContext.BoothOfferActivations
             .Include(item => item.BoothOffer)
-            .Where(item => item.BoothId == booth.Id && item.Status == StatusValues.OfferActivation.Active)
-            .OrderByDescending(item => item.ActivatedAt)
+            .Where(item =>
+                item.BoothId == booth.Id &&
+                (item.Status == StatusValues.OfferActivation.Active ||
+                    item.Status == StatusValues.OfferActivation.PendingPayment))
+            .OrderByDescending(item => item.Status == StatusValues.OfferActivation.PendingPayment)
+            .ThenByDescending(item => item.ActivatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (activeActivation?.BoothOffer is null)
+        if (selectedActivation?.BoothOffer is null)
         {
-            return TypedResults.Ok(ToUnavailableConfig(booth, effectiveBoothState, "No active booth offer configured"));
+            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, "No active booth offer configured", recentTransaction));
         }
 
-        var client = await dbContext.ClientAccounts.SingleAsync(item => item.Id == booth.ClientAccountId, cancellationToken);
-        var appearance = await dbContext.BoothAppearanceConfigs.SingleAsync(item => item.BoothId == booth.Id, cancellationToken);
         var paymentOptions = await dbContext.BoothPaymentOptionAssignments
             .Where(item => item.BoothId == booth.Id)
             .OrderBy(item => item.PaymentMethod)
@@ -1463,17 +1716,20 @@ public static class PhotoBizApiEndpoints
 
         return TypedResults.Ok(new BoothConfigResponse(
             new BoothClientResponse(client.DisplayNameOrName(), null),
-            new BoothThemeResponse(appearance.ThemePreset, appearance.PrimaryColor, appearance.AccentColor, appearance.BackgroundImageUrl, "serif"),
-            new BoothSessionResponse(appearance.SessionLabel, appearance.DefaultWelcomeHeadline, appearance.DefaultWelcomeSubtitle),
+            ToThemeResponse(appearance),
+            ToSessionResponse(appearance),
             new BoothStateResponse(booth.Id, effectiveBoothState),
-            new BoothOfferResponse(activeActivation.BoothOffer.Id, activeActivation.BoothOffer.Name, activeActivation.BoothOffer.OfferType, activeActivation.BoothOffer.PriceCents, activeActivation.BoothOffer.Currency, activeActivation.BoothOffer.IncludedPrintEntitlement, activeActivation.BoothOffer.AllowsExtraPrintAddOn, activeActivation.BoothOffer.ExtraPrintPriceCents),
+            ToBoothOfferResponse(selectedActivation),
             paymentOptions
                 .Where(item =>
+                    selectedActivation.Status == StatusValues.OfferActivation.Active &&
+                    selectedActivation.BoothOffer.OfferType == StatusValues.OfferType.PerSession &&
                     item.Status == StatusValues.PaymentAssignment.Assigned &&
                     item.RuntimeEnabled &&
                     item.PaymentMethod == StatusValues.PaymentMethod.Cash)
                 .Select(item => new BoothPaymentOptionResponse(item.PaymentMethod, ToPaymentLabel(item.PaymentMethod), item.RuntimeEnabled))
-                .ToArray()));
+                .ToArray(),
+            recentTransaction));
     }
 
     private static async Task<Results<Ok<TransactionSummary>, UnauthorizedHttpResult, ValidationProblem>> CreateBoothTransactionAsync(
@@ -1506,17 +1762,21 @@ public static class PhotoBizApiEndpoints
 
         if (activeActivation?.BoothOffer is null)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["booth"] = ["The booth does not have an active offer."]
-            });
-        }
+            var pendingActivation = await dbContext.BoothOfferActivations
+                .AsNoTracking()
+                .AnyAsync(
+                    item => item.BoothId == booth.Id &&
+                        item.Status == StatusValues.OfferActivation.PendingPayment,
+                    cancellationToken);
 
-        if (activeActivation.BoothOffer.OfferType != StatusValues.OfferType.PerSession)
-        {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["offer"] = ["This MVP build currently starts kiosk transactions only for PER_SESSION offers."]
+                ["booth"] =
+                [
+                    pendingActivation
+                        ? "This package is awaiting cashier activation."
+                        : "The booth does not have an active offer."
+                ]
             });
         }
 
@@ -1530,7 +1790,9 @@ public static class PhotoBizApiEndpoints
 
         try
         {
-            var transaction = await workflow.CreateTransactionAsync(booth, activeActivation, activeActivation.BoothOffer, cancellationToken);
+            var transaction = activeActivation.BoothOffer.OfferType == StatusValues.OfferType.PerSession
+                ? await workflow.CreateTransactionAsync(booth, activeActivation, activeActivation.BoothOffer, cancellationToken)
+                : await workflow.CreateCoveredPlanSessionAsync(booth, activeActivation, activeActivation.BoothOffer, cancellationToken);
             return TypedResults.Ok(ToTransactionSummary(transaction));
         }
         catch (InvalidOperationException exception) when (exception.Message == "The booth already has an active transaction.")
@@ -1538,6 +1800,63 @@ public static class PhotoBizApiEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["booth"] = ["The booth already has an active session in progress. Finish, cancel, or expire it before starting another one."]
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["offer"] = [exception.Message]
+            });
+        }
+    }
+
+    private static async Task<Results<Ok<TransactionSummary>, ForbidHttpResult, ValidationProblem>> CreatePlanActivationAsync(
+        Guid boothId,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizTransactionWorkflow workflow,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanApproveCash, cancellationToken))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var booth = await LoadScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var pendingActivation = await dbContext.BoothOfferActivations
+            .Include(item => item.BoothOffer)
+            .Where(item =>
+                item.BoothId == booth.Id &&
+                item.Status == StatusValues.OfferActivation.PendingPayment)
+            .OrderByDescending(item => item.ActivatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (pendingActivation?.BoothOffer is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["activation"] = ["This booth does not have a package awaiting cashier activation."]
+            });
+        }
+
+        try
+        {
+            var transaction = await workflow.CreatePlanActivationAsync(booth, pendingActivation, pendingActivation.BoothOffer, currentUser, cancellationToken);
+            return TypedResults.Ok(ToTransactionSummary(transaction));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["activation"] = [exception.Message]
             });
         }
     }
@@ -1583,6 +1902,33 @@ public static class PhotoBizApiEndpoints
         return TypedResults.Ok(ToTransactionSummary(transaction));
     }
 
+    private static async Task<Results<Ok, UnauthorizedHttpResult, ValidationProblem>> ReturnBoothUiToWelcomeAsync(
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTransactionWorkflow workflow,
+        PhotoBizTokenHasher tokenHasher,
+        CancellationToken cancellationToken)
+    {
+        var booth = await ResolveBoothFromKioskTokenAsync(httpContext, dbContext, tokenHasher, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var result = await workflow.ReturnCompletedBoothToWelcomeAsync(booth, completedAtCutoff: null, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["booth"] = [GetReturnToWelcomeValidationMessage(result.Status)]
+            });
+        }
+
+        return TypedResults.Ok();
+    }
+
     private static async Task<Results<Ok<TransactionSummary>, ForbidHttpResult, ValidationProblem>> ApproveCashAsync(
         Guid transactionId,
         ClaimsPrincipal principal,
@@ -1591,6 +1937,11 @@ public static class PhotoBizApiEndpoints
         CancellationToken cancellationToken)
     {
         var currentUser = principal.GetRequiredCurrentUser();
+        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanApproveCash, cancellationToken))
+        {
+            return TypedResults.Forbid();
+        }
+
         var transaction = await LoadScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
 
         if (transaction is null)
@@ -1599,7 +1950,8 @@ public static class PhotoBizApiEndpoints
         }
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
+        if (transaction.TransactionType != StatusValues.TransactionType.PlanActivation &&
+            PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -1619,6 +1971,11 @@ public static class PhotoBizApiEndpoints
         CancellationToken cancellationToken)
     {
         var currentUser = principal.GetRequiredCurrentUser();
+        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanCancelTransaction, cancellationToken))
+        {
+            return TypedResults.Forbid();
+        }
+
         var transaction = await LoadScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
 
         if (transaction is null)
@@ -1669,6 +2026,11 @@ public static class PhotoBizApiEndpoints
         CancellationToken cancellationToken)
     {
         var currentUser = principal.GetRequiredCurrentUser();
+        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanReturnBoothToWelcome, cancellationToken))
+        {
+            return TypedResults.Forbid();
+        }
+
         var booth = await LoadScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
 
         if (booth is null)
@@ -1721,6 +2083,28 @@ public static class PhotoBizApiEndpoints
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok<AgentBoothUiLaunchResponse>, UnauthorizedHttpResult>> CreateAgentBoothUiLaunchAsync(
+        AgentBoothRequest request,
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTokenHasher tokenHasher,
+        CancellationToken cancellationToken)
+    {
+        var booth = await ResolveBoothFromAgentCredentialAsync(request.BoothCode, httpContext, dbContext, tokenHasher, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var kioskToken = tokenHasher.GenerateOpaqueToken();
+        booth.KioskTokenHash = tokenHasher.Hash(kioskToken);
+        PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, DateTimeOffset.UtcNow);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok(new AgentBoothUiLaunchResponse(booth.Id, booth.Code, kioskToken));
     }
 
     private static async Task<Results<Ok<AgentCommandResponse>, NoContent, UnauthorizedHttpResult>> GetNextAgentCommandAsync(
@@ -1883,9 +2267,14 @@ public static class PhotoBizApiEndpoints
         }
 
         var parameter = boothIdSelector.Parameters[0];
+        if (!currentUser.AssignedBoothId.HasValue)
+        {
+            return query.Where(_ => false);
+        }
+
         var body = Expression.Equal(
             boothIdSelector.Body,
-            Expression.Constant(currentUser.AssignedBoothId!.Value));
+            Expression.Constant(currentUser.AssignedBoothId.Value));
 
         return query.Where(Expression.Lambda<Func<T, bool>>(body, parameter));
     }
@@ -1925,6 +2314,11 @@ public static class PhotoBizApiEndpoints
 
         if (currentUser.IsCashier)
         {
+            if (!currentUser.AssignedBoothId.HasValue)
+            {
+                return query.Where(item => item.Id == currentUser.UserId);
+            }
+
             var cashierBody = Expression.Equal(
                 assignedBoothSelector.Body,
                 Expression.Constant(currentUser.AssignedBoothId, typeof(Guid?)));
@@ -2043,18 +2437,67 @@ public static class PhotoBizApiEndpoints
         return booth.ClientAccountId == currentUser.ClientAccountId ? booth : null;
     }
 
+    private static async Task<bool> CashierHasPermissionAsync(
+        PhotoBizDbContext dbContext,
+        PhotoBizCurrentUser currentUser,
+        Func<ApplicationUser, bool> permissionSelector,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsCashier)
+        {
+            return true;
+        }
+
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == currentUser.UserId, cancellationToken);
+
+        return user is not null && permissionSelector(user);
+    }
+
     private static AuthSessionResponse ToSessionResponse(ApplicationUser user)
     {
-        return new AuthSessionResponse(user.Id, user.Name, user.Email, user.Role, user.ClientAccountId, user.AssignedBoothId);
+        return new AuthSessionResponse(
+            user.Id,
+            user.Name,
+            user.Email,
+            user.Role,
+            user.ClientAccountId,
+            user.AssignedBoothId,
+            user.Role == StatusValues.User.Cashier && user.CanApproveCash,
+            user.Role == StatusValues.User.Cashier && user.CanReturnBoothToWelcome,
+            user.Role == StatusValues.User.Cashier && user.CanCancelTransaction);
+    }
+
+    private static UserSummary ToUserSummary(ApplicationUser user)
+    {
+        return new UserSummary(
+            user.Id,
+            user.ClientAccountId,
+            user.Name,
+            user.Email,
+            user.Role,
+            user.Status,
+            user.AssignedBoothId,
+            user.Role == StatusValues.User.Cashier && user.CanApproveCash,
+            user.Role == StatusValues.User.Cashier && user.CanReturnBoothToWelcome,
+            user.Role == StatusValues.User.Cashier && user.CanCancelTransaction);
+    }
+
+    private static bool IsCashierPermissionEnabled(string role, bool? permission)
+    {
+        return role == StatusValues.User.Cashier && permission.GetValueOrDefault(true);
     }
 
     private static TransactionSummary ToTransactionSummary(Transaction transaction)
     {
         var extraPrintUnitPriceCents = TryGetExtraPrintUnitPriceCents(transaction);
+        var offerSnapshot = ReadOfferSnapshot(transaction);
 
         return new TransactionSummary(
             transaction.Id,
             transaction.BoothId,
+            transaction.BoothOfferActivationId,
             transaction.TransactionNumber,
             transaction.TransactionType,
             transaction.Status,
@@ -2064,6 +2507,11 @@ public static class PhotoBizApiEndpoints
             transaction.ExtraPrintCount,
             CanCreateExtraPrintAddOn(transaction, isLatestCompletedSession: false, hasActiveBoothTransaction: false, extraPrintUnitPriceCents),
             extraPrintUnitPriceCents,
+            offerSnapshot.OfferName,
+            offerSnapshot.OfferType,
+            offerSnapshot.IncludedPrintEntitlement,
+            offerSnapshot.SessionAllowance,
+            (int?)null,
             transaction.CreatedAt,
             transaction.PaidAt,
             transaction.CompletedAt);
@@ -2086,10 +2534,23 @@ public static class PhotoBizApiEndpoints
             .Where(transaction => !IsTerminalTransactionStatus(transaction.Status))
             .Select(transaction => transaction.BoothId)
             .ToHashSet();
+        var coveredSessionSequencesById = transactions
+            .Where(transaction =>
+                transaction.TransactionType == StatusValues.TransactionType.CoveredPlanSession &&
+                transaction.Status == StatusValues.Transaction.Completed &&
+                transaction.BoothOfferActivationId.HasValue)
+            .GroupBy(transaction => transaction.BoothOfferActivationId!.Value)
+            .SelectMany(group => group
+                .OrderBy(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
+                .ThenBy(transaction => transaction.CreatedAt)
+                .ThenBy(transaction => transaction.Id)
+                .Select((transaction, index) => new { transaction.Id, Sequence = index + 1 }))
+            .ToDictionary(item => item.Id, item => item.Sequence);
 
         foreach (var transaction in transactions)
         {
             var extraPrintUnitPriceCents = TryGetExtraPrintUnitPriceCents(transaction);
+            var offerSnapshot = ReadOfferSnapshot(transaction);
             var isLatestCompletedSession =
                 latestCompletedSessionIdsByBooth.TryGetValue(transaction.BoothId, out var latestTransactionId) &&
                 latestTransactionId == transaction.Id;
@@ -2098,6 +2559,7 @@ public static class PhotoBizApiEndpoints
             yield return new TransactionSummary(
                 transaction.Id,
                 transaction.BoothId,
+                transaction.BoothOfferActivationId,
                 transaction.TransactionNumber,
                 transaction.TransactionType,
                 transaction.Status,
@@ -2107,6 +2569,13 @@ public static class PhotoBizApiEndpoints
                 transaction.ExtraPrintCount,
                 CanCreateExtraPrintAddOn(transaction, isLatestCompletedSession, hasActiveBoothTransaction, extraPrintUnitPriceCents),
                 extraPrintUnitPriceCents,
+                offerSnapshot.OfferName,
+                offerSnapshot.OfferType,
+                offerSnapshot.IncludedPrintEntitlement,
+                offerSnapshot.SessionAllowance,
+                coveredSessionSequencesById.TryGetValue(transaction.Id, out var coveredSessionSequence)
+                    ? coveredSessionSequence
+                    : null,
                 transaction.CreatedAt,
                 transaction.PaidAt,
                 transaction.CompletedAt);
@@ -2160,6 +2629,41 @@ public static class PhotoBizApiEndpoints
         }
     }
 
+    private static TransactionOfferSnapshot ReadOfferSnapshot(Transaction transaction)
+    {
+        try
+        {
+            using var snapshot = JsonDocument.Parse(transaction.OfferSnapshot);
+            var root = snapshot.RootElement;
+            return new TransactionOfferSnapshot(
+                GetOptionalSnapshotString(root, "Name"),
+                GetOptionalSnapshotString(root, "OfferType"),
+                GetOptionalSnapshotString(root, "IncludedPrintEntitlement"),
+                GetOptionalSnapshotInt(root, "SessionAllowance"));
+        }
+        catch (JsonException)
+        {
+            return new TransactionOfferSnapshot(null, null, null, null);
+        }
+    }
+
+    private static string? GetOptionalSnapshotString(JsonElement root, string propertyName)
+    {
+        return root.TryGetProperty(propertyName, out var value) &&
+            value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
+    }
+
+    private static int? GetOptionalSnapshotInt(JsonElement root, string propertyName)
+    {
+        return root.TryGetProperty(propertyName, out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var result)
+                ? result
+                : null;
+    }
+
     private static OfferSummary ToOfferSummary(BoothOffer offer)
     {
         return new OfferSummary(
@@ -2177,6 +2681,47 @@ public static class PhotoBizApiEndpoints
             offer.ExtraPrintPriceCents,
             offer.LumaboothSessionMode,
             offer.Active);
+    }
+
+    private static OfferActivationSummary ToOfferActivationSummary(BoothOfferActivation activation)
+    {
+        return new OfferActivationSummary(
+            activation.Id,
+            activation.BoothId,
+            activation.BoothOfferId,
+            activation.Status,
+            activation.StartsAt,
+            activation.EndsAt,
+            activation.SessionAllowance,
+            activation.SessionsUsed);
+    }
+
+    private static BoothOfferResponse ToBoothOfferResponse(BoothOfferActivation activation)
+    {
+        var offer = activation.BoothOffer ?? throw new InvalidOperationException("Offer activation was loaded without its booth offer.");
+        return new BoothOfferResponse(
+            offer.Id,
+            offer.Name,
+            offer.OfferType,
+            offer.PriceCents,
+            offer.Currency,
+            offer.IncludedPrintEntitlement,
+            offer.AllowsExtraPrintAddOn,
+            offer.ExtraPrintPriceCents,
+            activation.Status,
+            activation.StartsAt,
+            activation.EndsAt,
+            activation.SessionAllowance,
+            activation.SessionsUsed);
+    }
+
+    private static PrintEntitlementSummary ToPrintEntitlementSummary(PrintEntitlement entitlement)
+    {
+        return new PrintEntitlementSummary(
+            entitlement.Id,
+            entitlement.ClientAccountId,
+            entitlement.Name,
+            entitlement.Status);
     }
 
     private static ReportSummary BuildReportSummary(
@@ -2388,20 +2933,164 @@ public static class PhotoBizApiEndpoints
             .CountAsync(item => item.ClientAccountId == clientAccountId && item.Status == StatusValues.Booth.Active, cancellationToken);
     }
 
-    private static BoothConfigResponse ToUnavailableConfig(Booth booth, string boothState, string message)
+    private static BoothConfigResponse ToUnavailableConfig(
+        Booth booth,
+        ClientAccount client,
+        BoothAppearanceConfig? appearance,
+        string boothState,
+        string message,
+        BoothRecentTransactionResponse? recentTransaction)
     {
         return new BoothConfigResponse(
-            new BoothClientResponse("PhotoBIZ", null),
-            new BoothThemeResponse(StatusValues.Theme.VintageFilm, "#2f6868", "#f5d27e", null, "serif"),
-            new BoothSessionResponse(string.Empty, "Booth unavailable", message),
+            new BoothClientResponse(client.DisplayNameOrName(), null),
+            ToThemeResponse(appearance),
+            new BoothSessionResponse(appearance?.SessionLabel ?? string.Empty, "Booth unavailable", message),
             new BoothStateResponse(booth.Id, boothState),
             null,
-            []);
+            [],
+            recentTransaction);
+    }
+
+    private static async Task<BoothRecentTransactionResponse?> GetRecentBoothTerminalTransactionAsync(
+        PhotoBizDbContext dbContext,
+        Guid boothId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var cutoff = now.Subtract(RecentBoothTerminalTransactionVisibility);
+        var transactions = await dbContext.Transactions
+            .AsNoTracking()
+            .Where(item =>
+                item.BoothId == boothId &&
+                item.Status != StatusValues.Transaction.Completed &&
+                (item.Status == StatusValues.Transaction.Cancelled ||
+                 item.Status == StatusValues.Transaction.Expired ||
+                 item.Status == StatusValues.Transaction.PaymentFailed ||
+                 item.Status == StatusValues.Transaction.SessionFailed))
+            .OrderByDescending(item => item.CreatedAt)
+            .Take(10)
+            .ToListAsync(cancellationToken);
+
+        var recent = transactions
+            .Select(item => new { Transaction = item, OccurredAt = GetTransactionEventTime(item) })
+            .Where(item => item.OccurredAt >= cutoff)
+            .OrderByDescending(item => item.OccurredAt)
+            .FirstOrDefault();
+
+        return recent is null
+            ? null
+            : new BoothRecentTransactionResponse(
+                recent.Transaction.Id,
+                recent.Transaction.Status,
+                recent.Transaction.TransactionType,
+                recent.OccurredAt,
+                recent.Transaction.FailureReason);
+    }
+
+    private static DateTimeOffset GetTransactionEventTime(Transaction transaction)
+    {
+        return transaction.CancelledAt ??
+            transaction.CompletedAt ??
+            (transaction.Status == StatusValues.Transaction.Expired ? transaction.ExpiresAt : transaction.CreatedAt);
     }
 
     private static bool IsValidHexColor(string value)
     {
         return value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
+    }
+
+    private static BoothThemeResponse ToThemeResponse(BoothAppearanceConfig? appearance)
+    {
+        var normalizedTheme = NormalizeThemePreset(appearance?.ThemePreset);
+        var scheme = GetThemeScheme(normalizedTheme);
+        return new BoothThemeResponse(
+            normalizedTheme,
+            scheme.PrimaryColor,
+            scheme.AccentColor,
+            appearance?.BackgroundImageUrl,
+            appearance?.BackgroundImageDataUrl,
+            scheme.FontMode);
+    }
+
+    private static BoothSessionResponse ToSessionResponse(BoothAppearanceConfig? appearance)
+    {
+        return new BoothSessionResponse(
+            appearance?.SessionLabel ?? string.Empty,
+            appearance?.DefaultWelcomeHeadline ?? "Welcome",
+            appearance?.DefaultWelcomeSubtitle ?? "Review the active offer.");
+    }
+
+    private static bool IsKnownThemePreset(string? value)
+    {
+        return value?.ToUpperInvariant() is
+            StatusValues.Theme.Vintage or
+            StatusValues.Theme.VintageFilm or
+            StatusValues.Theme.CleanModern or
+            "MODERN_CLEAN" or
+            "CLASSIC_LIGHT" or
+            StatusValues.Theme.Pop or
+            StatusValues.Theme.ModernPop;
+    }
+
+    private static string NormalizeThemePreset(string? value)
+    {
+        return value?.ToUpperInvariant() switch
+        {
+            StatusValues.Theme.Vintage or StatusValues.Theme.VintageFilm => StatusValues.Theme.Vintage,
+            StatusValues.Theme.CleanModern or "MODERN_CLEAN" or "CLASSIC_LIGHT" => StatusValues.Theme.CleanModern,
+            StatusValues.Theme.Pop or StatusValues.Theme.ModernPop => StatusValues.Theme.Pop,
+            _ => StatusValues.Theme.Vintage
+        };
+    }
+
+    private static BoothThemeScheme GetThemeScheme(string themePreset)
+    {
+        return NormalizeThemePreset(themePreset) switch
+        {
+            StatusValues.Theme.Pop => new BoothThemeScheme("#0bbbe6", "#ff0090", "sans"),
+            StatusValues.Theme.CleanModern => new BoothThemeScheme("#111827", "#2563eb", "sans"),
+            _ => new BoothThemeScheme("#4f2d1d", "#f5d27e", "serif")
+        };
+    }
+
+    private static bool IsValidImageDataUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        var commaIndex = value.IndexOf(',', StringComparison.Ordinal);
+        if (commaIndex < 0)
+        {
+            return false;
+        }
+
+        var header = value[..commaIndex].ToLowerInvariant();
+        if (header is not ("data:image/png;base64" or "data:image/jpeg;base64" or "data:image/webp;base64"))
+        {
+            return false;
+        }
+
+        try
+        {
+            var bytes = Convert.FromBase64String(value[(commaIndex + 1)..]);
+            return bytes.Length <= 2 * 1024 * 1024;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static BoothCredentialResponse RotateBoothCredentials(Booth booth, PhotoBizTokenHasher tokenHasher)
+    {
+        var kioskToken = tokenHasher.GenerateOpaqueToken();
+        var agentCredential = tokenHasher.GenerateOpaqueToken();
+        booth.KioskTokenHash = tokenHasher.Hash(kioskToken);
+        booth.AgentCredentialHash = tokenHasher.Hash(agentCredential);
+
+        return new BoothCredentialResponse(booth.Id, booth.Code, kioskToken, agentCredential);
     }
 
     private static async Task<ValidationProblem?> ValidateSubscriptionPlanRequestAsync(
@@ -2457,6 +3146,62 @@ public static class PhotoBizApiEndpoints
         return null;
     }
 
+    private static async Task<ValidationProblem?> ValidatePrintEntitlementRequestAsync(
+        PhotoBizDbContext dbContext,
+        Guid clientAccountId,
+        string name,
+        Guid? existingPrintEntitlementId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedName = name?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["name"] = ["Print entitlement name is required."]
+            });
+        }
+
+        var nameExists = await dbContext.PrintEntitlements
+            .AsNoTracking()
+            .AnyAsync(
+                item => item.ClientAccountId == clientAccountId &&
+                    item.Name == normalizedName &&
+                    (!existingPrintEntitlementId.HasValue || item.Id != existingPrintEntitlementId.Value),
+                cancellationToken);
+
+        if (nameExists)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["name"] = ["A print entitlement with this name already exists."]
+            });
+        }
+
+        return null;
+    }
+
+    private static void AddDefaultPrintEntitlements(PhotoBizDbContext dbContext, Guid clientAccountId)
+    {
+        foreach (var name in new[]
+        {
+            StatusValues.PrintEntitlement.TwoBySixOrOneByFour,
+            StatusValues.PrintEntitlement.TwoBySix,
+            StatusValues.PrintEntitlement.OneByFour
+        })
+        {
+            dbContext.PrintEntitlements.Add(new PrintEntitlement
+            {
+                Id = Guid.NewGuid(),
+                ClientAccountId = clientAccountId,
+                Name = name,
+                Status = StatusValues.PrintEntitlement.Active,
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
     private static bool IsKnownClientUserRole(string role)
     {
         return role is StatusValues.User.ClientOwner or StatusValues.User.ClientAdmin or StatusValues.User.Cashier;
@@ -2487,6 +3232,11 @@ public static class PhotoBizApiEndpoints
         return offerType is StatusValues.OfferType.PerSession or StatusValues.OfferType.TimeUnlimited or StatusValues.OfferType.SessionCount;
     }
 
+    private static bool IsKnownPrintEntitlementStatus(string status)
+    {
+        return status is StatusValues.PrintEntitlement.Active or StatusValues.PrintEntitlement.Inactive;
+    }
+
     private static string? NormalizeLumaboothSessionMode(string value)
     {
         var normalized = value.Trim().ToUpperInvariant();
@@ -2515,6 +3265,17 @@ public static class PhotoBizApiEndpoints
         return status is StatusValues.Transaction.Completed or StatusValues.Transaction.Expired or StatusValues.Transaction.Cancelled;
     }
 
+    private static string GetReturnToWelcomeValidationMessage(ReturnCompletedBoothToWelcomeStatus status)
+    {
+        return status switch
+        {
+            ReturnCompletedBoothToWelcomeStatus.ActiveTransaction => "The booth has an active transaction and cannot return to welcome yet.",
+            ReturnCompletedBoothToWelcomeStatus.NoCompletedSession => "The booth has no completed session to return from.",
+            ReturnCompletedBoothToWelcomeStatus.NotReady => "The completed session prompt is not ready to return to welcome yet.",
+            _ => "The booth is not ready to return to welcome."
+        };
+    }
+
     private static string ToPaymentLabel(string paymentMethod)
     {
         return paymentMethod switch
@@ -2536,11 +3297,30 @@ internal static class ClientAccountExtensions
 }
 
 public sealed record LoginRequest(string Email, string Password);
-public sealed record AuthSessionResponse(Guid UserId, string Name, string Email, string Role, Guid? ClientAccountId, Guid? AssignedBoothId);
+public sealed record AuthSessionResponse(
+    Guid UserId,
+    string Name,
+    string Email,
+    string Role,
+    Guid? ClientAccountId,
+    Guid? AssignedBoothId,
+    bool CanApproveCash,
+    bool CanReturnBoothToWelcome,
+    bool CanCancelTransaction);
 public sealed record ClientSummary(Guid Id, string Name, string Status);
 public sealed record SubscriptionPlanSummary(Guid Id, string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record ClientSubscriptionSummary(Guid Id, Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance);
-public sealed record UserSummary(Guid Id, Guid? ClientAccountId, string Name, string Email, string Role, string Status, Guid? AssignedBoothId);
+public sealed record UserSummary(
+    Guid Id,
+    Guid? ClientAccountId,
+    string Name,
+    string Email,
+    string Role,
+    string Status,
+    Guid? AssignedBoothId,
+    bool CanApproveCash,
+    bool CanReturnBoothToWelcome,
+    bool CanCancelTransaction);
 public sealed record ClientOnboardingResponse(ClientSummary Client, UserSummary Owner);
 public sealed record LocationSummary(Guid Id, Guid ClientAccountId, string Name, string? Address, string Status);
 public sealed record BoothSummary(Guid Id, Guid ClientAccountId, Guid LocationId, string Name, string Code, string Status, string CurrentState, DateTimeOffset? LastHeartbeatAt);
@@ -2559,11 +3339,32 @@ public sealed record OfferSummary(
     int? ExtraPrintPriceCents,
     string LumaboothSessionMode,
     bool Active);
-public sealed record OfferActivationSummary(Guid Id, Guid BoothId, Guid BoothOfferId, string Status);
+public sealed record PrintEntitlementSummary(Guid Id, Guid ClientAccountId, string Name, string Status);
+public sealed record OfferActivationSummary(
+    Guid Id,
+    Guid BoothId,
+    Guid BoothOfferId,
+    string Status,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? EndsAt,
+    int? SessionAllowance,
+    int SessionsUsed);
 public sealed record PaymentAssignmentSummary(Guid Id, Guid BoothId, string PaymentMethod, bool RuntimeEnabled, string Status);
+public sealed record BoothAppearanceSummary(
+    Guid Id,
+    Guid BoothId,
+    string ThemePreset,
+    string PrimaryColor,
+    string AccentColor,
+    string? BackgroundImageUrl,
+    string? BackgroundImageDataUrl,
+    string SessionLabel,
+    string DefaultWelcomeHeadline,
+    string DefaultWelcomeSubtitle);
 public sealed record TransactionSummary(
     Guid Id,
     Guid BoothId,
+    Guid? BoothOfferActivationId,
     string TransactionNumber,
     string TransactionType,
     string Status,
@@ -2573,9 +3374,19 @@ public sealed record TransactionSummary(
     int ExtraPrintCount,
     bool CanCreateExtraPrintAddOn,
     int? ExtraPrintUnitPriceCents,
+    string? OfferName,
+    string? OfferType,
+    string? IncludedPrintEntitlement,
+    int? SessionAllowance,
+    int? CoveredSessionSequence,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
     DateTimeOffset? CompletedAt);
+public sealed record TransactionOfferSnapshot(
+    string? OfferName,
+    string? OfferType,
+    string? IncludedPrintEntitlement,
+    int? SessionAllowance);
 public sealed record AdminOverviewResponse(
     AuthSessionResponse Session,
     IReadOnlyCollection<ClientSummary> Clients,
@@ -2585,8 +3396,10 @@ public sealed record AdminOverviewResponse(
     IReadOnlyCollection<LocationSummary> Locations,
     IReadOnlyCollection<BoothSummary> Booths,
     IReadOnlyCollection<OfferSummary> Offers,
+    IReadOnlyCollection<PrintEntitlementSummary> PrintEntitlements,
     IReadOnlyCollection<OfferActivationSummary> Activations,
     IReadOnlyCollection<PaymentAssignmentSummary> PaymentAssignments,
+    IReadOnlyCollection<BoothAppearanceSummary> AppearanceConfigs,
     IReadOnlyCollection<TransactionSummary> Transactions,
     ReportSummary Reports,
     IReadOnlyCollection<AuditLogSummary> AuditLogs);
@@ -2633,13 +3446,32 @@ public sealed record CreateSubscriptionPlanRequest(string Name, int PricePerBoot
 public sealed record UpdateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record CreateSubscriptionRequest(Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance, string? Notes);
 public sealed record UpdateSubscriptionRequest(string Status, int ActiveBoothAllowance, DateOnly? EndsOn, string? Notes);
-public sealed record CreateUserRequest(Guid? ClientAccountId, Guid? AssignedBoothId, string Name, string Email, string Password, string Role);
-public sealed record UpdateUserRequest(Guid? AssignedBoothId, string Name, string Email, string Role, string Status);
+public sealed record CreateUserRequest(
+    Guid? ClientAccountId,
+    Guid? AssignedBoothId,
+    string Name,
+    string Email,
+    string Password,
+    string Role,
+    bool? CanApproveCash,
+    bool? CanReturnBoothToWelcome,
+    bool? CanCancelTransaction);
+
+public sealed record UpdateUserRequest(
+    Guid? AssignedBoothId,
+    string Name,
+    string Email,
+    string Role,
+    string Status,
+    bool? CanApproveCash,
+    bool? CanReturnBoothToWelcome,
+    bool? CanCancelTransaction);
 public sealed record CreateLocationRequest(Guid ClientAccountId, string Name, string? Address);
 public sealed record UpdateLocationRequest(string Name, string? Address, string Status);
-public sealed record CreateBoothRequest(Guid ClientAccountId, Guid LocationId, string Name, string Code);
-public sealed record UpdateBoothRequest(Guid LocationId, string Name, string Code, string Status);
+public sealed record CreateBoothRequest(Guid ClientAccountId, Guid LocationId, string Name, string Code, Guid? CashierUserId);
+public sealed record UpdateBoothRequest(Guid LocationId, string Name, string Code, string Status, Guid? CashierUserId);
 public sealed record CreateBoothResponse(BoothSummary Booth, string KioskToken, string AgentCredential);
+public sealed record BoothCredentialResponse(Guid BoothId, string BoothCode, string KioskToken, string AgentCredential);
 public sealed record CreateOfferRequest(
     Guid ClientAccountId,
     string Name,
@@ -2666,33 +3498,53 @@ public sealed record UpdateOfferRequest(
     int? ExtraPrintPriceCents,
     string LumaboothSessionMode,
     bool Active);
+public sealed record CreatePrintEntitlementRequest(Guid ClientAccountId, string Name);
+public sealed record UpdatePrintEntitlementRequest(string Name, string Status);
 public sealed record ActivateOfferRequest(Guid BoothOfferId);
 public sealed record UpdateAppearanceRequest(
     string ThemePreset,
-    string PrimaryColor,
-    string AccentColor,
-    string? BackgroundImageUrl,
     string SessionLabel,
     string DefaultWelcomeHeadline,
-    string DefaultWelcomeSubtitle);
+    string DefaultWelcomeSubtitle,
+    string? BackgroundImageDataUrl,
+    string? PrimaryColor = null,
+    string? AccentColor = null,
+    string? BackgroundImageUrl = null);
 public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool RuntimeEnabled);
 public sealed record BoothClientResponse(string DisplayName, string? LogoUrl);
-public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string FontMode);
+public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string? BackgroundImageDataUrl, string FontMode);
+public sealed record BoothThemeScheme(string PrimaryColor, string AccentColor, string FontMode);
 public sealed record BoothSessionResponse(string Label, string WelcomeHeadline, string WelcomeSubtitle);
 public sealed record BoothStateResponse(Guid Id, string State);
-public sealed record BoothOfferResponse(Guid Id, string Name, string Type, int PriceCents, string Currency, string IncludedPrintEntitlement, bool AllowsExtraPrintAddOn, int? ExtraPrintPriceCents);
+public sealed record BoothOfferResponse(
+    Guid Id,
+    string Name,
+    string Type,
+    int PriceCents,
+    string Currency,
+    string IncludedPrintEntitlement,
+    bool AllowsExtraPrintAddOn,
+    int? ExtraPrintPriceCents,
+    string ActivationStatus,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? EndsAt,
+    int? SessionAllowance,
+    int SessionsUsed);
 public sealed record BoothPaymentOptionResponse(string Method, string Label, bool RuntimeEnabled);
+public sealed record BoothRecentTransactionResponse(Guid Id, string Status, string TransactionType, DateTimeOffset OccurredAt, string? Reason);
 public sealed record BoothConfigResponse(
     BoothClientResponse Client,
     BoothThemeResponse Theme,
     BoothSessionResponse Session,
     BoothStateResponse Booth,
     BoothOfferResponse? ActiveOffer,
-    IReadOnlyCollection<BoothPaymentOptionResponse> PaymentOptions);
+    IReadOnlyCollection<BoothPaymentOptionResponse> PaymentOptions,
+    BoothRecentTransactionResponse? RecentTransaction);
 public sealed record SelectPaymentMethodRequest(string Method);
 public sealed record CreateExtraPrintAddOnRequest(int CopyCount);
 public sealed record AgentBoothRequest(string BoothCode, string? LumaboothSessionRef = null, string? LumaboothEventType = null);
 public sealed record AgentPairResponse(Guid BoothId, string BoothName, string BoothCode);
+public sealed record AgentBoothUiLaunchResponse(Guid BoothId, string BoothCode, string KioskToken);
 public sealed record AgentCommandResponse(
     Guid TransactionId,
     string TransactionNumber,

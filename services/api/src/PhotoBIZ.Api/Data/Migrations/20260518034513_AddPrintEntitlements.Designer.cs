@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoBIZ.Api.Data;
@@ -11,9 +12,11 @@ using PhotoBIZ.Api.Data;
 namespace PhotoBIZ.Api.Data.Migrations
 {
     [DbContext(typeof(PhotoBizDbContext))]
-    partial class PhotoBizDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260518034513_AddPrintEntitlements")]
+    partial class AddPrintEntitlements
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -249,10 +252,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("accent_color");
-
-                    b.Property<string>("BackgroundImageDataUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("background_image_data_url");
 
                     b.Property<string>("BackgroundImageUrl")
                         .HasMaxLength(1000)

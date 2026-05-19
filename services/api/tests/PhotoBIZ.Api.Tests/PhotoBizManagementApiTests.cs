@@ -47,6 +47,50 @@ public sealed class PhotoBizManagementApiTests
         Assert.NotNull(session);
         Assert.Equal(StatusValues.User.ClientOwner, session.Role);
         Assert.Equal(onboarded.Client.Id, session.ClientAccountId);
+
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Name == StatusValues.PrintEntitlement.TwoBySix);
+        Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Name == StatusValues.PrintEntitlement.OneByFour);
+    }
+
+    [Fact]
+    public async Task ClientOwnerCanCreateAndUpdatePrintEntitlements()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(StatusValues.Subscription.Active, activeBoothAllowance: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var createResponse = await client.PostAsJsonAsync("/api/admin/print-entitlements", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "4 pcs 2x6"
+        });
+
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<PrintEntitlementSummary>();
+
+        Assert.NotNull(created);
+        Assert.Equal("4 pcs 2x6", created.Name);
+        Assert.Equal(StatusValues.PrintEntitlement.Active, created.Status);
+
+        var updateResponse = await client.PutAsJsonAsync($"/api/admin/print-entitlements/{created.Id}", new
+        {
+            name = "4 pcs 2x6 premium",
+            status = StatusValues.PrintEntitlement.Inactive
+        });
+
+        updateResponse.EnsureSuccessStatusCode();
+        var updated = await updateResponse.Content.ReadFromJsonAsync<PrintEntitlementSummary>();
+
+        Assert.NotNull(updated);
+        Assert.Equal("4 pcs 2x6 premium", updated.Name);
+        Assert.Equal(StatusValues.PrintEntitlement.Inactive, updated.Status);
     }
 
     [Fact]
@@ -192,7 +236,8 @@ public sealed class PhotoBizManagementApiTests
             activeBoothAllowance: 1,
             existingActiveBooths: 1,
             includeOffer: true,
-            includeActivation: true);
+            includeActivation: true,
+            includeAppearance: true);
         var otherSeed = await factory.SeedClientSetupAsync(
             StatusValues.Subscription.Active,
             activeBoothAllowance: 1,
@@ -209,6 +254,8 @@ public sealed class PhotoBizManagementApiTests
         Assert.DoesNotContain(overview.Activations, item => item.BoothId == otherSeed.BoothId);
         Assert.Contains(overview.PaymentAssignments, item => item.BoothId == seed.BoothId);
         Assert.DoesNotContain(overview.PaymentAssignments, item => item.BoothId == otherSeed.BoothId);
+        Assert.Contains(overview.AppearanceConfigs, item => item.BoothId == seed.BoothId);
+        Assert.DoesNotContain(overview.AppearanceConfigs, item => item.BoothId == otherSeed.BoothId);
     }
 
     [Fact]
@@ -251,7 +298,7 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
-    public async Task CreateCashierRequiresSameTenantAssignedBooth()
+    public async Task CreateCashierAllowsUnassignedCreationAndRejectsCrossTenantBoothAssignment()
     {
         await using var factory = new PhotoBizApiFactory();
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -287,8 +334,134 @@ public sealed class PhotoBizManagementApiTests
             role = StatusValues.User.Cashier
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, missingBoothResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, missingBoothResponse.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, crossTenantResponse.StatusCode);
+
+        var createdCashier = await missingBoothResponse.Content.ReadFromJsonAsync<UserSummary>();
+        Assert.NotNull(createdCashier);
+        Assert.Null(createdCashier.AssignedBoothId);
+    }
+
+    [Fact]
+    public async Task CreateBoothCanAssignExistingUnassignedCashier()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 2,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var createCashierResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Cashier",
+            email = "booth-assigned-cashier@photobiz.test",
+            password = "Test12345!",
+            role = StatusValues.User.Cashier
+        });
+        createCashierResponse.EnsureSuccessStatusCode();
+        var cashier = await createCashierResponse.Content.ReadFromJsonAsync<UserSummary>();
+        Assert.NotNull(cashier);
+        Assert.Null(cashier.AssignedBoothId);
+
+        var createBoothResponse = await client.PostAsJsonAsync("/api/admin/booths", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            locationId = seed.LocationId,
+            name = "Booth B",
+            code = "SMA-002",
+            cashierUserId = cashier.Id
+        });
+
+        createBoothResponse.EnsureSuccessStatusCode();
+
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        var assignedCashier = Assert.Single(overview.Users, item => item.Id == cashier.Id);
+        var createdBooth = Assert.Single(overview.Booths, item => item.Name == "Booth B");
+        Assert.Equal(createdBooth.Id, assignedCashier.AssignedBoothId);
+    }
+
+    [Fact]
+    public async Task UpdateBoothCanChangeCashierAssignmentWithinTenant()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 2,
+            existingActiveBooths: 1);
+        var otherSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            ownerEmail: "other-cashier-owner@photobiz.test");
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var cashierResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Assignable Cashier",
+            email = "assignable-cashier@photobiz.test",
+            password = "Test12345!",
+            role = StatusValues.User.Cashier
+        });
+        var adminResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Not Cashier",
+            email = "not-cashier@photobiz.test",
+            password = "Test12345!",
+            role = StatusValues.User.ClientAdmin
+        });
+        cashierResponse.EnsureSuccessStatusCode();
+        adminResponse.EnsureSuccessStatusCode();
+        var cashier = await cashierResponse.Content.ReadFromJsonAsync<UserSummary>();
+        var admin = await adminResponse.Content.ReadFromJsonAsync<UserSummary>();
+        Assert.NotNull(cashier);
+        Assert.NotNull(admin);
+
+        var assignResponse = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
+        {
+            locationId = seed.LocationId,
+            name = "Updated Booth",
+            code = "UPDATED-001",
+            status = StatusValues.Booth.Active,
+            cashierUserId = cashier.Id
+        });
+        var nonCashierResponse = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
+        {
+            locationId = seed.LocationId,
+            name = "Updated Booth",
+            code = "UPDATED-001",
+            status = StatusValues.Booth.Active,
+            cashierUserId = admin.Id
+        });
+        var crossTenantResponse = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
+        {
+            locationId = seed.LocationId,
+            name = "Updated Booth",
+            code = "UPDATED-001",
+            status = StatusValues.Booth.Active,
+            cashierUserId = otherSeed.ClientOwnerId
+        });
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.Equal(HttpStatusCode.OK, assignResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, nonCashierResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, crossTenantResponse.StatusCode);
+        Assert.NotNull(overview);
+        var assignedCashier = Assert.Single(overview.Users, item => item.Id == cashier.Id);
+        Assert.Equal(seed.BoothId, assignedCashier.AssignedBoothId);
     }
 
     [Fact]
@@ -330,6 +503,93 @@ public sealed class PhotoBizManagementApiTests
         Assert.NotNull(config);
         Assert.DoesNotContain(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.MayaCheckoutQr);
         Assert.Contains(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.Cash && option.RuntimeEnabled);
+    }
+
+    [Fact]
+    public async Task BoothAppearanceUsesFixedThemeSchemeAndUploadedBackgroundData()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "theme-token";
+        const string imageDataUrl = "data:image/png;base64,aGVsbG8=";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var response = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}/appearance", new
+        {
+            themePreset = StatusValues.Theme.Pop,
+            sessionLabel = "Neon Weekend",
+            defaultWelcomeHeadline = "Pop In. Pose Big.",
+            defaultWelcomeSubtitle = "Tap start and jump into LumaBooth.",
+            backgroundImageDataUrl = imageDataUrl
+        });
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        client.DefaultRequestHeaders.Remove("X-Kiosk-Token");
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(overview);
+        var appearance = Assert.Single(overview.AppearanceConfigs, item => item.BoothId == seed.BoothId);
+        Assert.Equal(StatusValues.Theme.Pop, appearance.ThemePreset);
+        Assert.Equal("#0bbbe6", appearance.PrimaryColor);
+        Assert.Equal("#ff0090", appearance.AccentColor);
+        Assert.Equal(imageDataUrl, appearance.BackgroundImageDataUrl);
+        Assert.NotNull(config);
+        Assert.Equal(StatusValues.Theme.Pop, config.Theme.Preset);
+        Assert.Equal(imageDataUrl, config.Theme.BackgroundImageDataUrl);
+        Assert.Null(config.Theme.BackgroundImageUrl);
+        Assert.Equal("Pop In. Pose Big.", config.Session.WelcomeHeadline);
+    }
+
+    [Fact]
+    public async Task ClientOwnerCanReissueBoothCredentials()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string oldAgentCredential = "old-agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            agentCredential: oldAgentCredential,
+            kioskToken: "old-kiosk-token");
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var response = await client.PostAsync($"/api/admin/booths/{seed.BoothId}/credentials", null);
+        var credentials = await response.Content.ReadFromJsonAsync<BoothCredentialResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(credentials);
+        Assert.Equal(seed.BoothCode, credentials.BoothCode);
+        Assert.False(string.IsNullOrWhiteSpace(credentials.AgentCredential));
+        Assert.False(string.IsNullOrWhiteSpace(credentials.KioskToken));
+        Assert.NotEqual(oldAgentCredential, credentials.AgentCredential);
+
+        var oldAgentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        oldAgentClient.DefaultRequestHeaders.Add("X-Agent-Credential", oldAgentCredential);
+
+        var oldCredentialResponse = await oldAgentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, oldCredentialResponse.StatusCode);
     }
 
     [Fact]
@@ -456,15 +716,18 @@ public sealed class PhotoBizManagementApiTests
         var createUserResponse = await client.PostAsJsonAsync("/api/admin/users", new
         {
             clientAccountId = seed.ClientAccountId,
-            assignedBoothId = seed.BoothId,
             name = "Cashier",
             email = "cashier3@photobiz.test",
             password = "Test12345!",
-            role = StatusValues.User.Cashier
+            role = StatusValues.User.Cashier,
+            canApproveCash = true,
+            canReturnBoothToWelcome = true,
+            canCancelTransaction = false
         });
         createUserResponse.EnsureSuccessStatusCode();
         var cashier = await createUserResponse.Content.ReadFromJsonAsync<UserSummary>();
         Assert.NotNull(cashier);
+        Assert.False(cashier.CanCancelTransaction);
 
         var updateUserResponse = await client.PutAsJsonAsync($"/api/admin/users/{cashier.Id}", new
         {
@@ -472,15 +735,22 @@ public sealed class PhotoBizManagementApiTests
             name = "Updated Cashier",
             email = "cashier3@photobiz.test",
             role = StatusValues.User.Cashier,
-            status = StatusValues.User.Inactive
+            status = StatusValues.User.Inactive,
+            canApproveCash = false,
+            canReturnBoothToWelcome = true,
+            canCancelTransaction = true
         });
+        var updatedCashier = await updateUserResponse.Content.ReadFromJsonAsync<UserSummary>();
         var invalidAdminAssignmentResponse = await client.PutAsJsonAsync($"/api/admin/users/{cashier.Id}", new
         {
             assignedBoothId = seed.BoothId,
             name = "Updated Cashier",
             email = "cashier3@photobiz.test",
             role = StatusValues.User.ClientAdmin,
-            status = StatusValues.User.Active
+            status = StatusValues.User.Active,
+            canApproveCash = false,
+            canReturnBoothToWelcome = false,
+            canCancelTransaction = false
         });
         var disablePaymentResponse = await client.DeleteAsync($"/api/admin/booths/{seed.BoothId}/payment-options/{StatusValues.PaymentMethod.Cash}");
 
@@ -489,6 +759,10 @@ public sealed class PhotoBizManagementApiTests
         var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
 
         Assert.Equal(HttpStatusCode.OK, updateUserResponse.StatusCode);
+        Assert.NotNull(updatedCashier);
+        Assert.False(updatedCashier.CanApproveCash);
+        Assert.True(updatedCashier.CanReturnBoothToWelcome);
+        Assert.True(updatedCashier.CanCancelTransaction);
         Assert.Equal(HttpStatusCode.BadRequest, invalidAdminAssignmentResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, disablePaymentResponse.StatusCode);
         Assert.NotNull(config);
@@ -526,6 +800,393 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(StatusValues.TransactionType.SessionPurchase, command.TransactionType);
         Assert.Equal(StatusValues.PrintEntitlement.TwoBySixOrOneByFour, command.IncludedPrintEntitlement);
         Assert.Equal(0, command.ExtraPrintCount);
+    }
+
+    [Fact]
+    public async Task AgentCanRequestFreshBoothUiLaunchToken()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-launch-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            agentCredential: agentCredential);
+        client.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var response = await client.PostAsJsonAsync("/api/agent/booth-ui-launch", new
+        {
+            boothCode = seed.BoothCode
+        });
+        var launch = await response.Content.ReadFromJsonAsync<AgentBoothUiLaunchResponse>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(launch);
+        Assert.Equal(seed.BoothCode, launch.BoothCode);
+        Assert.False(string.IsNullOrWhiteSpace(launch.KioskToken));
+
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", launch.KioskToken);
+        var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(config);
+        Assert.Equal(seed.BoothId, config.Booth.Id);
+    }
+
+    [Fact]
+    public async Task BoothUiUnavailableConfigUsesBoothAppearanceAndClientBranding()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "unavailable-branded-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        await factory.SetBoothAppearanceAsync(
+            seed.BoothId,
+            StatusValues.Theme.Pop,
+            "SM Southmall - Neon Weekend",
+            "Pop In. Pose Big.",
+            "Ask the cashier to activate today's package.");
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(config);
+        Assert.Null(config.ActiveOffer);
+        Assert.Equal($"Client {seed.ClientAccountId:N}", config.Client.DisplayName);
+        Assert.Equal(StatusValues.Theme.Pop, config.Theme.Preset);
+        Assert.Equal("SM Southmall - Neon Weekend", config.Session.Label);
+        Assert.Equal("Booth unavailable", config.Session.WelcomeHeadline);
+        Assert.Equal("No active booth offer configured", config.Session.WelcomeSubtitle);
+    }
+
+    [Fact]
+    public async Task BoothUiCanReturnCompletedPromptToWelcome()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "completed-return-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.Completed);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var response = await client.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(config);
+        Assert.Equal(StatusValues.Booth.Welcome, config.Booth.State);
+    }
+
+    [Fact]
+    public async Task BoothUiReturnToWelcomeIsIdempotentAfterPromptAutoReset()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "completed-idempotent-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.Welcome);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var response = await client.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BoothUiCanReturnCompletedCoveredPlanSessionToWelcome()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "covered-return-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        _ = await factory.SeedSessionTransactionAsync(
+            seed,
+            StatusValues.Transaction.Completed,
+            StatusValues.LumaboothSessionMode.Print,
+            StatusValues.OfferType.TimeUnlimited,
+            StatusValues.TransactionType.CoveredPlanSession);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.Completed);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var response = await client.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(config);
+        Assert.Equal(StatusValues.Booth.Welcome, config.Booth.State);
+    }
+
+    [Fact]
+    public async Task BoothUiReturnToWelcomeIgnoresHistoricalFailedTransactions()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "failed-history-return-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.SessionFailed, StatusValues.LumaboothSessionMode.Print);
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PaymentFailed, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.Completed);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var response = await client.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BoothUiReturnToWelcomeRejectsActiveAddOnAfterCompletedSession()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "addon-active-return-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        var parentTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.SeedBoothTransactionAsync(
+            seed,
+            StatusValues.TransactionType.ExtraPrintAddOn,
+            StatusValues.Transaction.PendingCash,
+            parentTransactionId);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.Completed);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var response = await client.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CashierActivatesSessionCountPackageAndCoveredSessionsSkipPayment()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var ownerClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "session-count-kiosk-token";
+        const string agentCredential = "session-count-agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken,
+            agentCredential: agentCredential);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-plan-activation@photobiz.test");
+
+        await LoginAsync(ownerClient, seed.ClientOwnerEmail);
+        var offerResponse = await ownerClient.PostAsJsonAsync("/api/admin/offers", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Five Session Pass",
+            description = "Session-count booth pass",
+            offerType = StatusValues.OfferType.SessionCount,
+            priceCents = 150000,
+            currency = "PHP",
+            includedPrintEntitlement = StatusValues.PrintEntitlement.TwoBySixOrOneByFour,
+            durationHours = (int?)null,
+            sessionAllowance = 2,
+            allowsExtraPrintAddOn = false,
+            extraPrintPriceCents = (int?)null,
+            lumaboothSessionMode = StatusValues.LumaboothSessionMode.Print
+        });
+        offerResponse.EnsureSuccessStatusCode();
+        var offer = await offerResponse.Content.ReadFromJsonAsync<OfferSummary>();
+        Assert.NotNull(offer);
+
+        var activationResponse = await ownerClient.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/activate-offer", new
+        {
+            boothOfferId = offer.Id
+        });
+        activationResponse.EnsureSuccessStatusCode();
+        var pendingActivation = await activationResponse.Content.ReadFromJsonAsync<OfferActivationSummary>();
+        Assert.NotNull(pendingActivation);
+        Assert.Equal(StatusValues.OfferActivation.PendingPayment, pendingActivation.Status);
+
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+        var pendingConfig = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        Assert.NotNull(pendingConfig);
+        Assert.Equal(StatusValues.OfferActivation.PendingPayment, pendingConfig.ActiveOffer?.ActivationStatus);
+        Assert.Empty(pendingConfig.PaymentOptions);
+
+        await LoginAsync(cashierClient, cashierEmail);
+        var planActivationResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/booths/{seed.BoothId}/plan-activation", new { });
+        planActivationResponse.EnsureSuccessStatusCode();
+        var planActivationTransaction = await planActivationResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(planActivationTransaction);
+        Assert.Equal(StatusValues.TransactionType.PlanActivation, planActivationTransaction.TransactionType);
+        Assert.Equal(StatusValues.Transaction.PendingCash, planActivationTransaction.Status);
+        Assert.Equal(150000, planActivationTransaction.AmountCents);
+        Assert.Equal("Five Session Pass", planActivationTransaction.OfferName);
+        Assert.Equal(StatusValues.OfferType.SessionCount, planActivationTransaction.OfferType);
+        Assert.Equal(StatusValues.PrintEntitlement.TwoBySixOrOneByFour, planActivationTransaction.IncludedPrintEntitlement);
+        Assert.Equal(2, planActivationTransaction.SessionAllowance);
+
+        var approvalResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{planActivationTransaction.Id}/approve-cash", new { });
+        approvalResponse.EnsureSuccessStatusCode();
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+        var noPlanCommand = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+        Assert.Equal(HttpStatusCode.NoContent, noPlanCommand.StatusCode);
+
+        var firstCoveredSessionResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        firstCoveredSessionResponse.EnsureSuccessStatusCode();
+        var firstCoveredSession = await firstCoveredSessionResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(firstCoveredSession);
+        Assert.Equal(StatusValues.TransactionType.CoveredPlanSession, firstCoveredSession.TransactionType);
+        Assert.Equal(StatusValues.Transaction.Paid, firstCoveredSession.Status);
+        Assert.Equal(0, firstCoveredSession.AmountCents);
+        Assert.Equal("Five Session Pass", firstCoveredSession.OfferName);
+        Assert.Equal(StatusValues.OfferType.SessionCount, firstCoveredSession.OfferType);
+        Assert.Equal(StatusValues.PrintEntitlement.TwoBySixOrOneByFour, firstCoveredSession.IncludedPrintEntitlement);
+        Assert.Equal(2, firstCoveredSession.SessionAllowance);
+
+        var commandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+        commandResponse.EnsureSuccessStatusCode();
+        var command = await commandResponse.Content.ReadFromJsonAsync<AgentCommandResponse>();
+        Assert.NotNull(command);
+        Assert.Equal("START_SESSION", command.Command);
+        Assert.Equal(StatusValues.TransactionType.CoveredPlanSession, command.TransactionType);
+
+        var startedResponse = await agentClient.PostAsJsonAsync($"/api/agent/transactions/{firstCoveredSession.Id}/session-started", new
+        {
+            boothCode = seed.BoothCode
+        });
+        var completedResponse = await agentClient.PostAsJsonAsync($"/api/agent/transactions/{firstCoveredSession.Id}/session-completed", new
+        {
+            boothCode = seed.BoothCode
+        });
+        startedResponse.EnsureSuccessStatusCode();
+        completedResponse.EnsureSuccessStatusCode();
+
+        var overview = await cashierClient.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+        Assert.NotNull(overview);
+        var activeActivation = Assert.Single(overview.Activations, item => item.Id == pendingActivation.Id);
+        Assert.Equal(StatusValues.OfferActivation.Active, activeActivation.Status);
+        Assert.Equal(1, activeActivation.SessionsUsed);
+        var firstCoveredSessionSummary = Assert.Single(overview.Transactions, item => item.Id == firstCoveredSession.Id);
+        Assert.Equal(1, firstCoveredSessionSummary.CoveredSessionSequence);
+
+        var firstReturnResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/return-to-welcome", new { });
+        firstReturnResponse.EnsureSuccessStatusCode();
+
+        var secondCoveredSessionResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        secondCoveredSessionResponse.EnsureSuccessStatusCode();
+        var secondCoveredSession = await secondCoveredSessionResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(secondCoveredSession);
+        var secondCommandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+        secondCommandResponse.EnsureSuccessStatusCode();
+
+        var secondStartedResponse = await agentClient.PostAsJsonAsync($"/api/agent/transactions/{secondCoveredSession.Id}/session-started", new
+        {
+            boothCode = seed.BoothCode
+        });
+        var secondCompletedResponse = await agentClient.PostAsJsonAsync($"/api/agent/transactions/{secondCoveredSession.Id}/session-completed", new
+        {
+            boothCode = seed.BoothCode
+        });
+        secondStartedResponse.EnsureSuccessStatusCode();
+        secondCompletedResponse.EnsureSuccessStatusCode();
+
+        overview = await cashierClient.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+        Assert.NotNull(overview);
+        var completedActivation = Assert.Single(overview.Activations, item => item.Id == pendingActivation.Id);
+        Assert.Equal(StatusValues.OfferActivation.Completed, completedActivation.Status);
+        Assert.Equal(2, completedActivation.SessionsUsed);
+        Assert.Equal(1, Assert.Single(overview.Transactions, item => item.Id == firstCoveredSession.Id).CoveredSessionSequence);
+        Assert.Equal(2, Assert.Single(overview.Transactions, item => item.Id == secondCoveredSession.Id).CoveredSessionSequence);
+
+        var exhaustedResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        Assert.Equal(HttpStatusCode.BadRequest, exhaustedResponse.StatusCode);
     }
 
     [Fact]
@@ -620,6 +1281,9 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(parentTransactionId, addOn.ParentTransactionId);
         Assert.Equal(2, addOn.ExtraPrintCount);
         Assert.Equal(10000, addOn.AmountCents);
+        Assert.Equal("Per Session", addOn.OfferName);
+        Assert.Equal(StatusValues.OfferType.PerSession, addOn.OfferType);
+        Assert.Equal(StatusValues.PrintEntitlement.TwoBySixOrOneByFour, addOn.IncludedPrintEntitlement);
 
         var approvalResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{addOn.Id}/approve-cash", new { });
         approvalResponse.EnsureSuccessStatusCode();
@@ -785,8 +1449,49 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(StatusValues.Booth.Welcome, recovered.BoothState);
         Assert.Equal("Manual booth recovery returned the booth to welcome.", recovered.FailureReason);
 
+        var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        Assert.NotNull(config);
+        Assert.NotNull(config.RecentTransaction);
+        Assert.Equal(firstTransactionBody.Id, config.RecentTransaction.Id);
+        Assert.Equal(StatusValues.Transaction.Cancelled, config.RecentTransaction.Status);
+        Assert.Equal(StatusValues.TransactionType.SessionPurchase, config.RecentTransaction.TransactionType);
+        Assert.Equal("Manual booth recovery returned the booth to welcome.", config.RecentTransaction.Reason);
+
         var secondTransaction = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
         secondTransaction.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task CashierEndpointsRespectSavedPermissions()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(
+            seed,
+            "cashier-permissions@photobiz.test",
+            canApproveCash: false,
+            canReturnBoothToWelcome: false,
+            canCancelTransaction: false);
+        var transactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PendingCash, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(cashierClient, cashierEmail);
+
+        var approveResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{transactionId}/approve-cash", new { });
+        var cancelResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{transactionId}/cancel", new { });
+        var returnResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/booths/{seed.BoothId}/return-to-welcome", new { });
+
+        Assert.Equal(HttpStatusCode.Forbidden, approveResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, cancelResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, returnResponse.StatusCode);
     }
 
     private static async Task LoginAsync(HttpClient client, string email)
@@ -1012,7 +1717,12 @@ public sealed class PhotoBizManagementApiTests
             return new SeedResult(clientId, subscriptionId, locationId, ownerId, firstBoothId, firstBoothCode, offerId ?? Guid.Empty, ownerEmail);
         }
 
-        public async Task<string> SeedCashierAsync(SeedResult seed, string email)
+        public async Task<string> SeedCashierAsync(
+            SeedResult seed,
+            string email,
+            bool canApproveCash = true,
+            bool canReturnBoothToWelcome = true,
+            bool canCancelTransaction = true)
         {
             await using var scope = Services.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
@@ -1027,6 +1737,9 @@ public sealed class PhotoBizManagementApiTests
                 Email = email,
                 Role = StatusValues.User.Cashier,
                 Status = StatusValues.User.Active,
+                CanApproveCash = canApproveCash,
+                CanReturnBoothToWelcome = canReturnBoothToWelcome,
+                CanCancelTransaction = canCancelTransaction,
                 CreatedAt = DateTimeOffset.UtcNow
             };
             cashier.PasswordHash = passwordHasher.HashPassword(cashier, Password);
@@ -1040,7 +1753,8 @@ public sealed class PhotoBizManagementApiTests
             SeedResult seed,
             string status,
             string lumaboothSessionMode,
-            string offerType = StatusValues.OfferType.PerSession)
+            string offerType = StatusValues.OfferType.PerSession,
+            string transactionType = StatusValues.TransactionType.SessionPurchase)
         {
             await using var scope = Services.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
@@ -1054,7 +1768,7 @@ public sealed class PhotoBizManagementApiTests
                 BoothOfferId = seed.OfferId,
                 BoothOfferActivationId = Guid.NewGuid(),
                 TransactionNumber = $"TXN-{transactionId:N}"[..20],
-                TransactionType = StatusValues.TransactionType.SessionPurchase,
+                TransactionType = transactionType,
                 PaymentMethod = StatusValues.PaymentMethod.Cash,
                 Status = status,
                 AmountCents = 25000,
@@ -1099,6 +1813,39 @@ public sealed class PhotoBizManagementApiTests
             return transactionId;
         }
 
+        public async Task<Guid> SeedBoothTransactionAsync(
+            SeedResult seed,
+            string transactionType,
+            string status,
+            Guid? parentTransactionId = null)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transactionId = Guid.NewGuid();
+            dbContext.Transactions.Add(new Transaction
+            {
+                Id = transactionId,
+                ClientAccountId = seed.ClientAccountId,
+                LocationId = seed.LocationId,
+                BoothId = seed.BoothId,
+                BoothOfferId = seed.OfferId,
+                ParentTransactionId = parentTransactionId,
+                TransactionNumber = $"TXN-{transactionId:N}"[..20],
+                TransactionType = transactionType,
+                PaymentMethod = StatusValues.PaymentMethod.Cash,
+                Status = status,
+                AmountCents = 5000,
+                Currency = "PHP",
+                OfferSnapshot = "{}",
+                ExtraPrintCount = transactionType == StatusValues.TransactionType.ExtraPrintAddOn ? 1 : 0,
+                CreatedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5)
+            });
+
+            await dbContext.SaveChangesAsync();
+            return transactionId;
+        }
+
         public async Task SeedAuditLogAsync(Guid clientAccountId, Guid userId, string action)
         {
             await using var scope = Services.CreateAsyncScope();
@@ -1134,6 +1881,32 @@ public sealed class PhotoBizManagementApiTests
             var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
             transaction.CreatedAt = DateTimeOffset.UtcNow.Subtract(age).AddSeconds(-5);
             transaction.CompletedAt = DateTimeOffset.UtcNow.Subtract(age);
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task SetBoothStateAsync(Guid boothId, string state)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var booth = await dbContext.Booths.SingleAsync(item => item.Id == boothId);
+            booth.CurrentState = state;
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task SetBoothAppearanceAsync(
+            Guid boothId,
+            string themePreset,
+            string sessionLabel,
+            string welcomeHeadline,
+            string welcomeSubtitle)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var appearance = await dbContext.BoothAppearanceConfigs.SingleAsync(item => item.BoothId == boothId);
+            appearance.ThemePreset = themePreset;
+            appearance.SessionLabel = sessionLabel;
+            appearance.DefaultWelcomeHeadline = welcomeHeadline;
+            appearance.DefaultWelcomeSubtitle = welcomeSubtitle;
             await dbContext.SaveChangesAsync();
         }
 

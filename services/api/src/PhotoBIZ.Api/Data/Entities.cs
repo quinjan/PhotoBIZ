@@ -10,6 +10,7 @@ public sealed class ClientAccount
     public ICollection<Location> Locations { get; } = [];
     public ICollection<ApplicationUser> Users { get; } = [];
     public ICollection<BoothOffer> BoothOffers { get; } = [];
+    public ICollection<PrintEntitlement> PrintEntitlements { get; } = [];
     public ICollection<ClientSubscription> Subscriptions { get; } = [];
     public ICollection<ClientPaymentProviderConfig> PaymentProviderConfigs { get; } = [];
     public ICollection<ClientMayaEcrDevice> MayaEcrDevices { get; } = [];
@@ -97,6 +98,9 @@ public sealed class ApplicationUser
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = StatusValues.User.ClientOwner;
     public string Status { get; set; } = StatusValues.User.Active;
+    public bool CanApproveCash { get; set; } = true;
+    public bool CanReturnBoothToWelcome { get; set; } = true;
+    public bool CanCancelTransaction { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
 
     public ClientAccount? ClientAccount { get; set; }
@@ -132,10 +136,11 @@ public sealed class BoothAppearanceConfig
 {
     public Guid Id { get; set; }
     public Guid BoothId { get; set; }
-    public string ThemePreset { get; set; } = StatusValues.Theme.VintageFilm;
+    public string ThemePreset { get; set; } = StatusValues.Theme.Vintage;
     public string PrimaryColor { get; set; } = "#2f6868";
     public string AccentColor { get; set; } = "#f5d27e";
     public string? BackgroundImageUrl { get; set; }
+    public string? BackgroundImageDataUrl { get; set; }
     public string SessionLabel { get; set; } = string.Empty;
     public string DefaultWelcomeHeadline { get; set; } = string.Empty;
     public string DefaultWelcomeSubtitle { get; set; } = string.Empty;
@@ -180,6 +185,17 @@ public sealed class BoothOffer
     public ClientAccount? ClientAccount { get; set; }
     public ICollection<BoothOfferActivation> BoothOfferActivations { get; } = [];
     public ICollection<Transaction> Transactions { get; } = [];
+}
+
+public sealed class PrintEntitlement
+{
+    public Guid Id { get; set; }
+    public Guid ClientAccountId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Status { get; set; } = StatusValues.PrintEntitlement.Active;
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public ClientAccount? ClientAccount { get; set; }
 }
 
 public sealed class BoothOfferActivation

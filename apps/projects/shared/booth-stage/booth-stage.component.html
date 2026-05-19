@@ -1,0 +1,34 @@
+<section class="stage-slot stage-token-slot" [style.--theme-primary]="primaryColor()">
+  <ng-content select="[booth-stage-token-controls]"></ng-content>
+</section>
+
+@switch (preset()) {
+  @case ('POP') {
+    <photobiz-pop-booth-stage
+      [config]="config()"
+      [screen]="screen()"
+      [loading]="loading()"
+      (action)="emitAction($event)"
+    />
+  }
+  @case ('CLEAN_MODERN') {
+    <photobiz-clean-modern-booth-stage
+      [config]="config()"
+      [screen]="screen()"
+      [loading]="loading()"
+      (action)="emitAction($event)"
+    />
+  }
+  @default {
+    <photobiz-vintage-booth-stage
+      [config]="config()"
+      [screen]="screen()"
+      [loading]="loading()"
+      (action)="emitAction($event)"
+    />
+  }
+}
+
+<section class="stage-slot stage-error-slot">
+  <ng-content select="[booth-stage-error]"></ng-content>
+</section>

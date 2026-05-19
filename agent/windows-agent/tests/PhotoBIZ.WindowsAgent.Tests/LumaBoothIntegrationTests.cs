@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using PhotoBIZ.WindowsAgent;
@@ -122,6 +123,66 @@ public sealed class LumaBoothIntegrationTests
         Assert.True(focus.ShowBoothUiCalled);
     }
 
+    [Fact]
+    public async Task AgentApiClientRequestsBoothUiLaunchToken()
+    {
+        var boothId = Guid.NewGuid();
+        var handler = new CapturingHandler(
+            $$"""{"boothId":"{{boothId}}","boothCode":"SMA-001","kioskToken":"kiosk-secret"}""");
+        var client = new PhotoBizAgentApiClient(
+            new HttpClient(handler),
+            Options.Create(new PhotoBizAgentOptions
+            {
+                ApiBaseUrl = "http://localhost:5082",
+                AgentCredential = "agent-secret"
+            }));
+
+        var launch = await client.CreateBoothUiLaunchAsync("SMA-001", CancellationToken.None);
+
+        Assert.NotNull(handler.RequestUri);
+        Assert.Equal("/api/agent/booth-ui-launch", handler.RequestUri.PathAndQuery);
+        Assert.Equal("agent-secret", handler.AgentCredential);
+        Assert.Equal(boothId, launch.BoothId);
+        Assert.Equal("SMA-001", launch.BoothCode);
+        Assert.Equal("kiosk-secret", launch.KioskToken);
+    }
+
+    [Fact]
+    public void ChromeLauncherBuildsBoothUiTokenRoute()
+    {
+        var url = ChromeBoothUiLauncher.BuildBoothUiUrl("http://localhost:4201/", "abc 123");
+
+        Assert.Equal("http://localhost:4201/abc%20123", url);
+    }
+
+    [Fact]
+    public void ChromeLauncherBuildsIsolatedKioskArguments()
+    {
+        var arguments = ChromeBoothUiLauncher.BuildChromeArguments(
+            "http://localhost:4201/kiosk-token",
+            kioskMode: true,
+            @"C:\ProgramData\PhotoBIZ\chrome-kiosk");
+
+        Assert.Contains("--kiosk", arguments);
+        Assert.Contains("--new-window", arguments);
+        Assert.Contains("--no-first-run", arguments);
+        Assert.Contains(@"--user-data-dir=""C:\ProgramData\PhotoBIZ\chrome-kiosk""", arguments);
+        Assert.EndsWith(@"""http://localhost:4201/kiosk-token""", arguments);
+    }
+
+    [Fact]
+    public void ChromeLauncherKeepsNormalBrowserArgumentsWhenKioskModeIsDisabled()
+    {
+        var arguments = ChromeBoothUiLauncher.BuildChromeArguments(
+            "http://localhost:4201/kiosk-token",
+            kioskMode: false,
+            @"C:\ProgramData\PhotoBIZ\chrome-kiosk");
+
+        Assert.Equal(@"--new-window ""http://localhost:4201/kiosk-token""", arguments);
+        Assert.DoesNotContain("--kiosk", arguments);
+        Assert.DoesNotContain("--user-data-dir", arguments);
+    }
+
     private static ActiveLumaBoothSession CreateSession(string mode)
     {
         return new ActiveLumaBoothSession(
@@ -133,18 +194,29 @@ public sealed class LumaBoothIntegrationTests
             DateTimeOffset.UtcNow);
     }
 
-    private sealed class CapturingHandler : HttpMessageHandler
+    private sealed class CapturingHandler(string? responseBody = null) : HttpMessageHandler
     {
         private readonly List<Uri> requestUris = [];
 
         public Uri? RequestUri { get; private set; }
         public IReadOnlyList<Uri> RequestUris => requestUris;
+        public string? AgentCredential { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
             requestUris.Add(request.RequestUri!);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+            AgentCredential = request.Headers.TryGetValues("X-Agent-Credential", out var values)
+                ? values.SingleOrDefault()
+                : null;
+
+            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            if (responseBody is not null)
+            {
+                response.Content = new StringContent(responseBody, Encoding.UTF8, "application/json");
+            }
+
+            return Task.FromResult(response);
         }
     }
 
@@ -183,6 +255,11 @@ public sealed class LumaBoothIntegrationTests
         public Task HeartbeatAsync(string boothCode, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
+        }
+
+        public Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AgentBoothUiLaunchPayload(Guid.NewGuid(), boothCode, "kiosk-token"));
         }
 
         public Task<AgentCommandPayload?> GetNextCommandAsync(string boothCode, CancellationToken cancellationToken)

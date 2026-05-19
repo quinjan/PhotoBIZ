@@ -24,6 +24,11 @@ public sealed class DisplayOptions
 {
     public string LumaBoothWindowTitle { get; set; } = "dslrBooth";
     public string BoothUiWindowTitle { get; set; } = "BoothUi";
+    public string BoothUiBaseUrl { get; set; } = "http://localhost:4201";
+    public string ChromeExecutablePath { get; set; } = string.Empty;
+    public string ChromeUserDataDir { get; set; } = string.Empty;
+    public bool LaunchBoothUiOnStartup { get; set; } = true;
+    public bool KioskMode { get; set; } = true;
 }
 
 public static class LumaBoothIntegrationMode

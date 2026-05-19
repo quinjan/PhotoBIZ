@@ -309,8 +309,7 @@ td {
 }
 
 .status,
-.pill,
-.ready-pill {
+.pill {
   align-items: center;
   background: #f8fafc;
   border: 1px solid var(--admin-line);
@@ -332,6 +331,11 @@ td {
 .status.red {
   background: #fff1f0;
   color: var(--admin-red);
+}
+
+.status.amber {
+  background: #fff4df;
+  color: var(--admin-amber);
 }
 
 .dot {
@@ -448,6 +452,34 @@ textarea {
 .booth-list {
   display: grid;
   gap: 10px;
+}
+
+.booth-preview-frame {
+  background: #111827;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.booth-preview-frame photobiz-booth-stage {
+  display: block;
+  min-height: 520px;
+}
+
+.booth-preview-frame ::ng-deep .stage {
+  min-height: 520px;
+}
+
+.tab-strip {
+  background: #e9eef5;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.tab-strip .active {
+  background: #ffffff;
+  color: var(--admin-text);
 }
 
 .row,
@@ -593,7 +625,9 @@ textarea {
   box-shadow: 0 24px 70px rgba(16, 24, 40, 0.28);
   display: grid;
   gap: 16px;
+  max-height: calc(100vh - 48px);
   max-width: 620px;
+  overflow: auto;
   padding: 20px;
   width: min(100%, 620px);
 }

@@ -1,0 +1,112 @@
+<main
+  class="stage clean-stage"
+  [class.state-offline]="screen() === 'offline'"
+  [class.state-waiting]="screen() === 'waiting'"
+  [class.state-error]="screen() === 'error' || screen() === 'payment-failed' || screen() === 'cancelled'"
+  [style.--stage-image]="backgroundImage()"
+>
+  <ng-content select="[booth-stage-token-controls]"></ng-content>
+
+  <section class="stage-card">
+    <header>
+      <div class="brand">
+        @if (config()?.client?.logoUrl; as logoUrl) {
+          <img [src]="logoUrl" alt="" />
+        } @else {
+          <span>{{ initials() }}</span>
+        }
+        <strong>{{ config()?.client?.displayName ?? 'PhotoBIZ' }}</strong>
+      </div>
+      <small>{{ config()?.booth?.state ?? 'OFFLINE' }}</small>
+    </header>
+
+    <div class="flow">
+      <span [class.active]="screen() === 'offer' || screen() === 'unavailable'">Welcome</span>
+      <span [class.active]="screen() === 'payment'">Review</span>
+      <span [class.active]="screen() === 'waiting' || screen() === 'approved'">Payment</span>
+      <span [class.active]="screen() === 'session' || screen() === 'completed'">Session</span>
+    </div>
+
+    <div class="copy">
+      <p>{{ eyebrow() }}</p>
+      <h1>{{ title() }}</h1>
+      <span>{{ message() }}</span>
+    </div>
+
+    @if (config()?.activeOffer; as offer) {
+      <article class="offer-panel">
+        <div>
+          <strong>{{ offer.name }}</strong>
+          <span>{{ offer.type }} · {{ offer.includedPrintEntitlement }}</span>
+        </div>
+        <p>{{ formatMoney(offer.priceCents) }}</p>
+      </article>
+    }
+
+    @switch (screen()) {
+      @case ('connect') {
+        <button type="button" class="primary-action" (click)="action.emit('connect')" [disabled]="loading()">
+          Connect Booth
+        </button>
+      }
+      @case ('offer') {
+        <button type="button" class="primary-action" (click)="action.emit('confirm-offer')" [disabled]="loading()">
+          Start Session
+        </button>
+      }
+      @case ('payment') {
+        @if (cashOption(); as option) {
+          <button type="button" class="primary-action" (click)="action.emit('cash')" [disabled]="loading()">
+            {{ option.label }}
+          </button>
+        }
+      }
+      @case ('offline') {
+        <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
+          Retry
+        </button>
+      }
+      @case ('expired') {
+        <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
+          Refresh
+        </button>
+      }
+      @case ('cancelled') {
+        <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
+          Back To Welcome
+        </button>
+      }
+      @case ('payment-failed') {
+        <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
+          Try Again
+        </button>
+      }
+      @case ('completed') {
+        <div class="status-panel">
+          <strong>{{ title() }}</strong>
+          <span>{{ message() }}</span>
+        </div>
+        <button type="button" class="primary-action" (click)="action.emit('return-welcome')" [disabled]="loading()">
+          @if (config()?.activeOffer?.type === 'PER_SESSION') {
+            No Extra Prints
+          } @else {
+            Back To Welcome
+          }
+        </button>
+      }
+      @case ('error') {
+        <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
+          Check Status
+        </button>
+      }
+      @default {
+        <div class="status-panel">
+          <strong>{{ title() }}</strong>
+          <span>{{ message() }}</span>
+        </div>
+      }
+    }
+  </section>
+
+  <ng-content select="[booth-stage-error]"></ng-content>
+</main>

@@ -127,6 +127,7 @@ Use user secrets for real booth credentials or local API passwords so they do no
 dotnet user-secrets set "PhotoBIZ:BoothCode" "<booth-code>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:AgentCredential" "<agent-credential>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 ```
 
 ### Simulator Mode
@@ -150,13 +151,22 @@ Simulator mode is the default and is best for normal backend/UI development with
     },
     "Display": {
       "LumaBoothWindowTitle": "dslrBooth",
-      "BoothUiWindowTitle": "BoothUi"
+      "BoothUiWindowTitle": "BoothUi",
+      "BoothUiBaseUrl": "http://localhost:4201",
+      "ChromeExecutablePath": "",
+      "ChromeUserDataDir": "",
+      "LaunchBoothUiOnStartup": true,
+      "KioskMode": true
     }
   }
 }
 ```
 
-In simulator mode, the Agent still pairs, heartbeats, polls for commands, reports session started/completed, completes `PRINT_COPIES` commands without calling LumaBooth, and returns Booth UI focus after `SimulatedSessionDurationSeconds`.
+In simulator mode, the Agent still pairs, requests a fresh Booth UI launch token, opens Chrome to `PhotoBIZ:Display:BoothUiBaseUrl/{token}` when `LaunchBoothUiOnStartup` is true, heartbeats, polls for commands, reports session started/completed, completes `PRINT_COPIES` commands without calling LumaBooth, and returns Booth UI focus after `SimulatedSessionDurationSeconds`.
+
+The Booth UI does not show a manual kiosk-token input. For normal booth testing, start the Windows Agent and let it launch Chrome to the token route, for example `http://localhost:4201/43E836977240C5E33F3C56581DC59E07A15BB08F8512C6C2`. That token route is what loads the booth's selected theme and active transaction state. The Agent correlates the launch token by sending its configured `BoothCode` and `AgentCredential` to the backend, then the backend returns the booth-scoped kiosk token for that booth.
+
+When `PhotoBIZ:Display:KioskMode` is `true`, the Agent starts Chrome with kiosk flags and an isolated profile directory. Leave `PhotoBIZ:Display:ChromeUserDataDir` empty to use the default `%ProgramData%\PhotoBIZ\chrome-kiosk`, or set it to a booth-specific folder when testing multiple booths on one machine. Alt-Tab remains available because this is Chrome kiosk mode, not Windows assigned access.
 
 ### LumaBooth API Mode
 
@@ -169,6 +179,11 @@ dotnet user-secrets set "PhotoBIZ:LumaBooth:TriggerListenerUrl" "http://127.0.0.
 dotnet user-secrets set "PhotoBIZ:LumaBooth:StartTimeoutSeconds" "15" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:Display:LumaBoothWindowTitle" "dslrBooth" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:Display:BoothUiWindowTitle" "BoothUi" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:ChromeExecutablePath" "C:\Program Files\Google\Chrome\Application\chrome.exe" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:ChromeUserDataDir" "C:\ProgramData\PhotoBIZ\chrome-kiosk" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:LaunchBoothUiOnStartup" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 ```
 
 API mode behavior:

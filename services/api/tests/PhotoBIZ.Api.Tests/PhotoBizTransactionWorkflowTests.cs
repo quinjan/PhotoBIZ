@@ -140,6 +140,32 @@ public sealed class PhotoBizTransactionWorkflowTests
     }
 
     [Fact]
+    public async Task CompletedBoothResetSkipsWhenNewerActiveTransactionExists()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var parent = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        parent = await workflow.SetPaymentMethodAsync(parent, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        parent = await workflow.ApproveCashAsync(parent, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+        parent.CompletedAt = DateTimeOffset.UtcNow.Subtract(PhotoBizTransactionWorkflow.PostSessionPromptDuration).AddSeconds(-1);
+        await workflow.CreateExtraPrintAddOnAsync(parent, cashier, 1, CancellationToken.None);
+        booth.CurrentState = StatusValues.Booth.Completed;
+        await dbContext.SaveChangesAsync();
+
+        var resetCount = await workflow.ResetCompletedBoothsToWelcomeAsync(CancellationToken.None);
+
+        Assert.Equal(0, resetCount);
+        Assert.Equal(StatusValues.Booth.Completed, booth.CurrentState);
+    }
+
+    [Fact]
     public async Task CreateTransactionRejectsBoothWithoutHeartbeat()
     {
         await using var dbContext = CreateDbContext();

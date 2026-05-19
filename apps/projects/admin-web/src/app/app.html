@@ -61,7 +61,7 @@
             @if (isApplicationOwner()) {
               Application Owner / Platform view
             } @else {
-              {{ session()?.role }}
+              {{ currentClient()?.name ?? 'Client Account' }} / {{ roleLabel() }}
             }
           </p>
           <h1 class="admin-title">{{ activeViewTitle() }}</h1>
@@ -100,6 +100,117 @@
                 Archive
               </button>
             }
+          }
+          @if (!isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'users') {
+            <button type="button" class="button primary" (click)="openUserModal()">
+              + Add User
+            </button>
+          }
+          @if (
+            !isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'user-detail'
+          ) {
+            <button type="button" class="button" (click)="setView('users')">Back to Users</button>
+            @if (selectedUser(); as user) {
+              @if (user.status === 'ACTIVE') {
+                <button
+                  type="button"
+                  class="button danger"
+                  (click)="updateUserStatus(user, 'INACTIVE')"
+                >
+                  Deactivate
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="button green-button"
+                  (click)="updateUserStatus(user, 'ACTIVE')"
+                >
+                  Activate
+                </button>
+              }
+            }
+          }
+          @if (
+            !isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'locations'
+          ) {
+            <button type="button" class="button primary" (click)="openLocationModal()">
+              + Add Location
+            </button>
+          }
+          @if (
+            !isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'booths'
+          ) {
+            <button type="button" class="button primary" (click)="openBoothModal()">
+              + Register Booth
+            </button>
+          }
+          @if (
+            !isApplicationOwner() &&
+            session()?.role !== 'CASHIER' &&
+            activeView() === 'booth-detail'
+          ) {
+            <button type="button" class="button" (click)="setView('booths')">Back to Booths</button>
+            @if (selectedBoothDetail(); as booth) {
+              @if (booth.status === 'ACTIVE') {
+                <button
+                  type="button"
+                  class="button danger"
+                  (click)="updateBoothStatus(booth, 'INACTIVE')"
+                >
+                  Deactivate
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="button green-button"
+                  (click)="updateBoothStatus(booth, 'ACTIVE')"
+                >
+                  Activate
+                </button>
+              }
+            }
+          }
+          @if (
+            !isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'packages'
+          ) {
+            <button type="button" class="button primary" (click)="startNewPackage()">
+              + New Package
+            </button>
+          }
+          @if (
+            !isApplicationOwner() &&
+            session()?.role !== 'CASHIER' &&
+            activeView() === 'package-detail'
+          ) {
+            <button type="button" class="button" (click)="setView('packages')">
+              Back to Packages
+            </button>
+            @if (selectedPackage(); as offer) {
+              @if (offer.active) {
+                <button
+                  type="button"
+                  class="button danger"
+                  (click)="updatePackageStatus(offer, false)"
+                >
+                  Deactivate
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="button green-button"
+                  (click)="updatePackageStatus(offer, true)"
+                >
+                  Activate
+                </button>
+              }
+            }
+          }
+          @if (
+            !isApplicationOwner() &&
+            session()?.role !== 'CASHIER' &&
+            activeView() === 'transactions'
+          ) {
+            <button type="button" class="button">Export CSV</button>
           }
         </div>
       </header>
@@ -163,7 +274,10 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (client of platformClients(); track client.id) {
+                  @for (
+                    client of pagedItems('platform-dashboard-clients', platformClients());
+                    track client.id
+                  ) {
                     @let subscription = latestSubscriptionFor(client.id);
                     <tr>
                       <td>
@@ -189,6 +303,32 @@
                   }
                 </tbody>
               </table>
+              @if (pageInfo('platform-dashboard-clients', platformClients().length); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('platform-dashboard-clients', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('platform-dashboard-clients', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
             </article>
 
             <article class="card">
@@ -265,7 +405,7 @@
                 </tr>
               </thead>
               <tbody>
-                @for (client of platformClients(); track client.id) {
+                @for (client of pagedItems('clients-grid', platformClients()); track client.id) {
                   @let owner = ownerForClient(client.id);
                   @let subscription = latestSubscriptionFor(client.id);
                   <tr>
@@ -294,6 +434,32 @@
                 }
               </tbody>
             </table>
+            @if (pageInfo('clients-grid', platformClients().length); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('clients-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('clients-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
           </section>
         }
 
@@ -366,20 +532,45 @@
               <article class="card">
                 <div class="section-head"><h2 class="section-title">Booths</h2></div>
                 <div class="booth-list">
-                  @for (booth of overview()?.booths ?? []; track booth.id) {
-                    @if (booth.clientAccountId === client.id) {
-                      <div class="booth-row">
-                        <div>
-                          <strong>{{ booth.name }}</strong>
-                          <span>{{ booth.code }} / {{ booth.currentState }}</span>
-                        </div>
-                        <span class="status green"
-                          ><span class="dot"></span>{{ booth.status }}</span
-                        >
+                  @for (
+                    booth of pagedItems('client-detail-booths', boothsForClient(client.id));
+                    track booth.id
+                  ) {
+                    <div class="booth-row">
+                      <div>
+                        <strong>{{ booth.name }}</strong>
+                        <span>{{ booth.code }} / {{ booth.currentState }}</span>
                       </div>
-                    }
+                      <span class="status green"><span class="dot"></span>{{ booth.status }}</span>
+                    </div>
                   }
                 </div>
+                @if (pageInfo('client-detail-booths', boothsForClient(client.id).length); as page) {
+                  @if (page.totalPages > 1) {
+                    <footer class="section-head">
+                      <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                      <div class="top-actions">
+                        <button
+                          type="button"
+                          class="button"
+                          [disabled]="!page.hasPrevious"
+                          (click)="previousPage('client-detail-booths', page.total)"
+                        >
+                          Previous
+                        </button>
+                        <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                        <button
+                          type="button"
+                          class="button"
+                          [disabled]="!page.hasNext"
+                          (click)="nextPage('client-detail-booths', page.total)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </footer>
+                  }
+                }
               </article>
             </section>
           }
@@ -404,7 +595,13 @@
                 </tr>
               </thead>
               <tbody>
-                @for (subscription of overview()?.subscriptionPlans ?? []; track subscription.id) {
+                @for (
+                  subscription of pagedItems(
+                    'subscriptions-grid',
+                    overview()?.subscriptionPlans ?? []
+                  );
+                  track subscription.id
+                ) {
                   <tr>
                     <td>
                       <strong>{{ subscription.name }}</strong
@@ -432,6 +629,32 @@
                 }
               </tbody>
             </table>
+            @if (pageInfo('subscriptions-grid', overview()?.subscriptionPlans?.length ?? 0); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('subscriptions-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('subscriptions-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
           </section>
         }
 
@@ -523,7 +746,10 @@
           <section class="card">
             <div class="section-head"><h2 class="section-title">Client Subscription Audit</h2></div>
             <div class="table-list">
-              @for (audit of subscriptionAuditLogs(); track audit.id) {
+              @for (
+                audit of pagedItems('subscription-audit', subscriptionAuditLogs());
+                track audit.id
+              ) {
                 <div class="row">
                   <div>
                     <strong>{{ audit.action }}</strong>
@@ -533,34 +759,64 @@
                 </div>
               }
             </div>
+            @if (pageInfo('subscription-audit', subscriptionAuditLogs().length); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('subscription-audit', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('subscription-audit', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
           </section>
         }
       } @else {
         @if (activeView() === 'dashboard') {
           <section class="metric-grid">
             <article class="card">
+              <span class="metric-label">Gross sales today</span
+              ><strong class="metric-value">{{
+                formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? grossSalesCents())
+              }}</strong>
+              <span class="metric-note">Cash and completed booth sessions</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Completed sessions</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.sales?.todayCompletedSessions ?? 0
+              }}</strong>
+              <span class="metric-note">Across active booths</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Pending approvals</span
+              ><strong class="metric-value">{{
+                overview()?.reports?.sales?.pendingCashCount ?? pendingTransactions().length
+              }}</strong>
+              <span class="metric-note amber">Cash awaiting cashier</span>
+            </article>
+            <article class="card">
               <span class="metric-label">Active booths</span
               ><strong class="metric-value">{{
                 overview()?.reports?.platform?.activeBooths ?? activeBooths().length
               }}</strong>
-            </article>
-            <article class="card">
-              <span class="metric-label">Offline booths</span
-              ><strong class="metric-value">{{
-                overview()?.reports?.platform?.offlineBooths ?? offlineBooths().length
-              }}</strong>
-            </article>
-            <article class="card">
-              <span class="metric-label">Pending cash</span
-              ><strong class="metric-value">{{
-                overview()?.reports?.sales?.pendingCashCount ?? pendingTransactions().length
-              }}</strong>
-            </article>
-            <article class="card">
-              <span class="metric-label">Gross sales</span
-              ><strong class="metric-value">{{
-                formatMoney(overview()?.reports?.sales?.todayGrossSalesCents ?? grossSalesCents())
-              }}</strong>
+              <span class="metric-note">{{ offlineBooths().length }} offline</span>
             </article>
           </section>
 
@@ -568,33 +824,1241 @@
             <article class="card">
               <header><h3 class="section-title">Booth Status</h3></header>
               <div class="table-list">
-                @for (booth of overview()?.booths ?? []; track booth.id) {
+                @for (
+                  booth of pagedItems('dashboard-booths', overview()?.booths ?? []);
+                  track booth.id
+                ) {
                   <div class="row">
                     <div>
                       <strong>{{ booth.name }}</strong
                       ><span>{{ locationNameFor(booth.locationId) }} / {{ booth.code }}</span>
+                      @if (boothPackageStatusFor(booth); as packageStatus) {
+                        <span>{{ packageStatus.packageName }} / {{ packageStatus.detail }}</span>
+                      }
                     </div>
                     <span class="pill">{{ booth.currentState }}</span>
                   </div>
                 }
               </div>
+              @if (pageInfo('dashboard-booths', overview()?.booths?.length ?? 0); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('dashboard-booths', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('dashboard-booths', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
             </article>
 
             <article class="card">
-              <header><h3 class="section-title">Recent Transactions</h3></header>
+              <header class="section-head activity-head">
+                <h3 class="section-title">Recent Booth Activity</h3>
+                <div class="tab-strip compact-tabs">
+                  @for (filter of activityFilters; track filter.value) {
+                    <button
+                      type="button"
+                      class="button"
+                      [class.active]="dashboardActivityFilter() === filter.value"
+                      (click)="setDashboardActivityFilter(filter.value)"
+                    >
+                      {{ filter.label }}
+                    </button>
+                  }
+                </div>
+              </header>
               <div class="table-list">
-                @for (transaction of overview()?.transactions ?? []; track transaction.id) {
+                @for (
+                  transaction of pagedItems(
+                    'dashboard-activity',
+                    dashboardActivityTransactions()
+                  );
+                  track transaction.id
+                ) {
+                  @if (transactionActivityFor(transaction); as activity) {
                   <div class="row">
                     <div>
-                      <strong>{{ transaction.transactionNumber }}</strong
-                      ><span
-                        >{{ boothNameFor(transaction.boothId) }} /
-                        {{ formatMoney(transaction.amountCents) }}</span
-                      >
+                      <strong>{{ activity.title }}</strong>
+                      <span>{{ activity.detail }}</span>
+                      <small class="activity-meta">{{ activity.auditText }}</small>
                     </div>
-                    <span class="pill">{{ transaction.status }}</span>
+                    <span class="pill">{{ activity.value }}</span>
+                  </div>
+                  }
+                }
+              </div>
+              @if (pageInfo('dashboard-activity', dashboardActivityTransactions().length); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('dashboard-activity', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('dashboard-activity', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'users') {
+          <section class="metric-grid">
+            <article class="card">
+              <span class="metric-label">Client owners</span>
+              <strong class="metric-value">{{ clientOwners().length }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Client admins</span>
+              <strong class="metric-value">{{ clientAdmins().length }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Cashiers</span>
+              <strong class="metric-value">{{ cashiers().length }}</strong>
+            </article>
+            <article class="card">
+              <span class="metric-label">Inactive users</span>
+              <strong class="metric-value">{{ inactiveUsers().length }}</strong>
+            </article>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2 class="section-title">Team Access</h2>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Assigned Booth</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (user of pagedItems('users-grid', overview()?.users ?? []); track user.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ user.name }}</strong>
+                    </td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ roleLabel(user.role) }}</td>
+                    <td>
+                      {{
+                        user.role === 'CASHIER' ? boothNameFor(user.assignedBoothId) : 'All booths'
+                      }}
+                    </td>
+                    <td>
+                      <span
+                        class="status"
+                        [class.green]="user.status === 'ACTIVE'"
+                        [class.red]="user.status !== 'ACTIVE'"
+                        ><span class="dot"></span>{{ user.status }}</span
+                      >
+                    </td>
+                    <td>
+                      <button type="button" class="button" (click)="viewUser(user)">Manage</button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (pageInfo('users-grid', overview()?.users?.length ?? 0); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('users-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('users-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
+          </section>
+        }
+
+        @if (activeView() === 'user-detail') {
+          @if (selectedUser(); as user) {
+            <section class="split">
+              <article class="card form-card">
+                <div class="section-head">
+                  <h2 class="section-title">User Details</h2>
+                  <span
+                    class="status"
+                    [class.green]="user.status === 'ACTIVE'"
+                    [class.red]="user.status !== 'ACTIVE'"
+                    ><span class="dot"></span>{{ user.status }}</span
+                  >
+                </div>
+                <label class="field">
+                  <span>NAME</span>
+                  <input
+                    [ngModel]="userDetailName()"
+                    name="userDetailName"
+                    (ngModelChange)="userDetailName.set($event)"
+                  />
+                </label>
+                <label class="field">
+                  <span>EMAIL</span>
+                  <input [value]="user.email" readonly />
+                </label>
+                <label class="field">
+                  <span>ROLE</span>
+                  <select
+                    [ngModel]="userDetailRole()"
+                    name="userDetailRole"
+                    (ngModelChange)="setUserDetailRole($event)"
+                  >
+                    @if (session()?.role !== 'CLIENT_ADMIN') {
+                      <option value="CLIENT_OWNER">CLIENT_OWNER</option>
+                    }
+                    <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
+                    <option value="CASHIER">CASHIER</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>ASSIGNED BOOTH</span>
+                  <input
+                    [value]="
+                      userDetailRole() === 'CASHIER'
+                        ? boothNameFor(user.assignedBoothId)
+                        : 'All booths'
+                    "
+                    readonly
+                  />
+                </label>
+                <button type="button" class="button primary fill" (click)="saveUserDetail()">
+                  Save User
+                </button>
+              </article>
+
+              <article class="card">
+                <div class="section-head">
+                  <h2 class="section-title">Permissions</h2>
+                  @if (userDetailRole() === 'CASHIER') {
+                    <span class="pill">Cashier</span>
+                  } @else {
+                    <span class="pill">Client staff</span>
+                  }
+                </div>
+                @if (userDetailRole() === 'CASHIER') {
+                  <div style="display: grid; gap: 10px">
+                    @for (permission of cashierPermissionRows; track permission.key) {
+                      <article
+                        class="card"
+                        style="
+                          align-items: center;
+                          display: flex;
+                          gap: 14px;
+                          justify-content: space-between;
+                          padding: 12px 14px;
+                        "
+                      >
+                        <div>
+                          <strong style="display: block; font-size: 14px; margin-bottom: 3px">{{
+                            permission.label
+                          }}</strong>
+                          <span
+                            style="color: var(--admin-muted); display: block; font-size: 12px"
+                            >{{ permission.description }}</span
+                          >
+                        </div>
+                        <button
+                          type="button"
+                          role="switch"
+                          [attr.aria-checked]="userDetailPermissions()[permission.key]"
+                          [attr.aria-label]="permission.label"
+                          (click)="toggleUserDetailPermission(permission.key)"
+                          [style.background]="
+                            userDetailPermissions()[permission.key]
+                              ? 'var(--admin-blue)'
+                              : '#fff1f0'
+                          "
+                          [style.place-items]="
+                            userDetailPermissions()[permission.key] ? 'center end' : 'center start'
+                          "
+                          style="
+                            border: 0;
+                            border-radius: 999px;
+                            cursor: pointer;
+                            display: inline-grid;
+                            flex: 0 0 auto;
+                            height: 26px;
+                            padding: 3px;
+                            width: 46px;
+                          "
+                        >
+                          <span
+                            [style.background]="
+                              userDetailPermissions()[permission.key] ? '#fff' : 'var(--admin-red)'
+                            "
+                            style="border-radius: 50%; display: block; height: 20px; width: 20px"
+                          ></span>
+                        </button>
+                      </article>
+                    }
+                  </div>
+                } @else {
+                  <div class="callout">
+                    Client Owner and Client Admin permissions are determined by role.
                   </div>
                 }
+              </article>
+            </section>
+          } @else {
+            <section class="card">
+              <div class="section-head">
+                <h2 class="section-title">User not found</h2>
+                <button type="button" class="button" (click)="setView('users')">
+                  Back to Users
+                </button>
+              </div>
+            </section>
+          }
+        }
+
+        @if (activeView() === 'locations') {
+          <section class="metric-grid three">
+            <article class="card">
+              <span class="metric-label">Locations</span>
+              <strong class="metric-value">{{ overview()?.locations?.length ?? 0 }}</strong>
+              <span class="metric-note">Client account sites</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Registered booths</span>
+              <strong class="metric-value">{{ overview()?.booths?.length ?? 0 }}</strong>
+              <span class="metric-note">{{ activeBooths().length }} active</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Cashiers assigned</span>
+              <strong class="metric-value">{{ cashiers().length }}</strong>
+              <span class="metric-note">{{ inactiveUsers().length }} inactive users</span>
+            </article>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2 class="section-title">Locations</h2>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>Booths</th>
+                  <th>Sales Today</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (
+                  location of pagedItems('locations-grid', overview()?.locations ?? []);
+                  track location.id
+                ) {
+                  <tr>
+                    <td>
+                      <strong>{{ location.name }}</strong
+                      ><br /><span class="booth-meta">{{
+                        location.address ?? 'No address set'
+                      }}</span>
+                    </td>
+                    <td>{{ boothCountForLocation(location.id) }}</td>
+                    <td>{{ formatMoney(locationSalesCents(location.id)) }}</td>
+                    <td>
+                      <span
+                        class="status"
+                        [class.green]="location.status === 'ACTIVE'"
+                        [class.red]="location.status !== 'ACTIVE'"
+                        ><span class="dot"></span>{{ location.status }}</span
+                      >
+                    </td>
+                    <td>
+                      <button type="button" class="button" (click)="openLocationModal(location)">
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (pageInfo('locations-grid', overview()?.locations?.length ?? 0); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('locations-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('locations-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
+          </section>
+        }
+
+        @if (activeView() === 'packages') {
+          <section class="metric-grid three">
+            <article class="card">
+              <span class="metric-label">Active packages</span>
+              <strong class="metric-value">{{ activeOffers().length }}</strong>
+              <span class="metric-note">Across offer types</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Top seller</span>
+              <strong class="metric-value compact">{{
+                overview()?.reports?.offerSales?.[0]?.offerName ?? 'No sales yet'
+              }}</strong>
+              <span class="metric-note">{{
+                overview()?.reports?.offerSales?.[0]?.offerType ?? 'Offer catalog'
+              }}</span>
+            </article>
+            <article class="card">
+              <span class="metric-label">Booths using offers</span>
+              <strong class="metric-value">{{ activeBoothCountUsingOffers() }}</strong>
+              <span class="metric-note">Active booth assignments</span>
+            </article>
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2 class="section-title">Packages</h2>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Package</th>
+                  <th>Type</th>
+                  <th>Price</th>
+                  <th>Print Entitlement</th>
+                  <th>Add-On Print Price</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (offer of pagedItems('packages-grid', overview()?.offers ?? []); track offer.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ offer.name }}</strong
+                      ><br /><span class="booth-meta">{{
+                        offer.description ?? 'No description'
+                      }}</span>
+                    </td>
+                    <td>
+                      <strong>{{ offer.offerType }}</strong>
+                      @if (offer.offerType === 'TIME_UNLIMITED') {
+                        <br /><span class="booth-meta">{{ offer.durationHours ?? 0 }} hours</span>
+                      } @else if (offer.offerType === 'SESSION_COUNT') {
+                        <br /><span class="booth-meta"
+                          >{{ offer.sessionAllowance ?? 0 }} sessions</span
+                        >
+                      }
+                    </td>
+                    <td>{{ formatMoney(offer.priceCents) }}</td>
+                    <td>{{ offer.includedPrintEntitlement }}</td>
+                    <td>
+                      {{
+                        offer.allowsExtraPrintAddOn
+                          ? formatMoney(offer.extraPrintPriceCents ?? 0)
+                          : 'Not allowed'
+                      }}
+                    </td>
+                    <td>
+                      <span class="status" [class.green]="offer.active" [class.red]="!offer.active"
+                        ><span class="dot"></span>{{ offer.active ? 'ACTIVE' : 'INACTIVE' }}</span
+                      >
+                    </td>
+                    <td>
+                      <button type="button" class="button" (click)="viewPackage(offer)">
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (pageInfo('packages-grid', overview()?.offers?.length ?? 0); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('packages-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('packages-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
+          </section>
+
+          <section class="card">
+            <div class="section-head">
+              <h2 class="section-title">Print Entitlements</h2>
+              <button type="button" class="button" (click)="startNewPrintEntitlement()">
+                + New Entitlement
+              </button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Entitlement</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (
+                  entitlement of pagedItems('print-entitlements-grid', printEntitlements());
+                  track entitlement.id
+                ) {
+                  <tr>
+                    <td>
+                      <strong>{{ entitlement.name }}</strong>
+                    </td>
+                    <td>
+                      <span
+                        class="status"
+                        [class.green]="entitlement.status === 'ACTIVE'"
+                        [class.red]="entitlement.status !== 'ACTIVE'"
+                        ><span class="dot"></span>{{ entitlement.status }}</span
+                      >
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        class="button"
+                        (click)="viewPrintEntitlement(entitlement)"
+                      >
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            @if (pageInfo('print-entitlements-grid', printEntitlements().length); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('print-entitlements-grid', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('print-entitlements-grid', page.total)"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </footer>
+              }
+            }
+          </section>
+        }
+
+        @if (activeView() === 'package-detail') {
+          <section class="card form-card">
+            <div class="section-head">
+              <h2 class="section-title">Package Definition</h2>
+              @if (selectedPackage()) {
+                <span
+                  class="status"
+                  [class.green]="packageActive()"
+                  [class.red]="!packageActive()"
+                  ><span class="dot"></span>{{ packageActive() ? 'ACTIVE' : 'INACTIVE' }}</span
+                >
+              }
+            </div>
+            <div class="form-row">
+              <label class="field"
+                ><span>PACKAGE NAME</span
+                ><input
+                  [ngModel]="packageName()"
+                  (ngModelChange)="packageName.set($event)"
+                  name="packageName"
+              /></label>
+              <label class="field"
+                ><span>PRICE</span
+                ><input
+                  type="number"
+                  [ngModel]="packagePriceCents() / 100"
+                  (ngModelChange)="setPackagePriceFromPesos($event)"
+                  name="packagePrice"
+              /></label>
+            </div>
+            <label class="field">
+              <span>DESCRIPTION</span>
+              <textarea
+                rows="3"
+                [ngModel]="packageDescription()"
+                (ngModelChange)="packageDescription.set($event)"
+                name="packageDescription"
+              ></textarea>
+            </label>
+            <div class="form-row">
+              <label class="field">
+                <span>TYPE</span>
+                <select
+                  [ngModel]="packageOfferType()"
+                  (ngModelChange)="packageOfferType.set($event)"
+                  name="packageOfferType"
+                >
+                  <option value="PER_SESSION">PER_SESSION</option>
+                  <option value="TIME_UNLIMITED">TIME_UNLIMITED</option>
+                  <option value="SESSION_COUNT">SESSION_COUNT</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>PRINT ENTITLEMENT</span>
+                <select
+                  [ngModel]="packagePrintEntitlement()"
+                  (ngModelChange)="packagePrintEntitlement.set($event)"
+                  name="packagePrintEntitlement"
+                >
+                  @for (entitlement of packagePrintEntitlementOptions(); track entitlement) {
+                    <option [value]="entitlement">{{ entitlement }}</option>
+                  }
+                </select>
+              </label>
+            </div>
+            <div class="form-row">
+              <label class="field">
+                <span>LUMABOOTH MODE</span>
+                <select
+                  [ngModel]="packageLumaBoothMode()"
+                  (ngModelChange)="packageLumaBoothMode.set($event)"
+                  name="packageLumaBoothMode"
+                >
+                  <option value="PRINT">PRINT</option>
+                  <option value="GIF">GIF</option>
+                  <option value="BOOMERANG">BOOMERANG</option>
+                  <option value="VIDEO">VIDEO</option>
+                </select>
+              </label>
+              @if (packageOfferType() === 'PER_SESSION') {
+                <label class="field">
+                  <span>ADD-ON PRINT PRICE</span>
+                  <input
+                    type="number"
+                    [ngModel]="packageExtraPrintPriceCents() / 100"
+                    (ngModelChange)="setPackageExtraPrintPriceFromPesos($event)"
+                    name="packageExtraPrintPrice"
+                  />
+                </label>
+              } @else if (packageOfferType() === 'TIME_UNLIMITED') {
+                <label class="field">
+                  <span>DURATION HOURS</span>
+                  <input
+                    type="number"
+                    min="1"
+                    [ngModel]="packageDurationHours()"
+                    (ngModelChange)="packageDurationHours.set(+$event)"
+                    name="packageDurationHours"
+                  />
+                </label>
+              } @else {
+                <label class="field">
+                  <span>SESSION ALLOWANCE</span>
+                  <input
+                    type="number"
+                    min="1"
+                    [ngModel]="packageSessionAllowance()"
+                    (ngModelChange)="packageSessionAllowance.set(+$event)"
+                    name="packageSessionAllowance"
+                  />
+                </label>
+              }
+            </div>
+            <div class="top-actions">
+              <button type="button" class="button primary" (click)="savePackage()">
+                Save Package
+              </button>
+              <button type="button" class="button" (click)="setView('packages')">Cancel</button>
+            </div>
+          </section>
+        }
+
+        @if (activeView() === 'booths') {
+          <section class="content-grid">
+            <article class="card span-two">
+              <div class="section-head"><h2 class="section-title">Booth Inventory</h2></div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Booth</th>
+                    <th>Location</th>
+                    <th>Code</th>
+                    <th>Agent State</th>
+                    <th>Active Package</th>
+                    <th>Payment</th>
+                    <th>Assigned Cashier</th>
+                    <th>Status</th>
+                    <th>Manage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (
+                    booth of pagedItems('booths-grid', overview()?.booths ?? []);
+                    track booth.id
+                  ) {
+                    @let cashier = assignedCashierFor(booth.id);
+                    @let activation = selectedActivationFor(booth.id);
+                    <tr>
+                      <td><strong>{{ booth.name }}</strong></td>
+                      <td>{{ locationNameFor(booth.locationId) }}</td>
+                      <td>{{ booth.code }}</td>
+                      <td>{{ booth.currentState }}</td>
+                      <td>
+                        {{ packageStatusLabelFor(booth.id) }}
+                        @if (activation?.status === 'PENDING_PAYMENT') {
+                          <span class="muted">Cashier activation required</span>
+                        }
+                      </td>
+                      <td>{{ paymentLabelFor(booth.id) }}</td>
+                      <td>{{ cashier?.name ?? 'Unassigned' }}</td>
+                      <td>
+                        <span class="status" [class.green]="booth.status === 'ACTIVE'">
+                          <span class="dot"></span>{{ booth.status }}
+                        </span>
+                      </td>
+                      <td>
+                        <button type="button" class="button" (click)="viewBooth(booth)">
+                          Manage
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              @if (pageInfo('booths-grid', overview()?.booths?.length ?? 0); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('booths-grid', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('booths-grid', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'booth-detail') {
+          @if (selectedBoothDetail(); as booth) {
+            <section class="content-grid booth-detail-grid">
+              <div class="tab-strip">
+                <button
+                  type="button"
+                  class="button"
+                  [class.active]="boothDetailTab() === 'details'"
+                  (click)="setBoothDetailTab('details')"
+                >
+                  Details
+                </button>
+                <button
+                  type="button"
+                  class="button"
+                  [class.active]="boothDetailTab() === 'session'"
+                  (click)="setBoothDetailTab('session')"
+                >
+                  Session Setup
+                </button>
+              </div>
+
+              @if (boothDetailTab() === 'details') {
+                <section class="content-grid two">
+                  <article class="card form-card">
+                    <div class="section-head">
+                      <h2 class="section-title">Booth Record</h2>
+                      <span class="status" [class.green]="booth.status === 'ACTIVE'">
+                        <span class="dot"></span>{{ booth.status }}
+                      </span>
+                    </div>
+                    <div class="form-row">
+                      <label class="field">
+                        <span>BOOTH NAME</span>
+                        <input
+                          [ngModel]="boothDetailName()"
+                          (ngModelChange)="boothDetailName.set($event)"
+                        />
+                      </label>
+                      <label class="field">
+                        <span>BOOTH CODE</span>
+                        <input
+                          [ngModel]="boothDetailCode()"
+                          (ngModelChange)="boothDetailCode.set($event)"
+                        />
+                      </label>
+                    </div>
+                    <div class="form-row">
+                      <label class="field">
+                        <span>LOCATION</span>
+                        <select
+                          [ngModel]="boothDetailLocationId()"
+                          (ngModelChange)="boothDetailLocationId.set($event)"
+                        >
+                          @for (location of overview()?.locations ?? []; track location.id) {
+                            <option [ngValue]="location.id">{{ location.name }}</option>
+                          }
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>ASSIGNED CASHIER</span>
+                        <select
+                          [ngModel]="boothDetailCashierUserId()"
+                          (ngModelChange)="boothDetailCashierUserId.set($event)"
+                        >
+                          <option [ngValue]="null">Unassigned</option>
+                          @for (cashier of boothDetailCashierOptions(); track cashier.id) {
+                            <option [ngValue]="cashier.id">
+                              {{ cashier.name }} / {{ cashier.email }}
+                            </option>
+                          }
+                        </select>
+                      </label>
+                    </div>
+                    <button type="button" class="button primary" (click)="saveBoothRecord()">
+                      Save Booth Record
+                    </button>
+                  </article>
+
+                  <article class="card form-card">
+                    <div class="section-head"><h2 class="section-title">Package And Payment</h2></div>
+                    <label class="field">
+                      <span>ACTIVE PACKAGE</span>
+                      <select
+                        [ngModel]="boothDetailOfferId()"
+                        (ngModelChange)="boothDetailOfferId.set($event)"
+                      >
+                        @for (offer of activeOffers(); track offer.id) {
+                          <option [ngValue]="offer.id">
+                            {{ offer.name }} / {{ formatMoney(offer.priceCents) }}
+                          </option>
+                        }
+                      </select>
+                    </label>
+                    <div class="booth-row">
+                      <div>
+                        <strong>Cash Payment</strong>
+                        <span>Runtime Booth UI payment assignment</span>
+                      </div>
+                      <span class="status" [class.green]="cashAssignmentFor(booth.id)?.runtimeEnabled">
+                        <span class="dot"></span>{{ paymentLabelFor(booth.id) }}
+                      </span>
+                    </div>
+                    @if (pendingActivationFor(booth.id); as activation) {
+                      @if (offerForActivation(activation); as offer) {
+                        <div class="status-panel">
+                          <strong>Awaiting cashier activation</strong>
+                          <span>
+                            {{ offer.name }} / {{ offer.offerType }} /
+                            {{ activationDetailFor(activation, offer) }}
+                          </span>
+                          <span>{{ formatMoney(offer.priceCents) }} cash activation</span>
+                        </div>
+                      }
+                    }
+                    <button type="button" class="button primary" (click)="saveBoothSession()">
+                      Save Package And Payment
+                    </button>
+                  </article>
+
+                  <article class="card form-card span-two">
+                    <div class="section-head">
+                      <h2 class="section-title">Booth Credentials</h2>
+                      <button type="button" class="button" (click)="issueBoothCredentials()">
+                        Re-issue Credentials
+                      </button>
+                    </div>
+                    <div class="callout">
+                      The Agent credential is stored only as a hash after issue. Re-issuing creates
+                      a fresh Agent credential and kiosk token, and the old Agent credential stops
+                      working.
+                    </div>
+                    @if (selectedBoothSecret(); as secret) {
+                      <div class="form-row">
+                        <label class="field">
+                          <span>BOOTH CODE</span>
+                          <input [value]="secret.boothCode" readonly />
+                        </label>
+                        <label class="field">
+                          <span>AGENT CREDENTIAL</span>
+                          <input [value]="secret.agentCredential" readonly />
+                        </label>
+                      </div>
+                      <label class="field">
+                        <span>KIOSK TOKEN</span>
+                        <input [value]="secret.kioskToken" readonly />
+                      </label>
+                    }
+                  </article>
+                </section>
+              } @else {
+                <section class="content-grid">
+                  <article class="card form-card">
+                    <div class="section-head"><h2 class="section-title">Session Setup</h2></div>
+                    <label class="field">
+                      <span>SESSION LABEL</span>
+                      <input
+                        [ngModel]="boothAppearanceSessionLabel()"
+                        (ngModelChange)="boothAppearanceSessionLabel.set($event)"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>WELCOME HEADLINE</span>
+                      <input
+                        [ngModel]="boothAppearanceHeadline()"
+                        (ngModelChange)="boothAppearanceHeadline.set($event)"
+                      />
+                    </label>
+                    <label class="field">
+                      <span>WELCOME SUBTITLE</span>
+                      <textarea
+                        [ngModel]="boothAppearanceSubtitle()"
+                        (ngModelChange)="boothAppearanceSubtitle.set($event)"
+                      ></textarea>
+                    </label>
+                    <div class="form-row">
+                      <label class="field">
+                        <span>THEME</span>
+                        <select
+                          [ngModel]="boothAppearanceThemePreset()"
+                          (ngModelChange)="boothAppearanceThemePreset.set($event)"
+                        >
+                          @for (preset of boothThemePresets; track preset.value) {
+                            <option [ngValue]="preset.value">{{ preset.label }}</option>
+                          }
+                        </select>
+                      </label>
+                      <label class="field">
+                        <span>BACKGROUND IMAGE</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          (change)="setBoothBackgroundImageFromFile($event)"
+                        />
+                      </label>
+                    </div>
+                    @if (boothAppearanceBackgroundImageDataUrl()) {
+                      <button type="button" class="button" (click)="clearBoothBackgroundImage()">
+                        Remove Background Image
+                      </button>
+                    }
+                    <button type="button" class="button primary" (click)="saveBoothSession()">
+                      Save Session
+                    </button>
+                  </article>
+
+                  <article class="card booth-preview-card">
+                    <div class="section-head">
+                      <h2 class="section-title">Preview Booth</h2>
+                      <span class="muted">Uses unsaved values from this page</span>
+                    </div>
+                    <div class="booth-preview-frame">
+                      <photobiz-booth-stage
+                        [config]="boothPreviewConfig()"
+                        screen="offer"
+                        [loading]="false"
+                      ></photobiz-booth-stage>
+                    </div>
+                  </article>
+                </section>
+              }
+            </section>
+          }
+        }
+
+        @if (activeView() === 'transactions') {
+          <section class="split">
+            <article class="card">
+              <div class="section-head"><h2 class="section-title">Transaction Ledger</h2></div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Booth</th>
+                    <th>Payment</th>
+                    <th>Status</th>
+                    <th>Time</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (
+                    transaction of pagedItems('transactions-grid', overview()?.transactions ?? []);
+                    track transaction.id
+                  ) {
+                    <tr>
+                      <td>
+                        <strong>{{ transaction.transactionNumber }}</strong>
+                      </td>
+                      <td>{{ boothNameFor(transaction.boothId) }}</td>
+                      <td>{{ transaction.paymentMethod }}</td>
+                      <td>
+                        <span
+                          class="status"
+                          [class.green]="transaction.status === 'COMPLETED'"
+                          [class.amber]="transaction.status === 'PENDING_CASH'"
+                          [class.red]="
+                            transaction.status === 'EXPIRED' ||
+                            transaction.status === 'SESSION_FAILED'
+                          "
+                          ><span class="dot"></span>{{ transaction.status }}</span
+                        >
+                      </td>
+                      <td>{{ formatDate(transaction.createdAt) }}</td>
+                      <td>{{ formatMoney(transaction.amountCents) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              @if (pageInfo('transactions-grid', overview()?.transactions?.length ?? 0); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('transactions-grid', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('transactions-grid', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
+            </article>
+
+            <article class="card">
+              <div class="section-head"><h2 class="section-title">Reports</h2></div>
+              <div class="metric-grid single">
+                <article class="metric-tile">
+                  <span class="metric-label">Cash</span>
+                  <strong class="metric-value">{{
+                    formatMoney(overview()?.reports?.sales?.todayCashSalesCents ?? 0)
+                  }}</strong>
+                </article>
+                <article class="metric-tile">
+                  <span class="metric-label">Failed / expired</span>
+                  <strong class="metric-value">{{
+                    overview()?.reports?.sales?.failedOrExpiredCount ?? 0
+                  }}</strong>
+                </article>
+              </div>
+              <div class="section-head"><h2 class="section-title">Package Sales</h2></div>
+              <div class="report-bars">
+                @for (
+                  offer of pagedItems(
+                    'transactions-package-sales',
+                    overview()?.reports?.offerSales ?? []
+                  );
+                  track offer.offerId
+                ) {
+                  <div class="bar-row">
+                    <span>{{ offer.offerName }}</span>
+                    <div class="bar-track">
+                      <div
+                        class="bar-fill"
+                        [style.width.%]="offer.completedSessions ? 72 : 0"
+                      ></div>
+                    </div>
+                    <strong>{{ offer.completedSessions }}</strong>
+                  </div>
+                }
+              </div>
+              @if (
+                pageInfo('transactions-package-sales', overview()?.reports?.offerSales?.length ?? 0);
+                as page
+              ) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('transactions-package-sales', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('transactions-package-sales', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
+            </article>
+          </section>
+        }
+
+        @if (activeView() === 'settings') {
+          <section class="content-grid two">
+            <article class="card form-card">
+              <div class="section-head">
+                <h2 class="section-title">Client Payment Resources</h2>
+                <span class="status green"><span class="dot"></span>Cash MVP</span>
+              </div>
+              <div class="booth-row">
+                <div>
+                  <strong>Cash Approval</strong>
+                  <span>Built in / assign per booth / cashier approval required</span>
+                </div>
+                <span class="status green"><span class="dot"></span>Runtime</span>
+              </div>
+              <div class="booth-row">
+                <div>
+                  <strong>Maya Checkout QR</strong>
+                  <span>Coming soon / locked until provider integration</span>
+                </div>
+                <span class="status amber"><span class="dot"></span>Locked</span>
+              </div>
+              <div class="booth-row">
+                <div>
+                  <strong>Maya Terminal ECR</strong>
+                  <span>Coming soon / selected by deviceId later</span>
+                </div>
+                <span class="status amber"><span class="dot"></span>Locked</span>
+              </div>
+              <div class="callout">
+                Client resources do not automatically appear on Booth UI. Each booth chooses from
+                assigned resources; cash is the only runtime-enabled MVP method.
+              </div>
+            </article>
+
+            <article class="card form-card">
+              <div class="section-head"><h2 class="section-title">Client Account</h2></div>
+              <label class="field">
+                <span>BUSINESS NAME</span>
+                <input [value]="currentClient()?.name ?? 'Client Account'" readonly />
+              </label>
+              <label class="field">
+                <span>CURRENCY</span>
+                <input value="PHP" readonly />
+              </label>
+              <div class="callout">
+                Backend-owned state protects payments, booth sessions, recovery, and audit logs.
               </div>
             </article>
           </section>
@@ -632,7 +2096,10 @@
             <article class="card">
               <header><h3 class="section-title">Booth Sales</h3></header>
               <div class="table-list">
-                @for (booth of overview()?.reports?.boothSales ?? []; track booth.boothId) {
+                @for (
+                  booth of pagedItems('report-booth-sales', overview()?.reports?.boothSales ?? []);
+                  track booth.boothId
+                ) {
                   <div class="row">
                     <div>
                       <strong>{{ booth.boothName }}</strong
@@ -642,12 +2109,41 @@
                   </div>
                 }
               </div>
+              @if (pageInfo('report-booth-sales', overview()?.reports?.boothSales?.length ?? 0); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('report-booth-sales', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('report-booth-sales', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
             </article>
 
             <article class="card">
               <header><h3 class="section-title">Offer Sales</h3></header>
               <div class="table-list">
-                @for (offer of overview()?.reports?.offerSales ?? []; track offer.offerId) {
+                @for (
+                  offer of pagedItems('report-offer-sales', overview()?.reports?.offerSales ?? []);
+                  track offer.offerId
+                ) {
                   <div class="row">
                     <div>
                       <strong>{{ offer.offerName }}</strong
@@ -657,6 +2153,32 @@
                   </div>
                 }
               </div>
+              @if (pageInfo('report-offer-sales', overview()?.reports?.offerSales?.length ?? 0); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('report-offer-sales', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('report-offer-sales', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
             </article>
           </section>
         }
@@ -665,7 +2187,7 @@
           <section class="card">
             <header><h3 class="section-title">Recent Audit Events</h3></header>
             <div class="table-list">
-              @for (audit of overview()?.auditLogs ?? []; track audit.id) {
+              @for (audit of pagedItems('audit-log', overview()?.auditLogs ?? []); track audit.id) {
                 <div class="row">
                   <div>
                     <strong>{{ audit.action }}</strong
@@ -675,191 +2197,32 @@
                 </div>
               }
             </div>
-          </section>
-        }
-
-        @if (activeView() === 'setup') {
-          <section class="content-grid three">
-            <article class="card">
-              <header><h3 class="section-title">Client</h3></header>
-              <label class="field"
-                ><span>Client name</span
-                ><input [ngModel]="clientName()" (ngModelChange)="clientName.set($event)"
-              /></label>
-              <button type="button" class="button primary" (click)="createClient()">
-                Create Client
-              </button>
-            </article>
-            <article class="card">
-              <header><h3 class="section-title">Subscription</h3></header>
-              <label class="field"
-                ><span>Subscription name</span
-                ><input [ngModel]="planName()" (ngModelChange)="planName.set($event)"
-              /></label>
-              <label class="field"
-                ><span>Price</span
-                ><input
-                  type="number"
-                  [ngModel]="planPrice()"
-                  (ngModelChange)="planPrice.set(+$event)"
-              /></label>
-              <label class="field"
-                ><span>Booth allowance</span
-                ><input
-                  type="number"
-                  [ngModel]="subscriptionAllowance()"
-                  (ngModelChange)="subscriptionAllowance.set(+$event)"
-              /></label>
-              <div class="top-actions">
-                <button type="button" class="button primary" (click)="createPlan()">
-                  Create Subscription</button
-                ><button type="button" class="button" (click)="assignSubscription()">Assign</button>
-              </div>
-            </article>
-            <article class="card">
-              <header><h3 class="section-title">Users</h3></header>
-              <label class="field"
-                ><span>Owner name</span
-                ><input [ngModel]="ownerName()" (ngModelChange)="ownerName.set($event)"
-              /></label>
-              <label class="field"
-                ><span>Owner email</span
-                ><input [ngModel]="ownerEmail()" (ngModelChange)="ownerEmail.set($event)"
-              /></label>
-              <label class="field"
-                ><span>Cashier email</span
-                ><input [ngModel]="cashierEmail()" (ngModelChange)="cashierEmail.set($event)"
-              /></label>
-              <div class="top-actions">
-                <button type="button" class="button primary" (click)="createOwner()">
-                  Create Owner</button
-                ><button type="button" class="button" (click)="createCashier()">
-                  Create Cashier
-                </button>
-              </div>
-            </article>
-            <article class="card">
-              <header><h3 class="section-title">Location</h3></header>
-              <label class="field"
-                ><span>Location name</span
-                ><input [ngModel]="locationName()" (ngModelChange)="locationName.set($event)"
-              /></label>
-              <button type="button" class="button primary" (click)="createLocation()">
-                Create Location
-              </button>
-            </article>
-            <article class="card">
-              <header><h3 class="section-title">Booth</h3></header>
-              <label class="field"
-                ><span>Booth name</span
-                ><input [ngModel]="boothName()" (ngModelChange)="boothName.set($event)"
-              /></label>
-              <label class="field"
-                ><span>Booth code</span
-                ><input [ngModel]="boothCode()" (ngModelChange)="boothCode.set($event)"
-              /></label>
-              <button type="button" class="button primary" (click)="createBooth()">
-                Create Booth
-              </button>
-            </article>
-            <article class="card">
-              <header><h3 class="section-title">Offer</h3></header>
-              <label class="field"
-                ><span>Offer name</span
-                ><input [ngModel]="offerName()" (ngModelChange)="offerName.set($event)"
-              /></label>
-              <label class="field"
-                ><span>Price</span
-                ><input
-                  type="number"
-                  [ngModel]="offerPrice()"
-                  (ngModelChange)="offerPrice.set(+$event)"
-              /></label>
-              <div class="top-actions">
-                <button type="button" class="button primary" (click)="createOffer()">
-                  Create Offer</button
-                ><button type="button" class="button" (click)="activateOffer()">Activate</button>
-              </div>
-            </article>
-          </section>
-        }
-
-        @if (activeView() === 'clients') {
-          <section class="content-grid two">
-            <article class="card">
-              <header><h3 class="section-title">Clients</h3></header>
-              <div class="table-list">
-                @for (client of overview()?.clients ?? []; track client.id) {
-                  <div class="row">
-                    <div>
-                      <strong>{{ client.name }}</strong
-                      ><span>{{ client.status }}</span>
-                    </div>
-                    <div class="top-actions">
-                      <button
-                        type="button"
-                        class="button"
-                        (click)="updateClientStatus(client, 'ACTIVE')"
-                      >
-                        Activate</button
-                      ><button
-                        type="button"
-                        class="button warning"
-                        (click)="updateClientStatus(client, 'SUSPENDED')"
-                      >
-                        Suspend</button
-                      ><button
-                        type="button"
-                        class="button"
-                        (click)="updateClientStatus(client, 'ARCHIVED')"
-                      >
-                        Archive
-                      </button>
-                    </div>
+            @if (pageInfo('audit-log', overview()?.auditLogs?.length ?? 0); as page) {
+              @if (page.totalPages > 1) {
+                <footer class="section-head">
+                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasPrevious"
+                      (click)="previousPage('audit-log', page.total)"
+                    >
+                      Previous
+                    </button>
+                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                    <button
+                      type="button"
+                      class="button"
+                      [disabled]="!page.hasNext"
+                      (click)="nextPage('audit-log', page.total)"
+                    >
+                      Next
+                    </button>
                   </div>
-                }
-              </div>
-            </article>
-          </section>
-        }
-
-        @if (activeView() === 'booths') {
-          <section class="content-grid two">
-            <article class="card span-two">
-              <header><h3 class="section-title">Booths</h3></header>
-              <div class="table-list">
-                @for (booth of overview()?.booths ?? []; track booth.id) {
-                  <div class="row">
-                    <div>
-                      <strong>{{ booth.name }}</strong
-                      ><span
-                        >{{ booth.code }} / {{ booth.status }} / {{ booth.currentState }} / Offer:
-                        {{ activeOfferFor(booth.id)?.name ?? 'None' }}</span
-                      >
-                    </div>
-                    <div class="top-actions">
-                      <button type="button" class="button" (click)="activateOffer(booth.id)">
-                        Activate Offer</button
-                      ><button type="button" class="button primary" (click)="assignCash(booth.id)">
-                        Cash</button
-                      ><button
-                        type="button"
-                        class="button"
-                        (click)="updateBoothStatus(booth, 'ACTIVE')"
-                      >
-                        Enable</button
-                      ><button
-                        type="button"
-                        class="button warning"
-                        (click)="updateBoothStatus(booth, 'INACTIVE')"
-                      >
-                        Disable
-                      </button>
-                    </div>
-                  </div>
-                }
-              </div>
-            </article>
+                </footer>
+              }
+            }
           </section>
         }
 
@@ -868,49 +2231,76 @@
             <article class="card pos-card">
               @if (assignedBooth(); as booth) {
                 <header>
-                  <h3 class="section-title">{{ booth.name }}</h3>
+                  <h3 class="section-title">Current Payment Request</h3>
                   <span class="pill">{{ booth.currentState }}</span>
                 </header>
+                @if (boothPackageStatusFor(booth); as packageStatus) {
+                  <p>{{ packageStatus.packageName }} / {{ packageStatus.detail }}</p>
+                }
+                <p>{{ booth.name }} · {{ locationNameFor(booth.locationId) }} / {{ booth.code }}</p>
               } @else {
                 <header>
-                  <h3 class="section-title">Assigned Booth</h3>
+                  <h3 class="section-title">Current Payment Request</h3>
                   <span class="pill">OFFLINE</span>
                 </header>
               }
               @if (cashierTransaction(); as transaction) {
-                <strong>{{ transaction.transactionNumber }}</strong>
-                <p>
-                  {{ transaction.transactionType }} / {{ transaction.status }} /
-                  {{ transaction.paymentMethod }} / {{ formatMoney(transaction.amountCents) }}
-                  @if (transaction.extraPrintCount > 0) {
-                    / {{ transaction.extraPrintCount }} copies
-                  }
-                </p>
+                @if (transactionActivityFor(transaction); as activity) {
+                  <strong>{{ activity.title }}</strong>
+                  <p>
+                    {{ activity.detail }} · {{ transaction.paymentMethod }} · {{ activity.value }}
+                  </p>
+                  <small class="activity-meta">{{ activity.auditText }}</small>
+                }
                 <div class="top-actions">
                   @if (transaction.status === 'PENDING_CASH') {
-                    <button
-                      type="button"
-                      class="button primary"
-                      (click)="approveCash(transaction.id)"
-                    >
-                      Approve Cash
-                    </button>
-                    <button
-                      type="button"
-                      class="button warning"
-                      (click)="cancelTransaction(transaction.id)"
-                    >
-                      Cancel
-                    </button>
+                    @if (canApproveCashAction()) {
+                      <button
+                        type="button"
+                        class="button primary"
+                        (click)="approveCash(transaction.id)"
+                      >
+                        Approve Cash
+                      </button>
+                    }
+                    @if (canCancelTransactionAction()) {
+                      <button
+                        type="button"
+                        class="button warning"
+                        (click)="cancelTransaction(transaction.id)"
+                      >
+                        Cancel
+                      </button>
+                    }
                   }
-                  @if (assignedBooth(); as booth) {
-                    <button type="button" class="button" (click)="returnBoothToWelcome(booth.id)">
-                      Return To Welcome
-                    </button>
+                  @if (canReturnBoothToWelcomeAction()) {
+                    @if (assignedBooth(); as booth) {
+                      <button type="button" class="button" (click)="returnBoothToWelcome(booth.id)">
+                        Return To Welcome
+                      </button>
+                    }
                   }
                 </div>
               } @else {
                 <p>No active payment request.</p>
+                @if (pendingPlanActivation(); as activation) {
+                  @if (pendingPlanActivationOffer(); as offer) {
+                    <div class="status-panel">
+                      <strong>Activate Package</strong>
+                      <span>{{ offer.name }} / {{ offer.offerType }}</span>
+                      <span>{{ offer.includedPrintEntitlement }}</span>
+                      <span>{{ activationDetailFor(activation, offer) }}</span>
+                      <p>Total {{ formatMoney(offer.priceCents) }}</p>
+                      <button
+                        type="button"
+                        class="button primary"
+                        (click)="createPlanActivation(activation.boothId)"
+                      >
+                        Activate Package
+                      </button>
+                    </div>
+                  }
+                }
                 @if (extraPrintCandidate(); as transaction) {
                   <div class="status-panel">
                     <strong>Extra Prints</strong>
@@ -940,24 +2330,64 @@
             </article>
 
             <article class="card">
-              <header><h3 class="section-title">Booth Transactions</h3></header>
+              <header class="section-head activity-head">
+                <h3 class="section-title">Assigned Booth Activity</h3>
+                <div class="tab-strip compact-tabs">
+                  @for (filter of activityFilters; track filter.value) {
+                    <button
+                      type="button"
+                      class="button"
+                      [class.active]="cashierActivityFilter() === filter.value"
+                      (click)="setCashierActivityFilter(filter.value)"
+                    >
+                      {{ filter.label }}
+                    </button>
+                  }
+                </div>
+              </header>
               <div class="table-list">
-                @for (transaction of overview()?.transactions ?? []; track transaction.id) {
+                @for (
+                  transaction of pagedItems('cashier-activity', cashierActivityTransactions());
+                  track transaction.id
+                ) {
+                  @if (transactionActivityFor(transaction); as activity) {
                   <div class="row">
                     <div>
-                      <strong>{{ transaction.transactionNumber }}</strong
-                      ><span
-                        >{{ transaction.transactionType }} / {{ transaction.status }} /
-                        {{ formatMoney(transaction.amountCents) }}
-                        @if (transaction.extraPrintCount > 0) {
-                          / {{ transaction.extraPrintCount }} copies
-                        }
-                      </span>
+                      <strong>{{ activity.title }}</strong>
+                      <span>{{ activity.detail }}</span>
+                      <small class="activity-meta">{{ activity.auditText }}</small>
                     </div>
-                    <span class="pill">{{ transaction.paymentMethod }}</span>
+                    <span class="pill">{{ activity.value }}</span>
                   </div>
+                  }
                 }
               </div>
+              @if (pageInfo('cashier-activity', cashierActivityTransactions().length); as page) {
+                @if (page.totalPages > 1) {
+                  <footer class="section-head">
+                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                    <div class="top-actions">
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasPrevious"
+                        (click)="previousPage('cashier-activity', page.total)"
+                      >
+                        Previous
+                      </button>
+                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                      <button
+                        type="button"
+                        class="button"
+                        [disabled]="!page.hasNext"
+                        (click)="nextPage('cashier-activity', page.total)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </footer>
+                }
+              }
             </article>
           </section>
         }
@@ -1070,6 +2500,276 @@
       </form>
     </section>
   }
+
+  @if (locationModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); saveLocationDetail()">
+        <div class="section-head">
+          <h2 class="section-title">
+            {{ selectedLocationDetail() ? 'Manage Location' : 'Add Location' }}
+          </h2>
+          <button type="button" class="button" (click)="closeLocationModal()">Close</button>
+        </div>
+        <label class="field">
+          <span>LOCATION NAME</span>
+          <input
+            [ngModel]="locationDetailName()"
+            name="locationDetailName"
+            (ngModelChange)="locationDetailName.set($event)"
+          />
+        </label>
+        @if (selectedLocationDetail(); as location) {
+          <div class="callout">
+            {{ boothCountForLocation(location.id) }} booths are linked to this location.
+          </div>
+          <div class="top-actions">
+            <button type="submit" class="button primary">Save Location</button>
+            @if (location.status === 'ACTIVE') {
+              <button type="button" class="button danger" (click)="deleteLocation(location)">
+                Delete Location
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="button green-button"
+                (click)="restoreLocation(location)"
+              >
+                Restore Location
+              </button>
+            }
+          </div>
+        } @else {
+          <button type="submit" class="button primary fill">Add Location</button>
+        }
+      </form>
+    </section>
+  }
+
+  @if (printEntitlementModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); savePrintEntitlement()">
+        <div class="section-head">
+          <h2 class="section-title">
+            {{ selectedPrintEntitlement() ? 'Manage Print Entitlement' : 'New Print Entitlement' }}
+          </h2>
+          <button type="button" class="button" (click)="closePrintEntitlementModal()">
+            Close
+          </button>
+        </div>
+        @if (selectedPrintEntitlement(); as entitlement) {
+          <span
+            class="status"
+            [class.green]="entitlement.status === 'ACTIVE'"
+            [class.red]="entitlement.status !== 'ACTIVE'"
+            ><span class="dot"></span>{{ entitlement.status }}</span
+          >
+        }
+        <label class="field">
+          <span>PRINT ENTITLEMENT</span>
+          <input
+            [ngModel]="printEntitlementName()"
+            (ngModelChange)="printEntitlementName.set($event)"
+            name="printEntitlementName"
+          />
+        </label>
+        <div class="top-actions">
+          <button type="submit" class="button primary">Save Entitlement</button>
+          @if (selectedPrintEntitlement(); as entitlement) {
+            @if (entitlement.status === 'ACTIVE') {
+              @if (isPersistedPrintEntitlement(entitlement)) {
+                <button
+                  type="button"
+                  class="button danger"
+                  (click)="updatePrintEntitlementStatus(entitlement, 'INACTIVE')"
+                >
+                  Deactivate
+                </button>
+              }
+            } @else {
+              @if (isPersistedPrintEntitlement(entitlement)) {
+                <button
+                  type="button"
+                  class="button green-button"
+                  (click)="updatePrintEntitlementStatus(entitlement, 'ACTIVE')"
+                >
+                  Activate
+                </button>
+              }
+            }
+          }
+        </div>
+      </form>
+    </section>
+  }
+
+  @if (userModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); createManagedUser()">
+        <div class="section-head">
+          <h2 class="section-title">Add User</h2>
+          <button type="button" class="button" (click)="closeUserModal()">Close</button>
+        </div>
+        <label class="field"
+          ><span>NAME</span
+          ><input
+            [ngModel]="newUserName()"
+            name="newUserName"
+            (ngModelChange)="newUserName.set($event)"
+        /></label>
+        <label class="field"
+          ><span>EMAIL</span
+          ><input
+            [ngModel]="newUserEmail()"
+            name="newUserEmail"
+            (ngModelChange)="newUserEmail.set($event)"
+        /></label>
+        <label class="field">
+          <span>ROLE</span>
+          <select
+            [ngModel]="newUserRole()"
+            name="newUserRole"
+            (ngModelChange)="newUserRole.set($event)"
+          >
+            @if (session()?.role !== 'CLIENT_ADMIN') {
+              <option value="CLIENT_OWNER">CLIENT_OWNER</option>
+            }
+            <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
+            <option value="CASHIER">CASHIER</option>
+          </select>
+        </label>
+        @if (newUserRole() === 'CASHIER') {
+          <section>
+            <h3 class="section-title">Permissions</h3>
+            <div style="display: grid; gap: 10px">
+              @for (permission of cashierPermissionRows; track permission.key) {
+                <article
+                  class="card"
+                  style="
+                    align-items: center;
+                    display: flex;
+                    gap: 14px;
+                    justify-content: space-between;
+                    padding: 12px 14px;
+                  "
+                >
+                  <div>
+                    <strong style="display: block; font-size: 14px; margin-bottom: 3px">{{
+                      permission.label
+                    }}</strong>
+                    <span style="color: var(--admin-muted); display: block; font-size: 12px">{{
+                      permission.description
+                    }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    [attr.aria-checked]="cashierPermissions()[permission.key]"
+                    [attr.aria-label]="permission.label"
+                    (click)="toggleCashierPermission(permission.key)"
+                    [style.background]="
+                      cashierPermissions()[permission.key] ? 'var(--admin-blue)' : '#fff1f0'
+                    "
+                    [style.place-items]="
+                      cashierPermissions()[permission.key] ? 'center end' : 'center start'
+                    "
+                    style="
+                      border: 0;
+                      border-radius: 999px;
+                      cursor: pointer;
+                      display: inline-grid;
+                      flex: 0 0 auto;
+                      height: 26px;
+                      padding: 3px;
+                      width: 46px;
+                    "
+                  >
+                    <span
+                      [style.background]="
+                        cashierPermissions()[permission.key] ? '#fff' : 'var(--admin-red)'
+                      "
+                      style="border-radius: 50%; display: block; height: 20px; width: 20px"
+                    ></span>
+                  </button>
+                </article>
+              }
+            </div>
+          </section>
+        }
+        <div class="callout">
+          Temporary password will be set to <strong>{{ cashierPassword() }}</strong
+          >. Cashier booth assignment happens during booth registration.
+        </div>
+        <button type="submit" class="button primary fill">Create User</button>
+      </form>
+    </section>
+  }
+
+  @if (boothModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); createBooth()">
+        <div class="section-head">
+          <h2 class="section-title">Register Booth</h2>
+          <button type="button" class="button" (click)="closeBoothModal()">Close</button>
+        </div>
+        <label class="field">
+          <span>LOCATION</span>
+          <select
+            [ngModel]="boothLocationId() ?? selectedLocationId()"
+            name="boothLocationId"
+            (ngModelChange)="boothLocationId.set($event)"
+          >
+            @for (location of overview()?.locations ?? []; track location.id) {
+              <option [ngValue]="location.id">{{ location.name }}</option>
+            }
+          </select>
+        </label>
+        <div class="form-row">
+          <label class="field"
+            ><span>BOOTH NAME</span
+            ><input
+              [ngModel]="boothName()"
+              name="boothName"
+              (ngModelChange)="boothName.set($event)"
+          /></label>
+          <label class="field"
+            ><span>BOOTH CODE</span
+            ><input
+              [ngModel]="boothCode()"
+              name="boothCode"
+              (ngModelChange)="boothCode.set($event)"
+          /></label>
+        </div>
+        <label class="field">
+          <span>ASSIGNED CASHIER</span>
+          <select
+            [ngModel]="boothCashierUserId()"
+            name="boothCashierUserId"
+            (ngModelChange)="boothCashierUserId.set($event)"
+          >
+            <option [ngValue]="null">Assign later</option>
+            @for (cashier of availableCashiers(); track cashier.id) {
+              <option [ngValue]="cashier.id">{{ cashier.name }} / {{ cashier.email }}</option>
+            }
+          </select>
+        </label>
+        @if (boothSecret(); as secret) {
+          <section class="callout secret-callout">
+            <strong>{{ secret.boothName }} / {{ secret.boothCode }}</strong>
+            <label class="field">
+              <span>KIOSK TOKEN</span>
+              <input [value]="secret.kioskToken" readonly />
+            </label>
+            <label class="field">
+              <span>AGENT CREDENTIAL</span>
+              <input [value]="secret.agentCredential" readonly />
+            </label>
+          </section>
+        }
+        <button type="submit" class="button primary fill">Create Booth</button>
+      </form>
+    </section>
+  }
 }
 
 <router-outlet />
+

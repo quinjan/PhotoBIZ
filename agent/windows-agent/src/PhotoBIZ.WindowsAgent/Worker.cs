@@ -7,6 +7,7 @@ public class Worker(
     ILumaBoothClient lumaBoothClient,
     IActiveLumaBoothSessionStore activeSessionStore,
     IWindowFocusService windowFocusService,
+    IBoothUiLauncher boothUiLauncher,
     IOptions<PhotoBizAgentOptions> options,
     ILogger<Worker> logger) : BackgroundService
 {
@@ -37,6 +38,7 @@ public class Worker(
         }
 
         await photoBizApi.PairAsync(settings.BoothCode, stoppingToken);
+        await LaunchBoothUiAsync(settings, stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -45,6 +47,25 @@ public class Worker(
             await PollForCommandAsync(settings, stoppingToken);
 
             await Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), stoppingToken);
+        }
+    }
+
+    private async Task LaunchBoothUiAsync(PhotoBizAgentOptions settings, CancellationToken cancellationToken)
+    {
+        if (!settings.Display.LaunchBoothUiOnStartup)
+        {
+            return;
+        }
+
+        try
+        {
+            var launch = await photoBizApi.CreateBoothUiLaunchAsync(settings.BoothCode, cancellationToken);
+            await boothUiLauncher.LaunchAsync(launch, cancellationToken);
+            await windowFocusService.ShowBoothUiAsync(cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogAgentWarning(logger, $"Could not launch Booth UI browser: {ex.Message}", ex);
         }
     }
 

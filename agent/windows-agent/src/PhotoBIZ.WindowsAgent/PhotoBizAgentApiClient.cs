@@ -8,6 +8,7 @@ public interface IPhotoBizAgentApiClient
 {
     Task PairAsync(string boothCode, CancellationToken cancellationToken);
     Task HeartbeatAsync(string boothCode, CancellationToken cancellationToken);
+    Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken);
     Task<AgentCommandPayload?> GetNextCommandAsync(string boothCode, CancellationToken cancellationToken);
     Task MarkSessionStartedAsync(ActiveLumaBoothSession session, string lumaboothEventType, CancellationToken cancellationToken);
     Task MarkSessionCompletedAsync(ActiveLumaBoothSession session, string lumaboothEventType, CancellationToken cancellationToken);
@@ -34,6 +35,15 @@ public sealed class PhotoBizAgentApiClient(
         ConfigureHttpClient();
         var response = await httpClient.PostAsJsonAsync("/api/agent/heartbeat", new { boothCode }, cancellationToken);
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken)
+    {
+        ConfigureHttpClient();
+        var response = await httpClient.PostAsJsonAsync("/api/agent/booth-ui-launch", new { boothCode }, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AgentBoothUiLaunchPayload>(cancellationToken)
+            ?? throw new InvalidOperationException("PhotoBIZ booth UI launch response was empty.");
     }
 
     public async Task<AgentCommandPayload?> GetNextCommandAsync(string boothCode, CancellationToken cancellationToken)

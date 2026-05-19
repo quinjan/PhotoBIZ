@@ -26,6 +26,11 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
             LogLevel.Information,
             new EventId(1003, nameof(LogCompletedBoothsReset)),
             "Returned {CompletedBooths} completed booths to welcome");
+    private static readonly Action<ILogger, int, Exception?> LogExpiredPlanActivations =
+        LoggerMessage.Define<int>(
+            LogLevel.Information,
+            new EventId(1004, nameof(LogExpiredPlanActivations)),
+            "Completed {ExpiredPlanActivations} expired timed package activations");
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -35,6 +40,7 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
 
             await using var scope = scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var workflow = scope.ServiceProvider.GetRequiredService<PhotoBizTransactionWorkflow>();
             var now = DateTimeOffset.UtcNow;
             var offlineCutoff = now.Subtract(PhotoBizBoothAvailability.AgentOfflineAfter);
             var expiredTransactions = await dbContext.Transactions
@@ -63,38 +69,32 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
                 LogExpiredTransactions(logger, expiredTransactions.Count, null);
             }
 
-            var completedCutoff = now.Subtract(PhotoBizTransactionWorkflow.PostSessionPromptDuration);
-            var completedBooths = await dbContext.Booths
-                .Where(booth => booth.CurrentState == StatusValues.Booth.Completed)
+            var completedBoothsReset = await workflow.ResetCompletedBoothsToWelcomeAsync(stoppingToken);
+            if (completedBoothsReset > 0)
+            {
+                LogCompletedBoothsReset(logger, completedBoothsReset, null);
+            }
+
+            var expiredPlanActivations = await dbContext.BoothOfferActivations
+                .Include(activation => activation.BoothOffer)
+                .Where(activation =>
+                    activation.Status == StatusValues.OfferActivation.Active &&
+                    activation.EndsAt.HasValue &&
+                    activation.EndsAt <= now &&
+                    activation.BoothOffer != null &&
+                    activation.BoothOffer.OfferType == StatusValues.OfferType.TimeUnlimited)
                 .ToListAsync(stoppingToken);
 
-            if (completedBooths.Count > 0)
+            if (expiredPlanActivations.Count > 0)
             {
-                var completedBoothIds = completedBooths.Select(booth => booth.Id).ToArray();
-                var latestCompletedTransactions = await dbContext.Transactions
-                    .AsNoTracking()
-                    .Where(transaction =>
-                        completedBoothIds.Contains(transaction.BoothId) &&
-                        transaction.TransactionType == StatusValues.TransactionType.SessionPurchase &&
-                        transaction.Status == StatusValues.Transaction.Completed)
-                    .ToListAsync(stoppingToken);
-                var eligibleBoothIds = latestCompletedTransactions
-                    .GroupBy(transaction => transaction.BoothId)
-                    .Select(group => group
-                        .OrderByDescending(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
-                        .ThenByDescending(transaction => transaction.CreatedAt)
-                        .First())
-                    .Where(transaction => transaction.CompletedAt <= completedCutoff)
-                    .Select(transaction => transaction.BoothId)
-                    .ToHashSet();
-
-                foreach (var booth in completedBooths.Where(booth => eligibleBoothIds.Contains(booth.Id)))
+                foreach (var activation in expiredPlanActivations)
                 {
-                    booth.CurrentState = StatusValues.Booth.Welcome;
+                    activation.Status = StatusValues.OfferActivation.Completed;
+                    activation.DeactivatedAt ??= now;
                 }
 
                 await dbContext.SaveChangesAsync(stoppingToken);
-                LogCompletedBoothsReset(logger, eligibleBoothIds.Count, null);
+                LogExpiredPlanActivations(logger, expiredPlanActivations.Count, null);
             }
 
             var staleIdleBooths = await dbContext.Booths

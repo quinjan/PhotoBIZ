@@ -17,6 +17,14 @@ public sealed class PhotoBizTransactionWorkflow(
         StatusValues.Transaction.Expired,
         StatusValues.Transaction.Cancelled
     ];
+    private static readonly string[] ActiveTransactionStatusesDuringCompletedPrompt =
+    [
+        StatusValues.Transaction.Created,
+        StatusValues.Transaction.PendingCash,
+        StatusValues.Transaction.Paid,
+        StatusValues.Transaction.StartingSession,
+        StatusValues.Transaction.InSession
+    ];
 
     public async Task<Transaction> CreateTransactionAsync(
         Booth booth,
@@ -49,18 +57,7 @@ public sealed class PhotoBizTransactionWorkflow(
             Status = StatusValues.Transaction.Created,
             AmountCents = activeOffer.PriceCents,
             Currency = activeOffer.Currency,
-            OfferSnapshot = JsonSerializer.Serialize(new
-            {
-                activeOffer.Id,
-                activeOffer.Name,
-                activeOffer.OfferType,
-                activeOffer.PriceCents,
-                activeOffer.Currency,
-                activeOffer.IncludedPrintEntitlement,
-                activeOffer.AllowsExtraPrintAddOn,
-                activeOffer.ExtraPrintPriceCents,
-                activeOffer.LumaboothSessionMode
-            }),
+            OfferSnapshot = SerializeOfferSnapshot(activeOffer),
             CreatedAt = now,
             ExpiresAt = now.Add(PendingCashWindow)
         };
@@ -69,6 +66,143 @@ public sealed class PhotoBizTransactionWorkflow(
 
         dbContext.Transactions.Add(transaction);
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        return transaction;
+    }
+
+    public async Task<Transaction> CreateCoveredPlanSessionAsync(
+        Booth booth,
+        BoothOfferActivation activeOfferActivation,
+        BoothOffer activeOffer,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (PhotoBizBoothAvailability.IsAgentOffline(booth, now))
+        {
+            throw new InvalidOperationException("The booth agent is offline.");
+        }
+
+        if (activeOffer.OfferType == StatusValues.OfferType.PerSession)
+        {
+            throw new InvalidOperationException("PER_SESSION offers require payment per session.");
+        }
+
+        if (activeOfferActivation.Status != StatusValues.OfferActivation.Active)
+        {
+            throw new InvalidOperationException("This package is awaiting cashier activation.");
+        }
+
+        if (activeOffer.OfferType == StatusValues.OfferType.TimeUnlimited &&
+            activeOfferActivation.EndsAt.HasValue &&
+            activeOfferActivation.EndsAt <= now)
+        {
+            activeOfferActivation.Status = StatusValues.OfferActivation.Completed;
+            activeOfferActivation.DeactivatedAt ??= now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException("This timed package has ended.");
+        }
+
+        if (activeOffer.OfferType == StatusValues.OfferType.SessionCount &&
+            activeOfferActivation.SessionAllowance.HasValue &&
+            activeOfferActivation.SessionsUsed >= activeOfferActivation.SessionAllowance.Value)
+        {
+            activeOfferActivation.Status = StatusValues.OfferActivation.Completed;
+            activeOfferActivation.DeactivatedAt ??= now;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            throw new InvalidOperationException("This session-count package has no remaining sessions.");
+        }
+
+        if (await HasAnotherActiveTransactionAsync(booth.Id, null, cancellationToken))
+        {
+            throw new InvalidOperationException("The booth already has an active transaction.");
+        }
+
+        var transaction = new Transaction
+        {
+            Id = Guid.NewGuid(),
+            ClientAccountId = booth.ClientAccountId,
+            LocationId = booth.LocationId,
+            BoothId = booth.Id,
+            BoothOfferId = activeOffer.Id,
+            BoothOfferActivationId = activeOfferActivation.Id,
+            TransactionNumber = $"TXN-{now:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}",
+            TransactionType = StatusValues.TransactionType.CoveredPlanSession,
+            PaymentMethod = StatusValues.PaymentMethod.Cash,
+            Status = StatusValues.Transaction.Paid,
+            AmountCents = 0,
+            Currency = activeOffer.Currency,
+            OfferSnapshot = SerializeOfferSnapshot(activeOffer),
+            CreatedAt = now,
+            ExpiresAt = now.Add(PendingCashWindow),
+            PaidAt = now
+        };
+
+        booth.CurrentState = StatusValues.Booth.Paid;
+
+        dbContext.Transactions.Add(transaction);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return transaction;
+    }
+
+    public async Task<Transaction> CreatePlanActivationAsync(
+        Booth booth,
+        BoothOfferActivation pendingActivation,
+        BoothOffer pendingOffer,
+        PhotoBizCurrentUser currentUser,
+        CancellationToken cancellationToken)
+    {
+        if (pendingOffer.OfferType == StatusValues.OfferType.PerSession)
+        {
+            throw new InvalidOperationException("PER_SESSION packages do not require cashier plan activation.");
+        }
+
+        if (pendingActivation.Status != StatusValues.OfferActivation.PendingPayment)
+        {
+            throw new InvalidOperationException("This package is not awaiting cashier activation.");
+        }
+
+        if (currentUser.IsCashier && currentUser.AssignedBoothId != booth.Id)
+        {
+            throw new InvalidOperationException("Cashiers can activate packages only for their assigned booth.");
+        }
+
+        if (await HasAnotherActiveTransactionAsync(booth.Id, null, cancellationToken))
+        {
+            throw new InvalidOperationException("The booth already has an active transaction.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var transaction = new Transaction
+        {
+            Id = Guid.NewGuid(),
+            ClientAccountId = booth.ClientAccountId,
+            LocationId = booth.LocationId,
+            BoothId = booth.Id,
+            BoothOfferId = pendingOffer.Id,
+            BoothOfferActivationId = pendingActivation.Id,
+            TransactionNumber = $"TXN-{now:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}",
+            TransactionType = StatusValues.TransactionType.PlanActivation,
+            PaymentMethod = StatusValues.PaymentMethod.Cash,
+            Status = StatusValues.Transaction.PendingCash,
+            AmountCents = pendingOffer.PriceCents,
+            Currency = pendingOffer.Currency,
+            OfferSnapshot = SerializeOfferSnapshot(pendingOffer),
+            CreatedAt = now,
+            ExpiresAt = now.Add(PendingCashWindow)
+        };
+
+        booth.CurrentState = StatusValues.Booth.PaymentPending;
+        dbContext.Transactions.Add(transaction);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(
+            currentUser,
+            "transaction.plan_activation_created",
+            nameof(Transaction),
+            transaction.Id,
+            new { transaction.TransactionNumber, pendingOffer.Name, pendingOffer.OfferType },
+            cancellationToken);
 
         return transaction;
     }
@@ -133,15 +267,42 @@ public sealed class PhotoBizTransactionWorkflow(
         }
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
+        if (transaction.TransactionType != StatusValues.TransactionType.PlanActivation &&
+            PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
         {
             throw new InvalidOperationException("The booth agent is offline.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         transaction.Status = StatusValues.Transaction.Paid;
-        transaction.PaidAt = DateTimeOffset.UtcNow;
+        transaction.PaidAt = now;
         transaction.ApprovedByUserId = currentUser.UserId;
-        booth.CurrentState = StatusValues.Booth.Paid;
+
+        if (transaction.TransactionType == StatusValues.TransactionType.PlanActivation)
+        {
+            var activation = await dbContext.BoothOfferActivations
+                .Include(item => item.BoothOffer)
+                .SingleAsync(item => item.Id == transaction.BoothOfferActivationId, cancellationToken);
+
+            activation.Status = StatusValues.OfferActivation.Active;
+            activation.ActivatedAt = now;
+            activation.DeactivatedAt = null;
+            activation.SessionsUsed = 0;
+            activation.SessionAllowance = activation.BoothOffer?.SessionAllowance;
+            activation.StartsAt = activation.BoothOffer?.OfferType == StatusValues.OfferType.TimeUnlimited
+                ? now
+                : null;
+            activation.EndsAt = activation.BoothOffer?.OfferType == StatusValues.OfferType.TimeUnlimited && activation.BoothOffer.DurationHours.HasValue
+                ? now.AddHours(activation.BoothOffer.DurationHours.Value)
+                : null;
+            transaction.Status = StatusValues.Transaction.Completed;
+            transaction.CompletedAt = now;
+            booth.CurrentState = StatusValues.Booth.Welcome;
+        }
+        else
+        {
+            booth.CurrentState = StatusValues.Booth.Paid;
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -169,6 +330,7 @@ public sealed class PhotoBizTransactionWorkflow(
 
         transaction.Status = StatusValues.Transaction.Cancelled;
         transaction.CancelledAt = DateTimeOffset.UtcNow;
+        transaction.FailureReason ??= "Payment request was cancelled by the cashier.";
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
         booth.CurrentState = StatusValues.Booth.Welcome;
@@ -488,11 +650,31 @@ public sealed class PhotoBizTransactionWorkflow(
             return;
         }
 
+        var now = DateTimeOffset.UtcNow;
         transaction.Status = StatusValues.Transaction.Completed;
-        transaction.CompletedAt = DateTimeOffset.UtcNow;
+        transaction.CompletedAt = now;
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
         booth.CurrentState = StatusValues.Booth.Completed;
+
+        if (transaction.TransactionType == StatusValues.TransactionType.CoveredPlanSession &&
+            transaction.BoothOfferActivationId.HasValue)
+        {
+            var activation = await dbContext.BoothOfferActivations
+                .Include(item => item.BoothOffer)
+                .SingleAsync(item => item.Id == transaction.BoothOfferActivationId, cancellationToken);
+
+            if (activation.BoothOffer?.OfferType == StatusValues.OfferType.SessionCount)
+            {
+                activation.SessionsUsed += 1;
+                if (activation.SessionAllowance.HasValue &&
+                    activation.SessionsUsed >= activation.SessionAllowance.Value)
+                {
+                    activation.Status = StatusValues.OfferActivation.Completed;
+                    activation.DeactivatedAt = now;
+                }
+            }
+        }
 
         var session = await dbContext.BoothSessions
             .OrderByDescending(item => item.Id)
@@ -503,7 +685,7 @@ public sealed class PhotoBizTransactionWorkflow(
         }
 
         session.Status = StatusValues.Session.Completed;
-        session.EndedAt = DateTimeOffset.UtcNow;
+        session.EndedAt = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -579,31 +761,75 @@ public sealed class PhotoBizTransactionWorkflow(
             return 0;
         }
 
-        var boothIds = booths.Select(booth => booth.Id).ToArray();
-        var latestCompletedTransactions = await dbContext.Transactions
-            .AsNoTracking()
-            .Where(transaction =>
-                boothIds.Contains(transaction.BoothId) &&
-                transaction.TransactionType == StatusValues.TransactionType.SessionPurchase &&
-                transaction.Status == StatusValues.Transaction.Completed)
-            .ToListAsync(cancellationToken);
-        var eligibleBoothIds = latestCompletedTransactions
-            .GroupBy(transaction => transaction.BoothId)
-            .Select(group => group
-                .OrderByDescending(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
-                .ThenByDescending(transaction => transaction.CreatedAt)
-                .First())
-            .Where(transaction => transaction.CompletedAt <= cutoff)
-            .Select(transaction => transaction.BoothId)
-            .ToHashSet();
-
-        foreach (var booth in booths.Where(booth => eligibleBoothIds.Contains(booth.Id)))
+        var resetCount = 0;
+        foreach (var booth in booths)
         {
-            booth.CurrentState = StatusValues.Booth.Welcome;
+            var result = await ReturnCompletedBoothToWelcomeAsync(booth, cutoff, cancellationToken);
+            if (result.Succeeded)
+            {
+                resetCount += 1;
+            }
         }
 
+        return resetCount;
+    }
+
+    public async Task<ReturnCompletedBoothToWelcomeResult> ReturnCompletedBoothToWelcomeAsync(
+        Booth booth,
+        DateTimeOffset? completedAtCutoff,
+        CancellationToken cancellationToken)
+    {
+        if (booth.CurrentState == StatusValues.Booth.Welcome)
+        {
+            return ReturnCompletedBoothToWelcomeResult.Success(ReturnCompletedBoothToWelcomeStatus.AlreadyWelcome);
+        }
+
+        if (booth.CurrentState != StatusValues.Booth.Completed)
+        {
+            return ReturnCompletedBoothToWelcomeResult.Failure(ReturnCompletedBoothToWelcomeStatus.NotCompleted);
+        }
+
+        var latestCompletedTransaction = await dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction =>
+                transaction.BoothId == booth.Id &&
+                (transaction.TransactionType == StatusValues.TransactionType.SessionPurchase ||
+                    transaction.TransactionType == StatusValues.TransactionType.CoveredPlanSession) &&
+                transaction.Status == StatusValues.Transaction.Completed)
+            .OrderByDescending(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
+            .ThenByDescending(transaction => transaction.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestCompletedTransaction is null)
+        {
+            return ReturnCompletedBoothToWelcomeResult.Failure(ReturnCompletedBoothToWelcomeStatus.NoCompletedSession);
+        }
+
+        var completedAt = latestCompletedTransaction.CompletedAt ?? latestCompletedTransaction.CreatedAt;
+        if (completedAtCutoff.HasValue && completedAt > completedAtCutoff.Value)
+        {
+            return ReturnCompletedBoothToWelcomeResult.Failure(ReturnCompletedBoothToWelcomeStatus.NotReady);
+        }
+
+        var hasNewerActiveTransaction = await dbContext.Transactions
+            .AsNoTracking()
+            .AnyAsync(
+                transaction =>
+                    transaction.BoothId == booth.Id &&
+                    transaction.Id != latestCompletedTransaction.Id &&
+                    transaction.CreatedAt > completedAt &&
+                    ActiveTransactionStatusesDuringCompletedPrompt.Contains(transaction.Status),
+                cancellationToken);
+
+        if (hasNewerActiveTransaction)
+        {
+            return ReturnCompletedBoothToWelcomeResult.Failure(ReturnCompletedBoothToWelcomeStatus.ActiveTransaction);
+        }
+
+        booth.CurrentState = StatusValues.Booth.Welcome;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return eligibleBoothIds.Count;
+
+        return ReturnCompletedBoothToWelcomeResult.Success(ReturnCompletedBoothToWelcomeStatus.Returned);
     }
 
     public async Task MarkSessionFailedAsync(
@@ -692,6 +918,49 @@ public sealed class PhotoBizTransactionWorkflow(
             StatusValues.LumaboothSessionMode.Video => StatusValues.LumaboothSessionMode.Video,
             _ => StatusValues.LumaboothSessionMode.Print
         };
+    }
+
+    private static string SerializeOfferSnapshot(BoothOffer offer)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            offer.Id,
+            offer.Name,
+            offer.OfferType,
+            offer.PriceCents,
+            offer.Currency,
+            offer.IncludedPrintEntitlement,
+            offer.AllowsExtraPrintAddOn,
+            offer.ExtraPrintPriceCents,
+            offer.LumaboothSessionMode,
+            offer.DurationHours,
+            offer.SessionAllowance
+        });
+    }
+}
+
+public enum ReturnCompletedBoothToWelcomeStatus
+{
+    Returned,
+    AlreadyWelcome,
+    NotCompleted,
+    NoCompletedSession,
+    NotReady,
+    ActiveTransaction
+}
+
+public sealed record ReturnCompletedBoothToWelcomeResult(
+    bool Succeeded,
+    ReturnCompletedBoothToWelcomeStatus Status)
+{
+    public static ReturnCompletedBoothToWelcomeResult Success(ReturnCompletedBoothToWelcomeStatus status)
+    {
+        return new ReturnCompletedBoothToWelcomeResult(true, status);
+    }
+
+    public static ReturnCompletedBoothToWelcomeResult Failure(ReturnCompletedBoothToWelcomeStatus status)
+    {
+        return new ReturnCompletedBoothToWelcomeResult(false, status);
     }
 }
 

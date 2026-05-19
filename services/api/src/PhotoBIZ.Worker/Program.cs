@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PhotoBIZ.Api;
 using PhotoBIZ.Api.Data;
 using PhotoBIZ.Worker;
 
@@ -10,6 +11,8 @@ builder.Services.AddDbContext<PhotoBizDbContext>(options =>
 {
     options.UseNpgsql(postgresConnectionString);
 });
+builder.Services.AddScoped<PhotoBizAuditService>();
+builder.Services.AddScoped<PhotoBizTransactionWorkflow>();
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();

@@ -14,6 +14,7 @@ builder.Services.AddTransient<ILumaBoothClient>(services =>
 });
 builder.Services.AddSingleton<IActiveLumaBoothSessionStore, FileActiveLumaBoothSessionStore>();
 builder.Services.AddSingleton<IWindowFocusService, WindowFocusService>();
+builder.Services.AddSingleton<IBoothUiLauncher, ChromeBoothUiLauncher>();
 builder.Services.AddSingleton<LumaBoothTriggerHandler>();
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddHostedService<LumaBoothTriggerListenerService>();

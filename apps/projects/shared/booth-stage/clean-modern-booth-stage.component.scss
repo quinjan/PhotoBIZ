@@ -1,0 +1,174 @@
+:host {
+  display: block;
+  min-height: 100%;
+}
+
+.stage {
+  align-content: center;
+  background:
+    linear-gradient(rgba(248, 250, 252, 0.82), rgba(248, 250, 252, 0.9)),
+    var(--stage-image),
+    linear-gradient(135deg, #f8fafc 0%, #eaf0f7 100%);
+  background-position: center;
+  background-size: cover;
+  display: grid;
+  gap: 16px;
+  min-height: 100vh;
+  padding: 28px;
+}
+
+:host ::ng-deep [booth-stage-token-controls],
+:host ::ng-deep [booth-stage-error],
+.stage-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 8px;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.12);
+  margin: 0 auto;
+  max-width: 920px;
+  width: min(100%, 920px);
+}
+
+:host ::ng-deep [booth-stage-token-controls],
+:host ::ng-deep [booth-stage-error] {
+  padding: 14px;
+}
+
+.stage-card {
+  color: #111827;
+  display: grid;
+  gap: 22px;
+  padding: 30px;
+}
+
+header,
+.brand,
+.offer-panel {
+  align-items: center;
+  display: flex;
+}
+
+header,
+.offer-panel {
+  justify-content: space-between;
+}
+
+.brand {
+  gap: 12px;
+}
+
+.brand img,
+.brand span {
+  border-radius: 8px;
+  height: 42px;
+  width: 42px;
+}
+
+.brand span {
+  background: #111827;
+  color: #ffffff;
+  display: grid;
+  font-weight: 900;
+  place-items: center;
+}
+
+header small,
+.copy p,
+.offer-panel span {
+  color: #667085;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.flow {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.flow span {
+  background: #eef2f7;
+  border-radius: 999px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.flow .active {
+  background: #dbeafe;
+  color: #155eef;
+}
+
+.copy h1 {
+  font-size: clamp(42px, 6vw, 72px);
+  letter-spacing: 0;
+  line-height: 0.98;
+  margin: 8px 0 12px;
+}
+
+.copy span {
+  color: #344054;
+  display: block;
+  font-size: 18px;
+  line-height: 1.45;
+  max-width: 650px;
+}
+
+.offer-panel,
+.status-panel {
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.offer-panel p {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.status-panel {
+  display: grid;
+  gap: 4px;
+}
+
+.primary-action {
+  background: #155eef;
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 900;
+  min-height: 56px;
+  padding: 0 24px;
+  width: fit-content;
+}
+
+.primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.state-error .stage-card {
+  border-color: #f4b8b2;
+}
+
+@media (max-width: 760px) {
+  .stage {
+    padding: 18px;
+  }
+
+  header,
+  .offer-panel {
+    align-items: stretch;
+    display: grid;
+    gap: 12px;
+  }
+
+  .flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

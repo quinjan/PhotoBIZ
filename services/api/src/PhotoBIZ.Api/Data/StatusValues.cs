@@ -48,6 +48,9 @@ public static class StatusValues
 
     public static class Theme
     {
+        public const string Vintage = "VINTAGE";
+        public const string CleanModern = "CLEAN_MODERN";
+        public const string Pop = "POP";
         public const string VintageFilm = "VINTAGE_FILM";
         public const string ModernPop = "MODERN_POP";
     }
@@ -62,6 +65,7 @@ public static class StatusValues
     public static class OfferActivation
     {
         public const string Active = "ACTIVE";
+        public const string PendingPayment = "PENDING_PAYMENT";
         public const string Inactive = "INACTIVE";
         public const string Completed = "COMPLETED";
         public const string Cancelled = "CANCELLED";
@@ -70,6 +74,10 @@ public static class StatusValues
     public static class PrintEntitlement
     {
         public const string TwoBySixOrOneByFour = "2 pcs 6x2 or 1 pc 6x4";
+        public const string TwoBySix = "2 pcs 6x2";
+        public const string OneByFour = "1 pc 6x4";
+        public const string Active = "ACTIVE";
+        public const string Inactive = "INACTIVE";
     }
 
     public static class LumaboothSessionMode

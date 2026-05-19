@@ -17,6 +17,7 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
     public DbSet<BoothAppearanceConfig> BoothAppearanceConfigs => Set<BoothAppearanceConfig>();
     public DbSet<BoothPaymentOptionAssignment> BoothPaymentOptionAssignments => Set<BoothPaymentOptionAssignment>();
     public DbSet<BoothOffer> BoothOffers => Set<BoothOffer>();
+    public DbSet<PrintEntitlement> PrintEntitlements => Set<PrintEntitlement>();
     public DbSet<BoothOfferActivation> BoothOfferActivations => Set<BoothOfferActivation>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<PaymentAttempt> PaymentAttempts => Set<PaymentAttempt>();
@@ -145,6 +146,9 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(user => user.PasswordHash).HasMaxLength(1000);
             entity.Property(user => user.Role).HasMaxLength(60);
             entity.Property(user => user.Status).HasMaxLength(40);
+            entity.Property(user => user.CanApproveCash).HasDefaultValue(true);
+            entity.Property(user => user.CanReturnBoothToWelcome).HasDefaultValue(true);
+            entity.Property(user => user.CanCancelTransaction).HasDefaultValue(true);
             entity.Property(user => user.CreatedAt).HasDefaultValueSql("now()");
             entity.HasOne(user => user.ClientAccount)
                 .WithMany(client => client.Users)
@@ -189,6 +193,7 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(config => config.PrimaryColor).HasMaxLength(20);
             entity.Property(config => config.AccentColor).HasMaxLength(20);
             entity.Property(config => config.BackgroundImageUrl).HasMaxLength(1000);
+            entity.Property(config => config.BackgroundImageDataUrl).HasColumnType("text");
             entity.Property(config => config.SessionLabel).HasMaxLength(200);
             entity.Property(config => config.DefaultWelcomeHeadline).HasMaxLength(200);
             entity.Property(config => config.DefaultWelcomeSubtitle).HasMaxLength(500);
@@ -253,6 +258,21 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(offer => new { offer.ClientAccountId, offer.Name }).IsUnique();
             entity.HasIndex(offer => new { offer.ClientAccountId, offer.OfferType, offer.Active });
+        });
+
+        modelBuilder.Entity<PrintEntitlement>(entity =>
+        {
+            entity.ToTable("print_entitlements");
+            entity.HasKey(entitlement => entitlement.Id);
+            entity.Property(entitlement => entitlement.Name).HasMaxLength(120);
+            entity.Property(entitlement => entitlement.Status).HasMaxLength(40);
+            entity.Property(entitlement => entitlement.CreatedAt).HasDefaultValueSql("now()");
+            entity.HasOne(entitlement => entitlement.ClientAccount)
+                .WithMany(client => client.PrintEntitlements)
+                .HasForeignKey(entitlement => entitlement.ClientAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(entitlement => new { entitlement.ClientAccountId, entitlement.Name }).IsUnique();
+            entity.HasIndex(entitlement => new { entitlement.ClientAccountId, entitlement.Status });
         });
 
         modelBuilder.Entity<BoothOfferActivation>(entity =>

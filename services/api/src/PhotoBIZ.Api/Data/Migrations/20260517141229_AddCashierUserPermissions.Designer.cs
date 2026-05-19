@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoBIZ.Api.Data;
@@ -11,9 +12,11 @@ using PhotoBIZ.Api.Data;
 namespace PhotoBIZ.Api.Data.Migrations
 {
     [DbContext(typeof(PhotoBizDbContext))]
-    partial class PhotoBizDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260517141229_AddCashierUserPermissions")]
+    partial class AddCashierUserPermissions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -249,10 +252,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("accent_color");
-
-                    b.Property<string>("BackgroundImageDataUrl")
-                        .HasColumnType("text")
-                        .HasColumnName("background_image_data_url");
 
                     b.Property<string>("BackgroundImageUrl")
                         .HasMaxLength(1000)
@@ -891,48 +890,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.ToTable("payment_attempts", (string)null);
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.PrintEntitlement", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClientAccountId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_account_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(120)
-                        .HasColumnType("character varying(120)")
-                        .HasColumnName("name");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("status");
-
-                    b.HasKey("Id")
-                        .HasName("pk_print_entitlements");
-
-                    b.HasIndex("ClientAccountId", "Name")
-                        .IsUnique()
-                        .HasDatabaseName("ix_print_entitlements_client_account_id_name");
-
-                    b.HasIndex("ClientAccountId", "Status")
-                        .HasDatabaseName("ix_print_entitlements_client_account_id_status");
-
-                    b.ToTable("print_entitlements", (string)null);
-                });
-
             modelBuilder.Entity("PhotoBIZ.Api.Data.SubscriptionPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1331,18 +1288,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("Transaction");
                 });
 
-            modelBuilder.Entity("PhotoBIZ.Api.Data.PrintEntitlement", b =>
-                {
-                    b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
-                        .WithMany("PrintEntitlements")
-                        .HasForeignKey("ClientAccountId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_print_entitlements_client_accounts_client_account_id");
-
-                    b.Navigation("ClientAccount");
-                });
-
             modelBuilder.Entity("PhotoBIZ.Api.Data.Transaction", b =>
                 {
                     b.HasOne("PhotoBIZ.Api.Data.ApplicationUser", "ApprovedByUser")
@@ -1449,8 +1394,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("MayaEcrDevices");
 
                     b.Navigation("PaymentProviderConfigs");
-
-                    b.Navigation("PrintEntitlements");
 
                     b.Navigation("Subscriptions");
 
