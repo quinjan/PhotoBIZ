@@ -81,7 +81,7 @@ The Application Owner is the PhotoBIZ platform owner.
 Permissions:
 
 - Manage all client accounts.
-- Create the first Client Owner credentials while onboarding a new client account.
+- Create the first Client Owner login while onboarding a new client account; PhotoBIZ assigns the default initial password and forces first-login password change.
 - Create, edit, suspend, reactivate, and archive clients.
 - Manage manual subscriptions and per-booth allowances.
 - View platform-wide client, booth, and subscription health.
@@ -169,6 +169,7 @@ Rules:
 Required MVP sections:
 
 - Login.
+- First-login forced password update.
 - Application Owner platform dashboard.
 - Client accounts.
 - Subscription catalog list and editor.
@@ -184,13 +185,21 @@ Required MVP sections:
 - Transactions.
 - Reports.
 - Settings.
+- Account password change.
 - Audit logs.
 
 Role-specific navigation:
 
-- Application Owner: Dashboard, Subscriptions, Clients, Audit Log.
-- Client Owner and Client Admin: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, Audit Log.
-- Cashier: Dashboard, Cashier POS, Reports, Audit Log.
+- Application Owner: Dashboard, Subscriptions, Clients, Account, Audit Log.
+- Client Owner and Client Admin: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, Account, Audit Log.
+- Cashier: Dashboard, Cashier POS, Reports, Account, Audit Log.
+
+Admin Web account rules:
+
+- Application Owner, Client Owner, Client Admin, and Cashier users can change their own password after sign-in.
+- Client onboarding and user creation forms collect name/email/role details only, not custom passwords.
+- New Admin Web users receive the default initial password `PhotoBIZ!123`.
+- New users must change the default password before accessing dashboard, setup, cashier, reports, or audit log workflows.
 
 In the client tenant UI, Packages is the user-facing label for booth offers. The Packages section also owns the client-scoped print entitlement list used by package forms.
 
@@ -290,9 +299,10 @@ Guardrails:
 
 ### Workflow A: Client Subscription Setup
 
-1. Application Owner creates a client account and first Client Owner credentials in the same onboarding flow.
+1. Application Owner creates a client account and first Client Owner login in the same onboarding flow by entering the owner name and email.
 2. Application Owner creates or selects a Subscription, then assigns it to the client with manual status and active booth allowance.
-3. Client Owner signs in and configures locations, users, booth offers, and booths.
+3. PhotoBIZ assigns the Client Owner the default initial password `PhotoBIZ!123`.
+4. Client Owner signs in, is forced to change the password, then configures locations, users, booth offers, and booths.
 
 ### Workflow B: Booth Registration To Live
 
@@ -638,6 +648,7 @@ Future requirements:
 Audit logs should capture:
 
 - User login.
+- User password change.
 - Client account creation/update/suspension/reactivation/archive.
 - Subscription creation/update/status changes.
 - User creation/update/deactivation.
@@ -656,6 +667,9 @@ Audit logs should capture:
 ## Security Requirements
 
 - Password-based login for MVP.
+- New Admin Web users created through onboarding or user management use `PhotoBIZ!123` as the default initial password and must change it on first login.
+- Users who must change password cannot access admin or cashier workflows until the password is updated.
+- Every authenticated Admin Web role can change its own password.
 - Role-based access control.
 - Tenant isolation for all client-scoped data.
 - Application Owner can access all clients for platform management and support.
@@ -672,7 +686,7 @@ Audit logs should capture:
 
 The MVP is considered complete when:
 
-1. Application Owner can create a client account with first Client Owner credentials.
+1. Application Owner can create a client account with first Client Owner login using the default initial password and forced password change.
 2. Application Owner can define Subscriptions and assign manual subscription status and active booth allowance to clients.
 3. Client Owner can create a location, booth, user, and booth offer inside their client account.
 4. Client Owner or Client Admin can activate exactly one booth offer for a booth.

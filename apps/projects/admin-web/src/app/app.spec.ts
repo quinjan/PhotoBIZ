@@ -224,6 +224,175 @@ describe('App', () => {
     expect(compiled.textContent).not.toContain('+ Add Cashier');
   });
 
+  it('should show default password guidance without password fields in creation modals', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+
+    const app = fixture.componentInstance as unknown as {
+      session: { set: (value: unknown) => void };
+      overview: { set: (value: unknown) => void };
+      setView: (value: string) => void;
+      openClientModal: () => void;
+      closeClientModal: () => void;
+      openUserModal: () => void;
+    };
+    const platformSession = {
+      userId: 'owner-id',
+      name: 'Platform Owner',
+      email: 'platform@photobiz.local',
+      role: 'APPLICATION_OWNER',
+      clientAccountId: null,
+      assignedBoothId: null,
+      mustChangePassword: false,
+    };
+
+    app.session.set(platformSession);
+    app.overview.set({
+      session: platformSession,
+      clients: [],
+      subscriptionPlans: [],
+      subscriptions: [],
+      users: [],
+      locations: [],
+      booths: [],
+      offers: [],
+      printEntitlements: [],
+      activations: [],
+      paymentAssignments: [],
+      appearanceConfigs: [],
+      transactions: [],
+      reports: emptyReports(),
+      auditLogs: [],
+    });
+    app.setView('clients');
+    app.openClientModal();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    let compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Default password will be set to PhotoBIZ!123');
+    expect(compiled.querySelector('input[name="ownerPassword"]')).toBeNull();
+
+    app.closeClientModal();
+    const clientSession = {
+      userId: 'client-owner-id',
+      name: 'Client Owner',
+      email: 'owner@memorybox.local',
+      role: 'CLIENT_OWNER',
+      clientAccountId: 'client-id',
+      assignedBoothId: null,
+      mustChangePassword: false,
+    };
+    app.session.set(clientSession);
+    app.overview.set({
+      session: clientSession,
+      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
+      subscriptionPlans: [],
+      subscriptions: [],
+      users: [],
+      locations: [],
+      booths: [],
+      offers: [],
+      printEntitlements: [],
+      activations: [],
+      paymentAssignments: [],
+      appearanceConfigs: [],
+      transactions: [],
+      reports: emptyReports(),
+      auditLogs: [],
+    });
+    app.setView('users');
+    app.openUserModal();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Default password will be set to PhotoBIZ!123');
+    expect(compiled.querySelector('input[name="cashierPassword"]')).toBeNull();
+  });
+
+  it('should render the forced password update screen before the admin shell', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+
+    const app = fixture.componentInstance as unknown as {
+      session: { set: (value: unknown) => void };
+      overview: { set: (value: unknown) => void };
+    };
+    app.session.set({
+      userId: 'forced-id',
+      name: 'Forced User',
+      email: 'forced@photobiz.local',
+      role: 'CLIENT_OWNER',
+      clientAccountId: 'client-id',
+      assignedBoothId: null,
+      mustChangePassword: true,
+    });
+    app.overview.set(null);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Update password');
+    expect(compiled.textContent).toContain('CURRENT PASSWORD');
+    expect(compiled.querySelector('.admin-shell')).toBeNull();
+  });
+
+  it('should expose account password management for every signed-in role', async () => {
+    for (const role of ['APPLICATION_OWNER', 'CLIENT_OWNER', 'CLIENT_ADMIN', 'CASHIER']) {
+      const fixture = TestBed.createComponent(App);
+      await fixture.whenStable();
+
+      const app = fixture.componentInstance as unknown as {
+        session: { set: (value: unknown) => void };
+        overview: { set: (value: unknown) => void };
+        setView: (value: string) => void;
+      };
+      const session = {
+        userId: `${role}-id`,
+        name: role,
+        email: `${role.toLowerCase()}@photobiz.local`,
+        role,
+        clientAccountId: role === 'APPLICATION_OWNER' ? null : 'client-id',
+        assignedBoothId: role === 'CASHIER' ? 'booth-id' : null,
+        mustChangePassword: false,
+        canApproveCash: role === 'CASHIER',
+        canReturnBoothToWelcome: role === 'CASHIER',
+        canCancelTransaction: role === 'CASHIER',
+      };
+
+      app.session.set(session);
+      app.overview.set({
+        session,
+        clients:
+          role === 'APPLICATION_OWNER'
+            ? []
+            : [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
+        subscriptionPlans: [],
+        subscriptions: [],
+        users: [],
+        locations: [],
+        booths: [],
+        offers: [],
+        printEntitlements: [],
+        activations: [],
+        paymentAssignments: [],
+        appearanceConfigs: [],
+        transactions: [],
+        reports: emptyReports(),
+        auditLogs: [],
+      });
+      app.setView('account');
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const compiled = fixture.nativeElement as HTMLElement;
+      expect(compiled.textContent).toContain('Account');
+      expect(compiled.textContent).toContain('Change Password');
+      expect(compiled.textContent).toContain('CURRENT PASSWORD');
+    }
+  });
+
   it('should manage users from a detail view instead of inline status actions', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
@@ -385,9 +554,9 @@ describe('App', () => {
     compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Manage Location');
     expect(compiled.textContent).toContain('Delete Location');
-    expect((compiled.querySelector('input[name="locationDetailName"]') as HTMLInputElement).value).toBe(
-      'SM Manila',
-    );
+    expect(
+      (compiled.querySelector('input[name="locationDetailName"]') as HTMLInputElement).value,
+    ).toBe('SM Manila');
   });
 
   it('should render booth offline state from the overview API', async () => {

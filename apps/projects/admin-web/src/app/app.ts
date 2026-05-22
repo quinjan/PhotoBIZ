@@ -14,6 +14,7 @@ type Session = {
   readonly role: string;
   readonly clientAccountId: string | null;
   readonly assignedBoothId: string | null;
+  readonly mustChangePassword: boolean;
   readonly canApproveCash: boolean;
   readonly canReturnBoothToWelcome: boolean;
   readonly canCancelTransaction: boolean;
@@ -251,6 +252,7 @@ type ViewKey =
   | 'package-detail'
   | 'transactions'
   | 'settings'
+  | 'account'
   | 'pos'
   | 'reports'
   | 'audit';
@@ -288,6 +290,10 @@ export class App {
 
   protected readonly loginEmail = signal('owner@photobiz.local');
   protected readonly loginPassword = signal('PhotoBIZ!123');
+  protected readonly defaultInitialPassword = 'PhotoBIZ!123';
+  protected readonly changePasswordCurrent = signal('');
+  protected readonly changePasswordNew = signal('');
+  protected readonly changePasswordConfirm = signal('');
   protected readonly clientName = signal('The Memory Box');
   protected readonly planName = signal('Starter Booth');
   protected readonly planPrice = signal(150000);
@@ -300,10 +306,8 @@ export class App {
   protected readonly boothCode = signal('SMA-001');
   protected readonly ownerName = signal('Client Owner');
   protected readonly ownerEmail = signal('owner@memorybox.local');
-  protected readonly ownerPassword = signal('PhotoBIZ!123');
   protected readonly cashierName = signal('Cashier');
   protected readonly cashierEmail = signal('cashier@memorybox.local');
-  protected readonly cashierPassword = signal('PhotoBIZ!123');
   protected readonly selectedPackageDetailId = signal<string | null>(null);
   protected readonly packageName = signal('Per Session');
   protected readonly packageDescription = signal('Standard booth session');
@@ -383,7 +387,10 @@ export class App {
   );
   protected readonly boothAppearanceThemePreset = signal('VINTAGE');
   protected readonly boothAppearanceBackgroundImageDataUrl = signal('');
-  protected readonly boothThemePresets: readonly { readonly value: string; readonly label: string }[] = [
+  protected readonly boothThemePresets: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[] = [
     { value: 'VINTAGE', label: 'Vintage' },
     { value: 'CLEAN_MODERN', label: 'Clean Modern' },
     { value: 'POP', label: 'Pop' },
@@ -618,8 +625,7 @@ export class App {
             includedPrintEntitlement: offer.includedPrintEntitlement,
             allowsExtraPrintAddOn: offer.allowsExtraPrintAddOn,
             extraPrintPriceCents: offer.extraPrintPriceCents,
-            activationStatus:
-              this.selectedActivationFor(booth.id)?.status ?? 'ACTIVE',
+            activationStatus: this.selectedActivationFor(booth.id)?.status ?? 'ACTIVE',
             startsAt: this.selectedActivationFor(booth.id)?.startsAt ?? null,
             endsAt: this.selectedActivationFor(booth.id)?.endsAt ?? null,
             sessionAllowance: this.selectedActivationFor(booth.id)?.sessionAllowance ?? null,
@@ -720,7 +726,7 @@ export class App {
     interval(5000)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
-        if (this.session()) {
+        if (this.session() && !this.session()?.mustChangePassword) {
           this.loadOverview();
         }
       });
@@ -737,8 +743,41 @@ export class App {
       );
 
       this.session.set(session);
+      if (session.mustChangePassword) {
+        this.overview.set(null);
+        this.message.set('Update your password to continue.');
+        return;
+      }
+
       await this.loadOverview();
       this.message.set('Signed in.');
+    });
+  }
+
+  protected async changeOwnPassword(): Promise<void> {
+    await this.run(async () => {
+      const session = await firstValueFrom(
+        this.http.post<Session>(
+          `${App.apiBaseUrl}/api/auth/change-password`,
+          {
+            currentPassword: this.changePasswordCurrent(),
+            newPassword: this.changePasswordNew(),
+            confirmPassword: this.changePasswordConfirm(),
+          },
+          { withCredentials: true },
+        ),
+      );
+
+      this.session.set(session);
+      this.changePasswordCurrent.set('');
+      this.changePasswordNew.set('');
+      this.changePasswordConfirm.set('');
+
+      if (!session.mustChangePassword) {
+        await this.loadOverview();
+      }
+
+      this.message.set('Password updated.');
     });
   }
 
@@ -748,6 +787,9 @@ export class App {
     );
     this.session.set(null);
     this.overview.set(null);
+    this.changePasswordCurrent.set('');
+    this.changePasswordNew.set('');
+    this.changePasswordConfirm.set('');
     this.message.set('Signed out.');
   }
 
@@ -978,7 +1020,6 @@ export class App {
             clientName: this.clientName(),
             ownerName: this.ownerName(),
             ownerEmail: this.ownerEmail(),
-            ownerPassword: this.ownerPassword(),
           },
           { withCredentials: true },
         ),
@@ -1122,7 +1163,6 @@ export class App {
       null,
       this.ownerName(),
       this.ownerEmail(),
-      this.ownerPassword(),
       'Client owner created.',
     );
   }
@@ -1133,8 +1173,7 @@ export class App {
       null,
       this.newUserName(),
       this.newUserEmail(),
-      this.cashierPassword(),
-      `User created. Temporary password: ${this.cashierPassword()}.`,
+      `User created. Default password: ${this.defaultInitialPassword}.`,
       this.cashierPermissions(),
     );
     this.userModalOpen.set(false);
@@ -1326,7 +1365,11 @@ export class App {
           boothCode: string;
           kioskToken: string;
           agentCredential: string;
-        }>(`${App.apiBaseUrl}/api/admin/booths/${booth.id}/credentials`, {}, { withCredentials: true }),
+        }>(
+          `${App.apiBaseUrl}/api/admin/booths/${booth.id}/credentials`,
+          {},
+          { withCredentials: true },
+        ),
       );
 
       this.boothSecret.set({
@@ -1336,7 +1379,9 @@ export class App {
         kioskToken: response.kioskToken,
         agentCredential: response.agentCredential,
       });
-      this.message.set('Booth credentials issued. Update the Windows Agent with the new credential.');
+      this.message.set(
+        'Booth credentials issued. Update the Windows Agent with the new credential.',
+      );
     });
   }
 
@@ -1527,21 +1572,22 @@ export class App {
     const shouldUpdate = this.isPersistedPrintEntitlement(selected);
 
     await this.run(async () => {
-      const saved = shouldUpdate && selected
-        ? await firstValueFrom(
-            this.http.put<PrintEntitlementSummary>(
-              `${App.apiBaseUrl}/api/admin/print-entitlements/${selected.id}`,
-              { name, status: selected.status },
-              { withCredentials: true },
-            ),
-          )
-        : await firstValueFrom(
-            this.http.post<PrintEntitlementSummary>(
-              `${App.apiBaseUrl}/api/admin/print-entitlements`,
-              { clientAccountId: this.selectedClientId(), name },
-              { withCredentials: true },
-            ),
-          );
+      const saved =
+        shouldUpdate && selected
+          ? await firstValueFrom(
+              this.http.put<PrintEntitlementSummary>(
+                `${App.apiBaseUrl}/api/admin/print-entitlements/${selected.id}`,
+                { name, status: selected.status },
+                { withCredentials: true },
+              ),
+            )
+          : await firstValueFrom(
+              this.http.post<PrintEntitlementSummary>(
+                `${App.apiBaseUrl}/api/admin/print-entitlements`,
+                { clientAccountId: this.selectedClientId(), name },
+                { withCredentials: true },
+              ),
+            );
 
       await this.loadOverview();
       this.selectedPrintEntitlementDetailId.set(saved.id);
@@ -1915,7 +1961,10 @@ export class App {
     }
   }
 
-  private themeSchemeFor(value: string): { readonly primaryColor: string; readonly accentColor: string } {
+  private themeSchemeFor(value: string): {
+    readonly primaryColor: string;
+    readonly accentColor: string;
+  } {
     switch (this.normalizeBoothThemePreset(value)) {
       case 'POP':
         return { primaryColor: '#0bbbe6', accentColor: '#ff0090' };
@@ -2155,6 +2204,8 @@ export class App {
         return 'Reports';
       case 'settings':
         return 'Payment Resources';
+      case 'account':
+        return 'Account';
       case 'audit':
         return 'Audit Log';
       default:
@@ -2164,6 +2215,10 @@ export class App {
 
   protected canAccessView(view: ViewKey): boolean {
     const role = this.session()?.role;
+
+    if (view === 'account') {
+      return Boolean(role);
+    }
 
     if (role === 'APPLICATION_OWNER') {
       return (
@@ -2289,9 +2344,7 @@ export class App {
         return `${transaction.coveredSessionSequence} of ${sessionAllowance} used`;
       }
 
-      return sessionAllowance
-        ? `${sessionAllowance} session package`
-        : 'Session count package';
+      return sessionAllowance ? `${sessionAllowance} session package` : 'Session count package';
     }
 
     if (transaction.offerType === 'TIME_UNLIMITED') {
@@ -2315,8 +2368,8 @@ export class App {
 
   private latestCoveredSessionForActivation(activationId: string): TransactionSummary | null {
     return (
-      this.overview()?.transactions
-        .filter(
+      this.overview()
+        ?.transactions.filter(
           (transaction) =>
             transaction.boothOfferActivationId === activationId &&
             transaction.transactionType === 'COVERED_PLAN_SESSION' &&
@@ -2330,19 +2383,13 @@ export class App {
     );
   }
 
-  private timedPackageStatusFor(
-    activation: OfferActivationSummary,
-    offer: OfferSummary,
-  ): string {
+  private timedPackageStatusFor(activation: OfferActivationSummary, offer: OfferSummary): string {
     if (!activation.endsAt) {
       return `${offer.durationHours ?? 0} hour timed package`;
     }
 
     const endsAt = new Date(activation.endsAt);
-    const remainingMinutes = Math.max(
-      0,
-      Math.ceil((endsAt.getTime() - Date.now()) / 60_000),
-    );
+    const remainingMinutes = Math.max(0, Math.ceil((endsAt.getTime() - Date.now()) / 60_000));
     const totalMinutes =
       offer.durationHours !== null
         ? offer.durationHours * 60
@@ -2393,7 +2440,6 @@ export class App {
     assignedBoothId: string | null,
     name: string,
     email: string,
-    password: string,
     successMessage: string,
     permissions: Record<CashierPermissionKey, boolean> = {
       approveCash: true,
@@ -2415,7 +2461,6 @@ export class App {
             assignedBoothId,
             name,
             email,
-            password,
             role,
             ...this.cashierPermissionPayload(role, permissions),
           },
@@ -2433,6 +2478,11 @@ export class App {
         this.http.get<Session>(`${App.apiBaseUrl}/api/auth/session`, { withCredentials: true }),
       );
       this.session.set(session);
+      if (session.mustChangePassword) {
+        this.overview.set(null);
+        return;
+      }
+
       await this.loadOverview();
     } catch {
       this.session.set(null);
@@ -2464,4 +2514,3 @@ export class App {
     }
   }
 }
-

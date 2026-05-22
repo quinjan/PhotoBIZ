@@ -29,8 +29,7 @@ public sealed class PhotoBizManagementApiTests
         {
             clientName = "The Memory Box PH",
             ownerName = "Julie Santos",
-            ownerEmail = "julie@memorybox.test",
-            ownerPassword = PhotoBizApiFactory.Password
+            ownerEmail = "julie@memorybox.test"
         });
 
         response.EnsureSuccessStatusCode();
@@ -41,12 +40,24 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(StatusValues.User.ClientOwner, onboarded.Owner.Role);
         Assert.Equal(onboarded.Client.Id, onboarded.Owner.ClientAccountId);
 
-        await LoginAsync(client, "julie@memorybox.test");
+        await LoginAsync(client, "julie@memorybox.test", PhotoBizApiFactory.DefaultInitialPassword);
         var session = await client.GetFromJsonAsync<AuthSessionResponse>("/api/auth/session");
 
         Assert.NotNull(session);
         Assert.Equal(StatusValues.User.ClientOwner, session.Role);
         Assert.Equal(onboarded.Client.Id, session.ClientAccountId);
+        Assert.True(session.MustChangePassword);
+
+        var blockedOverviewResponse = await client.GetAsync("/api/admin/overview");
+        Assert.Equal(HttpStatusCode.Forbidden, blockedOverviewResponse.StatusCode);
+
+        var changedSession = await ChangePasswordAsync(
+            client,
+            PhotoBizApiFactory.DefaultInitialPassword,
+            PhotoBizApiFactory.Password,
+            PhotoBizApiFactory.Password);
+
+        Assert.False(changedSession.MustChangePassword);
 
         var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
 
@@ -321,7 +332,6 @@ public sealed class PhotoBizManagementApiTests
             clientAccountId = seed.ClientAccountId,
             name = "Cashier",
             email = "cashier@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.Cashier
         });
         var crossTenantResponse = await client.PostAsJsonAsync("/api/admin/users", new
@@ -330,7 +340,6 @@ public sealed class PhotoBizManagementApiTests
             assignedBoothId = otherSeed.BoothId,
             name = "Cashier",
             email = "cashier2@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.Cashier
         });
 
@@ -340,6 +349,20 @@ public sealed class PhotoBizManagementApiTests
         var createdCashier = await missingBoothResponse.Content.ReadFromJsonAsync<UserSummary>();
         Assert.NotNull(createdCashier);
         Assert.Null(createdCashier.AssignedBoothId);
+
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        await LoginAsync(cashierClient, "cashier@photobiz.test", PhotoBizApiFactory.DefaultInitialPassword);
+        var cashierSession = await cashierClient.GetFromJsonAsync<AuthSessionResponse>("/api/auth/session");
+        var blockedOverviewResponse = await cashierClient.GetAsync("/api/admin/overview");
+        var blockedCashierResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/booths/{seed.BoothId}/return-to-welcome", new { });
+
+        Assert.NotNull(cashierSession);
+        Assert.True(cashierSession.MustChangePassword);
+        Assert.Equal(HttpStatusCode.Forbidden, blockedOverviewResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, blockedCashierResponse.StatusCode);
     }
 
     [Fact]
@@ -361,7 +384,6 @@ public sealed class PhotoBizManagementApiTests
             clientAccountId = seed.ClientAccountId,
             name = "Cashier",
             email = "booth-assigned-cashier@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.Cashier
         });
         createCashierResponse.EnsureSuccessStatusCode();
@@ -412,7 +434,6 @@ public sealed class PhotoBizManagementApiTests
             clientAccountId = seed.ClientAccountId,
             name = "Assignable Cashier",
             email = "assignable-cashier@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.Cashier
         });
         var adminResponse = await client.PostAsJsonAsync("/api/admin/users", new
@@ -420,7 +441,6 @@ public sealed class PhotoBizManagementApiTests
             clientAccountId = seed.ClientAccountId,
             name = "Not Cashier",
             email = "not-cashier@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.ClientAdmin
         });
         cashierResponse.EnsureSuccessStatusCode();
@@ -718,7 +738,6 @@ public sealed class PhotoBizManagementApiTests
             clientAccountId = seed.ClientAccountId,
             name = "Cashier",
             email = "cashier3@photobiz.test",
-            password = "Test12345!",
             role = StatusValues.User.Cashier,
             canApproveCash = true,
             canReturnBoothToWelcome = true,
@@ -1494,12 +1513,81 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(HttpStatusCode.Forbidden, returnResponse.StatusCode);
     }
 
-    private static async Task LoginAsync(HttpClient client, string email)
+    [Fact]
+    public async Task ChangePasswordValidatesRequestAndUpdatesCredentials()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(StatusValues.Subscription.Active, activeBoothAllowance: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var wrongCurrentResponse = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword = "wrong-password",
+            newPassword = "Updated123!",
+            confirmPassword = "Updated123!"
+        });
+        var mismatchResponse = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword = PhotoBizApiFactory.Password,
+            newPassword = "Updated123!",
+            confirmPassword = "Different123!"
+        });
+        var shortPasswordResponse = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword = PhotoBizApiFactory.Password,
+            newPassword = "short",
+            confirmPassword = "short"
+        });
+        var samePasswordResponse = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword = PhotoBizApiFactory.Password,
+            newPassword = PhotoBizApiFactory.Password,
+            confirmPassword = PhotoBizApiFactory.Password
+        });
+        var changedSession = await ChangePasswordAsync(
+            client,
+            PhotoBizApiFactory.Password,
+            "Updated123!",
+            "Updated123!");
+
+        Assert.Equal(HttpStatusCode.BadRequest, wrongCurrentResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mismatchResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, shortPasswordResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, samePasswordResponse.StatusCode);
+        Assert.False(changedSession.MustChangePassword);
+
+        var oldPasswordClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var oldPasswordResponse = await oldPasswordClient.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = seed.ClientOwnerEmail,
+            password = PhotoBizApiFactory.Password
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, oldPasswordResponse.StatusCode);
+
+        var newPasswordClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        await LoginAsync(newPasswordClient, seed.ClientOwnerEmail, "Updated123!");
+        var overview = await newPasswordClient.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.NotNull(overview);
+        Assert.Contains(overview.AuditLogs, item => item.Action == "user.password_changed");
+    }
+
+    private static async Task LoginAsync(HttpClient client, string email, string password = PhotoBizApiFactory.Password)
     {
         var response = await client.PostAsJsonAsync("/api/auth/login", new
         {
             email,
-            password = PhotoBizApiFactory.Password
+            password
         });
         response.EnsureSuccessStatusCode();
 
@@ -1508,9 +1596,34 @@ public sealed class PhotoBizManagementApiTests
         client.DefaultRequestHeaders.Add("Cookie", cookies.Select(cookie => cookie.Split(';', 2)[0]));
     }
 
+    private static async Task<AuthSessionResponse> ChangePasswordAsync(
+        HttpClient client,
+        string currentPassword,
+        string newPassword,
+        string confirmPassword)
+    {
+        var response = await client.PostAsJsonAsync("/api/auth/change-password", new
+        {
+            currentPassword,
+            newPassword,
+            confirmPassword
+        });
+        response.EnsureSuccessStatusCode();
+
+        Assert.True(response.Headers.TryGetValues("Set-Cookie", out var cookies));
+        client.DefaultRequestHeaders.Remove("Cookie");
+        client.DefaultRequestHeaders.Add("Cookie", cookies.Select(cookie => cookie.Split(';', 2)[0]));
+
+        var session = await response.Content.ReadFromJsonAsync<AuthSessionResponse>();
+
+        Assert.NotNull(session);
+        return session;
+    }
+
     private sealed class PhotoBizApiFactory : WebApplicationFactory<Program>
     {
         public const string Password = "Test12345!";
+        public const string DefaultInitialPassword = "PhotoBIZ!123";
 
         private readonly string databaseName = $"photobiz-api-tests-{Guid.NewGuid()}";
 

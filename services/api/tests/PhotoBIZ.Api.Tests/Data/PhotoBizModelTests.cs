@@ -86,6 +86,20 @@ public sealed class PhotoBizModelTests
     }
 
     [Fact]
+    public void UserMustChangePasswordDefaultsToFalse()
+    {
+        using var dbContext = CreateDbContext();
+        var entityType = dbContext.Model.FindEntityType(typeof(ApplicationUser));
+        Assert.NotNull(entityType);
+
+        var property = entityType.FindProperty(nameof(ApplicationUser.MustChangePassword));
+
+        Assert.NotNull(property);
+        Assert.Equal("must_change_password", property.GetColumnName());
+        Assert.Equal(false, property.GetDefaultValue());
+    }
+
+    [Fact]
     public void ModelCanGeneratePostgresCreateScript()
     {
         using var dbContext = CreateDbContext();

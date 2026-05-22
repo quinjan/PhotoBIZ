@@ -146,6 +146,7 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(user => user.PasswordHash).HasMaxLength(1000);
             entity.Property(user => user.Role).HasMaxLength(60);
             entity.Property(user => user.Status).HasMaxLength(40);
+            entity.Property(user => user.MustChangePassword).HasDefaultValue(false);
             entity.Property(user => user.CanApproveCash).HasDefaultValue(true);
             entity.Property(user => user.CanReturnBoothToWelcome).HasDefaultValue(true);
             entity.Property(user => user.CanCancelTransaction).HasDefaultValue(true);

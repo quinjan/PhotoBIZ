@@ -325,7 +325,7 @@ Stack:
 
 Responsibilities:
 
-- Authentication screens.
+- Authentication screens, including first-login forced password change.
 - Application Owner platform dashboard.
 - Client account management.
 - Application Owner client onboarding, including first Client Owner credential creation.
@@ -338,11 +338,12 @@ Responsibilities:
 - Booth offer management.
 - Booth UI theme/session appearance management.
 - Client payment resource setup and booth payment option assignment.
+- Self-service password change for every authenticated Admin Web role.
 - Transaction monitoring.
 - Reports.
 - Audit logs.
 
-The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Recent dashboard and Cashier POS history surfaces present these records as booth activity, grouping paid sales separately from session usage so zero-amount `COVERED_PLAN_SESSION` rows display as included covered sessions rather than PHP 0 sales. Session-count covered-session activity rows use a historical sequence number for that transaction, so older rows do not repeat the activation's current `sessionsUsed` total. The dashboard Booth Status list also shows package context: session-count packages display the latest completed covered-session sequence and timed packages display minutes remaining plus the exact expiration time in Philippine time. The full Transactions page remains the ledger-style transaction view. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Client Owner and Client Admin navigation is scoped to their tenant operations: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, and Audit Log. Packages are the client-facing UI label for booth offers and include the tenant-scoped print entitlement list used by package creation/editing. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, and their own audit events.
+The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Recent dashboard and Cashier POS history surfaces present these records as booth activity, grouping paid sales separately from session usage so zero-amount `COVERED_PLAN_SESSION` rows display as included covered sessions rather than PHP 0 sales. Session-count covered-session activity rows use a historical sequence number for that transaction, so older rows do not repeat the activation's current `sessionsUsed` total. The dashboard Booth Status list also shows package context: session-count packages display the latest completed covered-session sequence and timed packages display minutes remaining plus the exact expiration time in Philippine time. The full Transactions page remains the ledger-style transaction view. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, Account, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Client Owner and Client Admin navigation is scoped to their tenant operations: Dashboard, Users, Locations, Booths, Packages, Transactions, Reports, Settings, Account, and Audit Log. Packages are the client-facing UI label for booth offers and include the tenant-scoped print entitlement list used by package creation/editing. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, Account, and their own audit events.
 Client owners and client admins may create cashier users before booth assignment; the actual cashier-to-booth link is set during booth registration in the Admin Web flow. Cashier operational permissions are stored on the user record and returned through the session and overview APIs. Admin Web user detail management edits the cashier permission flags for approving cash, cancelling transactions, and returning the assigned booth to welcome. Backend cashier endpoints enforce those flags for cashier users; Client Owner/Admin roles continue to rely on role-based authorization for the same operational recovery paths.
 The Admin Web Booths page is an inventory table, not an inline operations panel. Manage Booth is the only setup surface for booth record edits, cashier reassignment, active package selection, cash payment assignment, and Booth UI appearance. The detail surface uses two tabs: Details for booth record, assigned cashier, active package, and payment setup; Session Setup for session copy, theme preset, background image upload, and preview. `/api/admin/overview` includes tenant-scoped booth appearance summaries so the detail page can load current appearance without calling the kiosk-token endpoint. Booth updates may change the assigned cashier, but the backend must enforce same-tenant users, `CASHIER` role, and one booth per cashier.
 
@@ -550,6 +551,7 @@ erDiagram
     string name
     string email
     string password_hash
+    bool must_change_password
     string role
     string status
   }
@@ -804,6 +806,8 @@ flowchart TB
 - Cache/locks/backplane: Redis.
 - Windows Agent: .NET 10 LTS Windows Service.
 - Admin authentication: email/password login with secure HttpOnly cookie sessions.
+- New Admin Web users created through client onboarding or user management receive the default initial password `PhotoBIZ!123` and must change it before accessing admin or cashier workflows.
+- All authenticated Admin Web users can change their own password from the account surface.
 - Booth UI authentication: booth-scoped kiosk token issued during booth registration or Agent launch. No cashier unlock/login is required to show the Booth UI.
 - Agent authentication: booth agent credential issued during pairing.
 - Agent availability: the backend treats a booth as `OFFLINE` when the agent has not heartbeated within 60 seconds. Agent heartbeat restores an offline booth to `WELCOME`; kiosk token access remains valid but transaction creation is blocked while offline.
@@ -825,6 +829,7 @@ Each booth is paired to exactly one environment.
 - Store password hashes with a strong hashing algorithm.
 - HTTPS is required in production.
 - Admin sessions use secure HttpOnly cookies.
+- Users marked for password change may access only auth/session/logout/password-change endpoints until the password is updated.
 - Agent credentials are separate from user credentials.
 - Treat booth agents as privileged clients.
 - Enforce tenant isolation for all client-scoped data.

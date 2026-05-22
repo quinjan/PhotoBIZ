@@ -98,6 +98,7 @@ public sealed class ApplicationUser
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = StatusValues.User.ClientOwner;
     public string Status { get; set; } = StatusValues.User.Active;
+    public bool MustChangePassword { get; set; }
     public bool CanApproveCash { get; set; } = true;
     public bool CanReturnBoothToWelcome { get; set; } = true;
     public bool CanCancelTransaction { get; set; } = true;

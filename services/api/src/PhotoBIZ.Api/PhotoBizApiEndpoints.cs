@@ -13,15 +13,19 @@ namespace PhotoBIZ.Api;
 public static class PhotoBizApiEndpoints
 {
     private static readonly TimeSpan RecentBoothTerminalTransactionVisibility = TimeSpan.FromMinutes(5);
+    private const string DefaultInitialPassword = "PhotoBIZ!123";
+    private const int MinimumPasswordLength = 8;
 
     public static void MapPhotoBizApi(this IEndpointRouteBuilder app)
     {
         var auth = app.MapGroup("/api/auth");
         auth.MapPost("/login", LoginAsync);
+        auth.MapPost("/change-password", ChangePasswordAsync).RequireAuthorization();
         auth.MapPost("/logout", (Delegate)LogoutAsync).RequireAuthorization();
         auth.MapGet("/session", GetSessionAsync).RequireAuthorization();
 
         var admin = app.MapGroup("/api/admin").RequireAuthorization();
+        admin.AddEndpointFilter(RequireCompletedPasswordChangeAsync);
         admin.MapGet("/overview", GetOverviewAsync);
         admin.MapPost("/clients", CreateClientAsync);
         admin.MapPost("/clients/onboard", CreateClientWithOwnerAsync);
@@ -53,6 +57,7 @@ public static class PhotoBizApiEndpoints
         boothUi.MapPost("/return-to-welcome", ReturnBoothUiToWelcomeAsync);
 
         var cashier = app.MapGroup("/api/cashier").RequireAuthorization();
+        cashier.AddEndpointFilter(RequireCompletedPasswordChangeAsync);
         cashier.MapPost("/transactions/{transactionId:guid}/approve-cash", ApproveCashAsync);
         cashier.MapPost("/transactions/{transactionId:guid}/cancel", CancelTransactionAsync);
         cashier.MapPost("/transactions/{parentTransactionId:guid}/extra-prints", CreateExtraPrintAddOnAsync);
@@ -98,28 +103,68 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Name),
-            new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, user.Role)
-        };
+        await SignInUserAsync(httpContext, user);
 
-        if (user.ClientAccountId.HasValue)
+        return TypedResults.Ok(ToSessionResponse(user));
+    }
+
+    private static async Task<Results<Ok<AuthSessionResponse>, ValidationProblem>> ChangePasswordAsync(
+        ChangePasswordRequest request,
+        HttpContext httpContext,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        IPasswordHasher<ApplicationUser> passwordHasher,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+        var user = await dbContext.Users.SingleAsync(item => item.Id == currentUser.UserId, cancellationToken);
+        var currentPassword = request.CurrentPassword ?? string.Empty;
+        var newPassword = request.NewPassword ?? string.Empty;
+        var confirmPassword = request.ConfirmPassword ?? string.Empty;
+
+        var currentVerification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, currentPassword);
+
+        if (currentVerification == PasswordVerificationResult.Failed)
         {
-            claims.Add(new Claim("client_account_id", user.ClientAccountId.Value.ToString()));
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["currentPassword"] = ["The current password is incorrect."]
+            });
         }
 
-        if (user.AssignedBoothId.HasValue)
+        if (newPassword.Length < MinimumPasswordLength)
         {
-            claims.Add(new Claim("assigned_booth_id", user.AssignedBoothId.Value.ToString()));
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["newPassword"] = [$"Password must be at least {MinimumPasswordLength} characters."]
+            });
         }
 
-        var principal = new ClaimsPrincipal(
-            new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+        if (newPassword != confirmPassword)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["confirmPassword"] = ["Password confirmation does not match."]
+            });
+        }
 
-        await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        var newPasswordVerification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, newPassword);
+
+        if (newPasswordVerification != PasswordVerificationResult.Failed)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["newPassword"] = ["New password must be different from the current password."]
+            });
+        }
+
+        user.PasswordHash = passwordHasher.HashPassword(user, newPassword);
+        user.MustChangePassword = false;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await auditService.WriteAsync(currentUser, "user.password_changed", nameof(ApplicationUser), user.Id, new { }, cancellationToken);
+        await SignInUserAsync(httpContext, user);
 
         return TypedResults.Ok(ToSessionResponse(user));
     }
@@ -128,6 +173,33 @@ public static class PhotoBizApiEndpoints
     {
         await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         return TypedResults.Ok();
+    }
+
+    private static async ValueTask<object?> RequireCompletedPasswordChangeAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var principal = context.HttpContext.User;
+
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            return await next(context);
+        }
+
+        var currentUser = principal.GetRequiredCurrentUser();
+        var dbContext = context.HttpContext.RequestServices.GetRequiredService<PhotoBizDbContext>();
+        var mustChangePassword = await dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == currentUser.UserId)
+            .Select(user => user.MustChangePassword)
+            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+
+        if (mustChangePassword)
+        {
+            return TypedResults.Forbid();
+        }
+
+        return await next(context);
     }
 
     private static async Task<Results<Ok<AuthSessionResponse>, UnauthorizedHttpResult>> GetSessionAsync(
@@ -263,16 +335,13 @@ public static class PhotoBizApiEndpoints
         var clientName = request.ClientName?.Trim() ?? string.Empty;
         var ownerName = request.OwnerName?.Trim() ?? string.Empty;
         var ownerEmail = request.OwnerEmail?.Trim() ?? string.Empty;
-        var ownerPassword = request.OwnerPassword ?? string.Empty;
-
         if (string.IsNullOrWhiteSpace(clientName) ||
             string.IsNullOrWhiteSpace(ownerName) ||
-            string.IsNullOrWhiteSpace(ownerEmail) ||
-            string.IsNullOrWhiteSpace(ownerPassword))
+            string.IsNullOrWhiteSpace(ownerEmail))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["client"] = ["Client name, owner name, owner email, and owner password are required."]
+                ["client"] = ["Client name, owner name, and owner email are required."]
             });
         }
 
@@ -303,9 +372,10 @@ public static class PhotoBizApiEndpoints
             Email = ownerEmail,
             Role = StatusValues.User.ClientOwner,
             Status = StatusValues.User.Active,
+            MustChangePassword = true,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        owner.PasswordHash = passwordHasher.HashPassword(owner, ownerPassword);
+        owner.PasswordHash = passwordHasher.HashPassword(owner, DefaultInitialPassword);
 
         dbContext.ClientAccounts.Add(client);
         dbContext.Users.Add(owner);
@@ -671,9 +741,10 @@ public static class PhotoBizApiEndpoints
             CanApproveCash = IsCashierPermissionEnabled(request.Role, request.CanApproveCash),
             CanReturnBoothToWelcome = IsCashierPermissionEnabled(request.Role, request.CanReturnBoothToWelcome),
             CanCancelTransaction = IsCashierPermissionEnabled(request.Role, request.CanCancelTransaction),
+            MustChangePassword = true,
             CreatedAt = DateTimeOffset.UtcNow
         };
-        user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
+        user.PasswordHash = passwordHasher.HashPassword(user, DefaultInitialPassword);
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -2464,9 +2535,36 @@ public static class PhotoBizApiEndpoints
             user.Role,
             user.ClientAccountId,
             user.AssignedBoothId,
+            user.MustChangePassword,
             user.Role == StatusValues.User.Cashier && user.CanApproveCash,
             user.Role == StatusValues.User.Cashier && user.CanReturnBoothToWelcome,
             user.Role == StatusValues.User.Cashier && user.CanCancelTransaction);
+    }
+
+    private static async Task SignInUserAsync(HttpContext httpContext, ApplicationUser user)
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Name),
+            new(ClaimTypes.Email, user.Email),
+            new(ClaimTypes.Role, user.Role)
+        };
+
+        if (user.ClientAccountId.HasValue)
+        {
+            claims.Add(new Claim("client_account_id", user.ClientAccountId.Value.ToString()));
+        }
+
+        if (user.AssignedBoothId.HasValue)
+        {
+            claims.Add(new Claim("assigned_booth_id", user.AssignedBoothId.Value.ToString()));
+        }
+
+        var principal = new ClaimsPrincipal(
+            new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+
+        await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
     }
 
     private static UserSummary ToUserSummary(ApplicationUser user)
@@ -3297,6 +3395,7 @@ internal static class ClientAccountExtensions
 }
 
 public sealed record LoginRequest(string Email, string Password);
+public sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword, string? ConfirmPassword);
 public sealed record AuthSessionResponse(
     Guid UserId,
     string Name,
@@ -3304,6 +3403,7 @@ public sealed record AuthSessionResponse(
     string Role,
     Guid? ClientAccountId,
     Guid? AssignedBoothId,
+    bool MustChangePassword,
     bool CanApproveCash,
     bool CanReturnBoothToWelcome,
     bool CanCancelTransaction);
@@ -3440,7 +3540,7 @@ public sealed record AuditLogSummary(
     DateTimeOffset CreatedAt);
 
 public sealed record CreateClientRequest(string Name);
-public sealed record CreateClientWithOwnerRequest(string? ClientName, string? OwnerName, string? OwnerEmail, string? OwnerPassword);
+public sealed record CreateClientWithOwnerRequest(string? ClientName, string? OwnerName, string? OwnerEmail);
 public sealed record UpdateClientRequest(string Name, string Status);
 public sealed record CreateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency);
 public sealed record UpdateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency, bool Active);
@@ -3451,7 +3551,6 @@ public sealed record CreateUserRequest(
     Guid? AssignedBoothId,
     string Name,
     string Email,
-    string Password,
     string Role,
     bool? CanApproveCash,
     bool? CanReturnBoothToWelcome,

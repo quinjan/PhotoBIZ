@@ -28,6 +28,51 @@
       }
     </section>
   </main>
+} @else if (session()?.mustChangePassword) {
+  <main class="auth-screen">
+    <section class="auth-hero">
+      <div class="auth-brand-lockup">
+        <div class="auth-brand-mark">PB</div>
+        <div class="auth-brand-name">PhotoBIZ</div>
+      </div>
+    </section>
+    <section class="auth-panel">
+      <div>
+        <h1 class="admin-title">Update password</h1>
+      </div>
+      <label class="field">
+        <span>CURRENT PASSWORD</span>
+        <input
+          type="password"
+          [ngModel]="changePasswordCurrent()"
+          (ngModelChange)="changePasswordCurrent.set($event)"
+        />
+      </label>
+      <label class="field">
+        <span>NEW PASSWORD</span>
+        <input
+          type="password"
+          [ngModel]="changePasswordNew()"
+          (ngModelChange)="changePasswordNew.set($event)"
+        />
+      </label>
+      <label class="field">
+        <span>CONFIRM NEW PASSWORD</span>
+        <input
+          type="password"
+          [ngModel]="changePasswordConfirm()"
+          (ngModelChange)="changePasswordConfirm.set($event)"
+        />
+      </label>
+      <button type="button" class="button primary fill" (click)="changeOwnPassword()">
+        Update Password
+      </button>
+      <button type="button" class="button fill" (click)="logout()">Sign Out</button>
+      @if (error()) {
+        <p class="error">{{ error() }}</p>
+      }
+    </section>
+  </main>
 } @else {
   <main class="admin-shell">
     <aside class="side">
@@ -50,6 +95,7 @@
       <div class="side-footer">
         <strong>{{ session()?.name }}</strong>
         <span>{{ session()?.role }}</span>
+        <button type="button" class="button dark" (click)="setView('account')">Account</button>
         <button type="button" class="button dark" (click)="logout()">Sign Out</button>
       </div>
     </aside>
@@ -217,6 +263,60 @@
 
       @if (error()) {
         <p class="error banner">{{ error() }}</p>
+      }
+
+      @if (activeView() === 'account') {
+        <section class="content-grid two">
+          <article class="card form-card">
+            <div class="section-head"><h2 class="section-title">Change Password</h2></div>
+            <label class="field">
+              <span>CURRENT PASSWORD</span>
+              <input
+                type="password"
+                [ngModel]="changePasswordCurrent()"
+                name="changePasswordCurrent"
+                (ngModelChange)="changePasswordCurrent.set($event)"
+              />
+            </label>
+            <label class="field">
+              <span>NEW PASSWORD</span>
+              <input
+                type="password"
+                [ngModel]="changePasswordNew()"
+                name="changePasswordNew"
+                (ngModelChange)="changePasswordNew.set($event)"
+              />
+            </label>
+            <label class="field">
+              <span>CONFIRM NEW PASSWORD</span>
+              <input
+                type="password"
+                [ngModel]="changePasswordConfirm()"
+                name="changePasswordConfirm"
+                (ngModelChange)="changePasswordConfirm.set($event)"
+              />
+            </label>
+            <button type="button" class="button primary fill" (click)="changeOwnPassword()">
+              Save Password
+            </button>
+          </article>
+
+          <article class="card form-card">
+            <div class="section-head"><h2 class="section-title">Signed In</h2></div>
+            <label class="field">
+              <span>NAME</span>
+              <input [value]="session()?.name ?? ''" readonly />
+            </label>
+            <label class="field">
+              <span>EMAIL</span>
+              <input [value]="session()?.email ?? ''" readonly />
+            </label>
+            <label class="field">
+              <span>ROLE</span>
+              <input [value]="roleLabel()" readonly />
+            </label>
+          </article>
+        </section>
       }
 
       @if (isApplicationOwner()) {
@@ -629,7 +729,10 @@
                 }
               </tbody>
             </table>
-            @if (pageInfo('subscriptions-grid', overview()?.subscriptionPlans?.length ?? 0); as page) {
+            @if (
+              pageInfo('subscriptions-grid', overview()?.subscriptionPlans?.length ?? 0);
+              as page
+            ) {
               @if (page.totalPages > 1) {
                 <footer class="section-head">
                   <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
@@ -886,25 +989,25 @@
               </header>
               <div class="table-list">
                 @for (
-                  transaction of pagedItems(
-                    'dashboard-activity',
-                    dashboardActivityTransactions()
-                  );
+                  transaction of pagedItems('dashboard-activity', dashboardActivityTransactions());
                   track transaction.id
                 ) {
                   @if (transactionActivityFor(transaction); as activity) {
-                  <div class="row">
-                    <div>
-                      <strong>{{ activity.title }}</strong>
-                      <span>{{ activity.detail }}</span>
-                      <small class="activity-meta">{{ activity.auditText }}</small>
+                    <div class="row">
+                      <div>
+                        <strong>{{ activity.title }}</strong>
+                        <span>{{ activity.detail }}</span>
+                        <small class="activity-meta">{{ activity.auditText }}</small>
+                      </div>
+                      <span class="pill">{{ activity.value }}</span>
                     </div>
-                    <span class="pill">{{ activity.value }}</span>
-                  </div>
                   }
                 }
               </div>
-              @if (pageInfo('dashboard-activity', dashboardActivityTransactions().length); as page) {
+              @if (
+                pageInfo('dashboard-activity', dashboardActivityTransactions().length);
+                as page
+              ) {
                 @if (page.totalPages > 1) {
                   <footer class="section-head">
                     <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
@@ -1299,7 +1402,10 @@
                 </tr>
               </thead>
               <tbody>
-                @for (offer of pagedItems('packages-grid', overview()?.offers ?? []); track offer.id) {
+                @for (
+                  offer of pagedItems('packages-grid', overview()?.offers ?? []);
+                  track offer.id
+                ) {
                   <tr>
                     <td>
                       <strong>{{ offer.name }}</strong
@@ -1447,10 +1553,7 @@
             <div class="section-head">
               <h2 class="section-title">Package Definition</h2>
               @if (selectedPackage()) {
-                <span
-                  class="status"
-                  [class.green]="packageActive()"
-                  [class.red]="!packageActive()"
+                <span class="status" [class.green]="packageActive()" [class.red]="!packageActive()"
                   ><span class="dot"></span>{{ packageActive() ? 'ACTIVE' : 'INACTIVE' }}</span
                 >
               }
@@ -1590,7 +1693,9 @@
                     @let cashier = assignedCashierFor(booth.id);
                     @let activation = selectedActivationFor(booth.id);
                     <tr>
-                      <td><strong>{{ booth.name }}</strong></td>
+                      <td>
+                        <strong>{{ booth.name }}</strong>
+                      </td>
                       <td>{{ locationNameFor(booth.locationId) }}</td>
                       <td>{{ booth.code }}</td>
                       <td>{{ booth.currentState }}</td>
@@ -1726,7 +1831,9 @@
                   </article>
 
                   <article class="card form-card">
-                    <div class="section-head"><h2 class="section-title">Package And Payment</h2></div>
+                    <div class="section-head">
+                      <h2 class="section-title">Package And Payment</h2>
+                    </div>
                     <label class="field">
                       <span>ACTIVE PACKAGE</span>
                       <select
@@ -1745,7 +1852,10 @@
                         <strong>Cash Payment</strong>
                         <span>Runtime Booth UI payment assignment</span>
                       </div>
-                      <span class="status" [class.green]="cashAssignmentFor(booth.id)?.runtimeEnabled">
+                      <span
+                        class="status"
+                        [class.green]="cashAssignmentFor(booth.id)?.runtimeEnabled"
+                      >
                         <span class="dot"></span>{{ paymentLabelFor(booth.id) }}
                       </span>
                     </div>
@@ -1981,7 +2091,10 @@
                 }
               </div>
               @if (
-                pageInfo('transactions-package-sales', overview()?.reports?.offerSales?.length ?? 0);
+                pageInfo(
+                  'transactions-package-sales',
+                  overview()?.reports?.offerSales?.length ?? 0
+                );
                 as page
               ) {
                 @if (page.totalPages > 1) {
@@ -2109,7 +2222,10 @@
                   </div>
                 }
               </div>
-              @if (pageInfo('report-booth-sales', overview()?.reports?.boothSales?.length ?? 0); as page) {
+              @if (
+                pageInfo('report-booth-sales', overview()?.reports?.boothSales?.length ?? 0);
+                as page
+              ) {
                 @if (page.totalPages > 1) {
                   <footer class="section-head">
                     <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
@@ -2153,7 +2269,10 @@
                   </div>
                 }
               </div>
-              @if (pageInfo('report-offer-sales', overview()?.reports?.offerSales?.length ?? 0); as page) {
+              @if (
+                pageInfo('report-offer-sales', overview()?.reports?.offerSales?.length ?? 0);
+                as page
+              ) {
                 @if (page.totalPages > 1) {
                   <footer class="section-head">
                     <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
@@ -2351,14 +2470,14 @@
                   track transaction.id
                 ) {
                   @if (transactionActivityFor(transaction); as activity) {
-                  <div class="row">
-                    <div>
-                      <strong>{{ activity.title }}</strong>
-                      <span>{{ activity.detail }}</span>
-                      <small class="activity-meta">{{ activity.auditText }}</small>
+                    <div class="row">
+                      <div>
+                        <strong>{{ activity.title }}</strong>
+                        <span>{{ activity.detail }}</span>
+                        <small class="activity-meta">{{ activity.auditText }}</small>
+                      </div>
+                      <span class="pill">{{ activity.value }}</span>
                     </div>
-                    <span class="pill">{{ activity.value }}</span>
-                  </div>
                   }
                 }
               </div>
@@ -2425,14 +2544,10 @@
               (ngModelChange)="ownerEmail.set($event)"
           /></label>
         </div>
-        <label class="field"
-          ><span>OWNER PASSWORD</span
-          ><input
-            type="password"
-            [ngModel]="ownerPassword()"
-            name="ownerPassword"
-            (ngModelChange)="ownerPassword.set($event)"
-        /></label>
+        <div class="callout">
+          Default password will be set to <strong>{{ defaultInitialPassword }}</strong
+          >. The owner must update it on first sign-in.
+        </div>
         <button type="submit" class="button primary fill">Create Client And Owner</button>
       </form>
     </section>
@@ -2529,11 +2644,7 @@
                 Delete Location
               </button>
             } @else {
-              <button
-                type="button"
-                class="button green-button"
-                (click)="restoreLocation(location)"
-              >
+              <button type="button" class="button green-button" (click)="restoreLocation(location)">
                 Restore Location
               </button>
             }
@@ -2552,9 +2663,7 @@
           <h2 class="section-title">
             {{ selectedPrintEntitlement() ? 'Manage Print Entitlement' : 'New Print Entitlement' }}
           </h2>
-          <button type="button" class="button" (click)="closePrintEntitlementModal()">
-            Close
-          </button>
+          <button type="button" class="button" (click)="closePrintEntitlementModal()">Close</button>
         </div>
         @if (selectedPrintEntitlement(); as entitlement) {
           <span
@@ -2696,8 +2805,9 @@
           </section>
         }
         <div class="callout">
-          Temporary password will be set to <strong>{{ cashierPassword() }}</strong
-          >. Cashier booth assignment happens during booth registration.
+          Default password will be set to <strong>{{ defaultInitialPassword }}</strong
+          >. The user must update it on first sign-in. Cashier booth assignment happens during booth
+          registration.
         </div>
         <button type="submit" class="button primary fill">Create User</button>
       </form>
@@ -2772,4 +2882,3 @@
 }
 
 <router-outlet />
-
