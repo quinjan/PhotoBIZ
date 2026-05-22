@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoBIZ.Api.Data;
@@ -11,9 +12,11 @@ using PhotoBIZ.Api.Data;
 namespace PhotoBIZ.Api.Data.Migrations
 {
     [DbContext(typeof(PhotoBizDbContext))]
-    partial class PhotoBizDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260522121201_EnforceSingleClientOwner")]
+    partial class EnforceSingleClientOwner
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

@@ -92,8 +92,7 @@ public sealed class PhotoBizManagementApiTests
 
         var updateResponse = await client.PutAsJsonAsync($"/api/admin/print-entitlements/{created.Id}", new
         {
-            name = "4 pcs 2x6 premium",
-            status = StatusValues.PrintEntitlement.Inactive
+            name = "4 pcs 2x6 premium"
         });
 
         updateResponse.EnsureSuccessStatusCode();
@@ -101,7 +100,51 @@ public sealed class PhotoBizManagementApiTests
 
         Assert.NotNull(updated);
         Assert.Equal("4 pcs 2x6 premium", updated.Name);
-        Assert.Equal(StatusValues.PrintEntitlement.Inactive, updated.Status);
+        Assert.Equal(StatusValues.PrintEntitlement.Active, updated.Status);
+    }
+
+    [Fact]
+    public async Task ClientOwnerCanDeleteUnusedPrintEntitlementOnly()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            includeOffer: true);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var unusedCreateResponse = await client.PostAsJsonAsync("/api/admin/print-entitlements", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "4 pcs 2x6"
+        });
+        var usedCreateResponse = await client.PostAsJsonAsync("/api/admin/print-entitlements", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = StatusValues.PrintEntitlement.TwoBySixOrOneByFour
+        });
+
+        unusedCreateResponse.EnsureSuccessStatusCode();
+        usedCreateResponse.EnsureSuccessStatusCode();
+        var unused = await unusedCreateResponse.Content.ReadFromJsonAsync<PrintEntitlementSummary>();
+        var used = await usedCreateResponse.Content.ReadFromJsonAsync<PrintEntitlementSummary>();
+
+        Assert.NotNull(unused);
+        Assert.NotNull(used);
+
+        var unusedDeleteResponse = await client.DeleteAsync($"/api/admin/print-entitlements/{unused.Id}");
+        var usedDeleteResponse = await client.DeleteAsync($"/api/admin/print-entitlements/{used.Id}");
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.Equal(HttpStatusCode.NoContent, unusedDeleteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, usedDeleteResponse.StatusCode);
+        Assert.NotNull(overview);
+        Assert.DoesNotContain(overview.PrintEntitlements, entitlement => entitlement.Id == unused.Id);
+        Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Id == used.Id);
     }
 
     [Fact]
@@ -366,6 +409,138 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task NormalUserManagementCannotCreatePromoteOrSelfDeactivateClientOwner()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var createOwnerResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Second Owner",
+            email = "second-owner@photobiz.test",
+            role = StatusValues.User.ClientOwner
+        });
+        var createAdminResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Future Owner",
+            email = "future-owner@photobiz.test",
+            role = StatusValues.User.ClientAdmin
+        });
+        createAdminResponse.EnsureSuccessStatusCode();
+        var admin = await createAdminResponse.Content.ReadFromJsonAsync<UserSummary>();
+        Assert.NotNull(admin);
+
+        var promoteResponse = await client.PutAsJsonAsync($"/api/admin/users/{admin.Id}", new
+        {
+            assignedBoothId = (Guid?)null,
+            name = admin.Name,
+            email = admin.Email,
+            role = StatusValues.User.ClientOwner,
+            status = StatusValues.User.Active
+        });
+        var selfDeactivateResponse = await client.PutAsJsonAsync($"/api/admin/users/{seed.ClientOwnerId}", new
+        {
+            assignedBoothId = (Guid?)null,
+            name = "Client Owner",
+            email = seed.ClientOwnerEmail,
+            role = StatusValues.User.ClientOwner,
+            status = StatusValues.User.Inactive
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, createOwnerResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, promoteResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, selfDeactivateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task ApplicationOwnerCanTransferClientOwner()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var applicationOwnerEmail = await factory.SeedApplicationOwnerAsync();
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var createAdminResponse = await client.PostAsJsonAsync("/api/admin/users", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "New Owner",
+            email = "new-owner@photobiz.test",
+            role = StatusValues.User.ClientAdmin
+        });
+        createAdminResponse.EnsureSuccessStatusCode();
+        var admin = await createAdminResponse.Content.ReadFromJsonAsync<UserSummary>();
+        Assert.NotNull(admin);
+
+        var ownerTransferByClientResponse = await client.PostAsJsonAsync($"/api/admin/clients/{seed.ClientAccountId}/transfer-owner", new
+        {
+            newOwnerUserId = admin.Id
+        });
+
+        await LoginAsync(client, applicationOwnerEmail);
+        var ownerTransferResponse = await client.PostAsJsonAsync($"/api/admin/clients/{seed.ClientAccountId}/transfer-owner", new
+        {
+            newOwnerUserId = admin.Id
+        });
+        ownerTransferResponse.EnsureSuccessStatusCode();
+        var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        Assert.Equal(HttpStatusCode.Forbidden, ownerTransferByClientResponse.StatusCode);
+        Assert.NotNull(overview);
+        Assert.Single(overview.Users, item => item.ClientAccountId == seed.ClientAccountId && item.Role == StatusValues.User.ClientOwner);
+        Assert.Contains(overview.Users, item => item.Id == admin.Id && item.Role == StatusValues.User.ClientOwner);
+        Assert.Contains(overview.Users, item => item.Id == seed.ClientOwnerId && item.Role == StatusValues.User.ClientAdmin);
+    }
+
+    [Fact]
+    public async Task ClientOwnerCashierActionsRequireAssignedBooth()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var unassignedResponse = await client.PostAsJsonAsync($"/api/cashier/booths/{seed.BoothId}/return-to-welcome", new { });
+
+        var assignOwnerResponse = await client.PutAsJsonAsync($"/api/admin/users/{seed.ClientOwnerId}", new
+        {
+            assignedBoothId = seed.BoothId,
+            name = "Client Owner",
+            email = seed.ClientOwnerEmail,
+            role = StatusValues.User.ClientOwner,
+            status = StatusValues.User.Active
+        });
+        assignOwnerResponse.EnsureSuccessStatusCode();
+
+        var assignedResponse = await client.PostAsJsonAsync($"/api/cashier/booths/{seed.BoothId}/return-to-welcome", new { });
+
+        Assert.Equal(HttpStatusCode.Forbidden, unassignedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, assignedResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateBoothCanAssignExistingUnassignedCashier()
     {
         await using var factory = new PhotoBizApiFactory();
@@ -411,7 +586,7 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
-    public async Task UpdateBoothCanChangeCashierAssignmentWithinTenant()
+    public async Task UpdateBoothCanChangePosStaffAssignmentWithinTenant()
     {
         await using var factory = new PhotoBizApiFactory();
         var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -458,7 +633,7 @@ public sealed class PhotoBizManagementApiTests
             status = StatusValues.Booth.Active,
             cashierUserId = cashier.Id
         });
-        var nonCashierResponse = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
+        var adminAssignmentResponse = await client.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
         {
             locationId = seed.LocationId,
             name = "Updated Booth",
@@ -477,11 +652,13 @@ public sealed class PhotoBizManagementApiTests
         var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
 
         Assert.Equal(HttpStatusCode.OK, assignResponse.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, nonCashierResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, adminAssignmentResponse.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, crossTenantResponse.StatusCode);
         Assert.NotNull(overview);
-        var assignedCashier = Assert.Single(overview.Users, item => item.Id == cashier.Id);
-        Assert.Equal(seed.BoothId, assignedCashier.AssignedBoothId);
+        var reassignedCashier = Assert.Single(overview.Users, item => item.Id == cashier.Id);
+        var assignedAdmin = Assert.Single(overview.Users, item => item.Id == admin.Id);
+        Assert.Null(reassignedCashier.AssignedBoothId);
+        Assert.Equal(seed.BoothId, assignedAdmin.AssignedBoothId);
     }
 
     [Fact]
@@ -760,7 +937,7 @@ public sealed class PhotoBizManagementApiTests
             canCancelTransaction = true
         });
         var updatedCashier = await updateUserResponse.Content.ReadFromJsonAsync<UserSummary>();
-        var invalidAdminAssignmentResponse = await client.PutAsJsonAsync($"/api/admin/users/{cashier.Id}", new
+        var adminAssignmentResponse = await client.PutAsJsonAsync($"/api/admin/users/{cashier.Id}", new
         {
             assignedBoothId = seed.BoothId,
             name = "Updated Cashier",
@@ -782,7 +959,7 @@ public sealed class PhotoBizManagementApiTests
         Assert.False(updatedCashier.CanApproveCash);
         Assert.True(updatedCashier.CanReturnBoothToWelcome);
         Assert.True(updatedCashier.CanCancelTransaction);
-        Assert.Equal(HttpStatusCode.BadRequest, invalidAdminAssignmentResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, adminAssignmentResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, disablePaymentResponse.StatusCode);
         Assert.NotNull(config);
         Assert.DoesNotContain(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.Cash);

@@ -3,7 +3,11 @@ import { HttpClient } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterOutlet } from '@angular/router';
-import { BoothStageComponent, BoothStageConfig } from '@photobiz/booth-stage';
+import {
+  BoothStageComponent,
+  BoothStageConfig,
+  BoothStageScreenState,
+} from '@photobiz/booth-stage';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom, interval } from 'rxjs';
 
@@ -201,6 +205,31 @@ type AuditLogSummary = {
 
 type CashierPermissionKey = 'approveCash' | 'returnBoothToWelcome' | 'cancelTransaction';
 type BoothDetailTab = 'details' | 'session';
+type BoothPreviewTransaction = NonNullable<BoothStageConfig['recentTransaction']>;
+type BoothPreviewScreenKey =
+  | 'welcome'
+  | 'payment'
+  | 'cash-waiting'
+  | 'approved'
+  | 'session'
+  | 'completed'
+  | 'expired'
+  | 'cancelled'
+  | 'payment-failed'
+  | 'offline'
+  | 'unavailable'
+  | 'error';
+type BoothPreviewScreen = {
+  readonly key: BoothPreviewScreenKey;
+  readonly label: string;
+  readonly screen: BoothStageScreenState;
+  readonly boothState: string;
+  readonly description: string;
+  readonly activeOfferStatus?: string;
+  readonly recentTransaction?: BoothPreviewTransaction;
+  readonly withoutActiveOffer?: boolean;
+  readonly withoutPaymentOptions?: boolean;
+};
 type PageInfo = {
   readonly page: number;
   readonly totalPages: number;
@@ -294,6 +323,7 @@ export class App {
   protected readonly changePasswordCurrent = signal('');
   protected readonly changePasswordNew = signal('');
   protected readonly changePasswordConfirm = signal('');
+  protected readonly changePasswordModalOpen = signal(false);
   protected readonly clientName = signal('The Memory Box');
   protected readonly planName = signal('Starter Booth');
   protected readonly planPrice = signal(150000);
@@ -320,6 +350,7 @@ export class App {
   protected readonly packageLumaBoothMode = signal('PRINT');
   protected readonly packageActive = signal(true);
   protected readonly printEntitlementModalOpen = signal(false);
+  protected readonly printEntitlementDetailModalOpen = signal(false);
   protected readonly selectedPrintEntitlementDetailId = signal<string | null>(null);
   protected readonly printEntitlementName = signal('');
   protected readonly extraPrintCopies = signal(1);
@@ -331,6 +362,7 @@ export class App {
   protected readonly subscriptionClientId = signal<string | null>(null);
   protected readonly subscriptionPlanId = signal<string | null>(null);
   protected readonly subscriptionStatus = signal('ACTIVE');
+  protected readonly ownerTransferUserId = signal<string | null>(null);
   protected readonly userModalOpen = signal(false);
   protected readonly selectedUserDetailId = signal<string | null>(null);
   protected readonly userDetailName = signal('');
@@ -387,6 +419,7 @@ export class App {
   );
   protected readonly boothAppearanceThemePreset = signal('VINTAGE');
   protected readonly boothAppearanceBackgroundImageDataUrl = signal('');
+  protected readonly boothPreviewScreenKey = signal<BoothPreviewScreenKey>('welcome');
   protected readonly boothThemePresets: readonly {
     readonly value: string;
     readonly label: string;
@@ -394,6 +427,116 @@ export class App {
     { value: 'VINTAGE', label: 'Vintage' },
     { value: 'CLEAN_MODERN', label: 'Clean Modern' },
     { value: 'POP', label: 'Pop' },
+  ];
+  private readonly defaultBoothPreviewScreen: BoothPreviewScreen = {
+    key: 'welcome',
+    label: 'Welcome',
+    screen: 'offer',
+    boothState: 'WELCOME',
+    description: 'Starting offer screen',
+  };
+  protected readonly boothPreviewScreens: readonly BoothPreviewScreen[] = [
+    this.defaultBoothPreviewScreen,
+    {
+      key: 'payment',
+      label: 'Payment',
+      screen: 'payment',
+      boothState: 'OFFER_CONFIRMED',
+      description: 'Cash selection screen',
+    },
+    {
+      key: 'cash-waiting',
+      label: 'Cash Waiting',
+      screen: 'waiting',
+      boothState: 'PAYMENT_PENDING',
+      description: 'Waiting for cashier approval',
+    },
+    {
+      key: 'approved',
+      label: 'Approved',
+      screen: 'approved',
+      boothState: 'STARTING_LUMABOOTH',
+      description: 'Payment confirmed',
+    },
+    {
+      key: 'session',
+      label: 'In Session',
+      screen: 'session',
+      boothState: 'IN_LUMABOOTH_SESSION',
+      description: 'LumaBooth handoff',
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      screen: 'completed',
+      boothState: 'COMPLETED',
+      description: 'Session finish screen',
+    },
+    {
+      key: 'expired',
+      label: 'Expired',
+      screen: 'expired',
+      boothState: 'RETURNING_TO_WELCOME',
+      description: 'Timed-out session state',
+      recentTransaction: {
+        id: 'preview-expired',
+        status: 'EXPIRED',
+        transactionType: 'SESSION_PURCHASE',
+        occurredAt: '2026-01-01T00:00:00Z',
+        reason: null,
+      },
+    },
+    {
+      key: 'cancelled',
+      label: 'Cancelled',
+      screen: 'cancelled',
+      boothState: 'WELCOME',
+      description: 'Cashier cancelled payment',
+      recentTransaction: {
+        id: 'preview-cancelled',
+        status: 'CANCELLED',
+        transactionType: 'SESSION_PURCHASE',
+        occurredAt: '2026-01-01T00:00:00Z',
+        reason: 'The cashier cancelled this payment request.',
+      },
+    },
+    {
+      key: 'payment-failed',
+      label: 'Payment Failed',
+      screen: 'payment-failed',
+      boothState: 'WELCOME',
+      description: 'Failed payment state',
+      recentTransaction: {
+        id: 'preview-payment-failed',
+        status: 'PAYMENT_FAILED',
+        transactionType: 'SESSION_PURCHASE',
+        occurredAt: '2026-01-01T00:00:00Z',
+        reason: 'Payment could not be completed. Please choose another method or ask the cashier.',
+      },
+    },
+    {
+      key: 'offline',
+      label: 'Offline',
+      screen: 'offline',
+      boothState: 'OFFLINE',
+      description: 'Agent offline screen',
+    },
+    {
+      key: 'unavailable',
+      label: 'Unavailable',
+      screen: 'unavailable',
+      boothState: 'WELCOME',
+      description: 'Package needs activation',
+      activeOfferStatus: 'PENDING_PAYMENT',
+      withoutPaymentOptions: true,
+    },
+    {
+      key: 'error',
+      label: 'Error',
+      screen: 'error',
+      boothState: 'ERROR',
+      description: 'Recovery-needed screen',
+    },
   ];
 
   protected readonly selectedClientId = computed(() => this.overview()?.clients[0]?.id ?? null);
@@ -435,7 +578,7 @@ export class App {
   protected readonly assignedBooth = computed(() => {
     const assignedBoothId = this.session()?.assignedBoothId;
     const booths = this.overview()?.booths ?? [];
-    return booths.find((booth) => booth.id === assignedBoothId) ?? booths[0] ?? null;
+    return booths.find((booth) => booth.id === assignedBoothId) ?? null;
   });
   protected readonly dashboardActivityTransactions = computed(() =>
     this.filterActivityTransactions(
@@ -536,12 +679,20 @@ export class App {
   protected readonly cashiers = computed(
     () => this.overview()?.users.filter((user) => user.role === 'CASHIER') ?? [],
   );
-  protected readonly availableCashiers = computed(() =>
-    this.cashiers().filter((user) => !user.assignedBoothId),
+  protected readonly posAssignableUsers = computed(
+    () =>
+      this.overview()?.users.filter(
+        (user) =>
+          user.status === 'ACTIVE' &&
+          ['CLIENT_OWNER', 'CLIENT_ADMIN', 'CASHIER'].includes(user.role),
+      ) ?? [],
   );
-  protected readonly boothDetailCashierOptions = computed(() => {
+  protected readonly availablePosStaff = computed(() =>
+    this.posAssignableUsers().filter((user) => !user.assignedBoothId),
+  );
+  protected readonly boothDetailPosStaffOptions = computed(() => {
     const selectedBoothId = this.selectedBoothDetailId();
-    return this.cashiers().filter(
+    return this.posAssignableUsers().filter(
       (user) => !user.assignedBoothId || user.assignedBoothId === selectedBoothId,
     );
   });
@@ -574,7 +725,7 @@ export class App {
   });
   protected readonly selectedBoothCashier = computed(() => {
     const boothId = this.selectedBoothDetailId();
-    return this.cashiers().find((cashier) => cashier.assignedBoothId === boothId) ?? null;
+    return this.posAssignableUsers().find((user) => user.assignedBoothId === boothId) ?? null;
   });
   protected readonly selectedBoothAppearance = computed(() => {
     const boothId = this.selectedBoothDetailId();
@@ -644,6 +795,33 @@ export class App {
           : [],
     };
   });
+  protected readonly selectedBoothPreviewScreen = computed<BoothPreviewScreen>(
+    () =>
+      this.boothPreviewScreens.find((screen) => screen.key === this.boothPreviewScreenKey()) ??
+      this.defaultBoothPreviewScreen,
+  );
+  protected readonly selectedBoothPreviewConfig = computed<BoothStageConfig | null>(() => {
+    const config = this.boothPreviewConfig();
+    const preview = this.selectedBoothPreviewScreen();
+
+    if (!config) {
+      return null;
+    }
+
+    const activeOffer = preview.withoutActiveOffer
+      ? null
+      : preview.activeOfferStatus && config.activeOffer
+        ? { ...config.activeOffer, activationStatus: preview.activeOfferStatus }
+        : config.activeOffer;
+
+    return {
+      ...config,
+      booth: { ...config.booth, state: preview.boothState },
+      activeOffer,
+      paymentOptions: preview.withoutPaymentOptions ? [] : config.paymentOptions,
+      recentTransaction: preview.recentTransaction ?? null,
+    };
+  });
   protected readonly selectedPackage = computed(() => {
     const selectedId = this.selectedPackageDetailId();
     return this.overview()?.offers.find((offer) => offer.id === selectedId) ?? null;
@@ -677,9 +855,7 @@ export class App {
     ];
   });
   protected readonly packagePrintEntitlementOptions = computed(() => {
-    const names = this.printEntitlements()
-      .filter((entitlement) => entitlement.status === 'ACTIVE')
-      .map((entitlement) => entitlement.name);
+    const names = this.printEntitlements().map((entitlement) => entitlement.name);
     const selectedName = this.packagePrintEntitlement();
 
     if (selectedName && !names.includes(selectedName)) {
@@ -694,6 +870,23 @@ export class App {
   });
   protected isPersistedPrintEntitlement(entitlement: PrintEntitlementSummary | null): boolean {
     return Boolean(entitlement && !entitlement.id.startsWith('default-'));
+  }
+  protected isPrintEntitlementInUse(entitlement: PrintEntitlementSummary): boolean {
+    return Boolean(
+      this.overview()?.offers.some(
+        (offer) =>
+          offer.clientAccountId === entitlement.clientAccountId &&
+          offer.includedPrintEntitlement === entitlement.name,
+      ),
+    );
+  }
+  protected printEntitlementUsageStatus(entitlement: PrintEntitlementSummary): string {
+    return this.isPrintEntitlementInUse(entitlement) ? 'In Use' : 'Not Used';
+  }
+  protected canDeletePrintEntitlement(entitlement: PrintEntitlementSummary): boolean {
+    return (
+      this.isPersistedPrintEntitlement(entitlement) && !this.isPrintEntitlementInUse(entitlement)
+    );
   }
   protected readonly selectedSubscriptionDefinition = computed(() => {
     const selectedId = this.selectedSubscriptionDetailId();
@@ -769,9 +962,8 @@ export class App {
       );
 
       this.session.set(session);
-      this.changePasswordCurrent.set('');
-      this.changePasswordNew.set('');
-      this.changePasswordConfirm.set('');
+      this.resetChangePasswordForm();
+      this.changePasswordModalOpen.set(false);
 
       if (!session.mustChangePassword) {
         await this.loadOverview();
@@ -781,15 +973,24 @@ export class App {
     });
   }
 
+  protected openChangePasswordModal(): void {
+    this.resetChangePasswordForm();
+    this.changePasswordModalOpen.set(true);
+  }
+
+  protected closeChangePasswordModal(): void {
+    this.changePasswordModalOpen.set(false);
+    this.resetChangePasswordForm();
+  }
+
   protected async logout(): Promise<void> {
     await firstValueFrom(
       this.http.post(`${App.apiBaseUrl}/api/auth/logout`, {}, { withCredentials: true }),
     );
     this.session.set(null);
     this.overview.set(null);
-    this.changePasswordCurrent.set('');
-    this.changePasswordNew.set('');
-    this.changePasswordConfirm.set('');
+    this.changePasswordModalOpen.set(false);
+    this.resetChangePasswordForm();
     this.message.set('Signed out.');
   }
 
@@ -887,7 +1088,7 @@ export class App {
   protected openUserModal(): void {
     this.newUserName.set('');
     this.newUserEmail.set('');
-    this.newUserRole.set(this.session()?.role === 'CLIENT_ADMIN' ? 'CLIENT_ADMIN' : 'CLIENT_ADMIN');
+    this.newUserRole.set('CLIENT_ADMIN');
     this.cashierPermissions.set({
       approveCash: true,
       returnBoothToWelcome: true,
@@ -950,20 +1151,33 @@ export class App {
     this.packageExtraPrintPriceCents.set(this.moneyInputToCents(value));
   }
 
-  protected startNewPrintEntitlement(): void {
+  protected openPrintEntitlementsModal(): void {
     this.selectedPrintEntitlementDetailId.set(null);
     this.printEntitlementName.set('');
     this.printEntitlementModalOpen.set(true);
   }
 
+  protected startNewPrintEntitlement(): void {
+    this.selectedPrintEntitlementDetailId.set(null);
+    this.printEntitlementName.set('');
+    this.printEntitlementDetailModalOpen.set(true);
+  }
+
   protected viewPrintEntitlement(entitlement: PrintEntitlementSummary): void {
     this.selectedPrintEntitlementDetailId.set(entitlement.id);
     this.printEntitlementName.set(entitlement.name);
-    this.printEntitlementModalOpen.set(true);
+    this.printEntitlementDetailModalOpen.set(true);
   }
 
   protected closePrintEntitlementModal(): void {
     this.printEntitlementModalOpen.set(false);
+    this.closePrintEntitlementDetailModal();
+  }
+
+  protected closePrintEntitlementDetailModal(): void {
+    this.printEntitlementDetailModalOpen.set(false);
+    this.selectedPrintEntitlementDetailId.set(null);
+    this.printEntitlementName.set('');
   }
 
   protected toggleCashierPermission(key: CashierPermissionKey): void {
@@ -1157,16 +1371,6 @@ export class App {
     });
   }
 
-  protected async createOwner(): Promise<void> {
-    await this.createUser(
-      'CLIENT_OWNER',
-      null,
-      this.ownerName(),
-      this.ownerEmail(),
-      'Client owner created.',
-    );
-  }
-
   protected async createManagedUser(): Promise<void> {
     await this.createUser(
       this.newUserRole(),
@@ -1180,12 +1384,17 @@ export class App {
   }
 
   protected async updateUserStatus(user: UserSummary, status: string): Promise<void> {
+    if (user.id === this.session()?.userId && status === 'INACTIVE') {
+      this.error.set('You cannot deactivate your own account.');
+      return;
+    }
+
     await this.run(async () => {
       await firstValueFrom(
         this.http.put(
           `${App.apiBaseUrl}/api/admin/users/${user.id}`,
           {
-            assignedBoothId: user.role === 'CASHIER' ? user.assignedBoothId : null,
+            assignedBoothId: this.isPosAssignableRole(user.role) ? user.assignedBoothId : null,
             name: user.name,
             email: user.email,
             role: user.role,
@@ -1215,7 +1424,7 @@ export class App {
         this.http.put<UserSummary>(
           `${App.apiBaseUrl}/api/admin/users/${user.id}`,
           {
-            assignedBoothId: role === 'CASHIER' ? user.assignedBoothId : null,
+            assignedBoothId: this.isPosAssignableRole(role) ? user.assignedBoothId : null,
             name: this.userDetailName(),
             email: user.email,
             role,
@@ -1228,6 +1437,29 @@ export class App {
       await this.loadOverview();
       this.syncUserDetail(savedUser);
       this.message.set('User details updated.');
+    });
+  }
+
+  protected async transferClientOwner(clientId: string): Promise<void> {
+    const newOwnerUserId =
+      this.ownerTransferUserId() ?? this.ownerTransferCandidates(clientId)[0]?.id ?? null;
+
+    if (!newOwnerUserId) {
+      this.error.set('Select a user to transfer ownership to.');
+      return;
+    }
+
+    await this.run(async () => {
+      await firstValueFrom(
+        this.http.post(
+          `${App.apiBaseUrl}/api/admin/clients/${clientId}/transfer-owner`,
+          { newOwnerUserId },
+          { withCredentials: true },
+        ),
+      );
+      await this.loadOverview();
+      this.ownerTransferUserId.set(null);
+      this.message.set('Client owner transferred.');
     });
   }
 
@@ -1303,16 +1535,16 @@ export class App {
     });
   }
 
-  protected async deleteLocation(location: LocationSummary): Promise<void> {
+  protected async deactivateLocation(location: LocationSummary): Promise<void> {
     await this.updateLocationStatus(location, 'INACTIVE');
     this.closeLocationModal();
-    this.message.set('Location deleted.');
+    this.message.set('Location deactivated.');
   }
 
-  protected async restoreLocation(location: LocationSummary): Promise<void> {
+  protected async activateLocation(location: LocationSummary): Promise<void> {
     await this.updateLocationStatus(location, 'ACTIVE');
     this.closeLocationModal();
-    this.message.set('Location restored.');
+    this.message.set('Location activated.');
   }
 
   protected async createBooth(): Promise<void> {
@@ -1346,6 +1578,10 @@ export class App {
         agentCredential: response.agentCredential,
       });
       await this.loadOverview();
+      this.closeBoothModal();
+      this.syncBoothDetail(response.booth.id);
+      this.boothDetailTab.set('details');
+      this.activeView.set('booth-detail');
       this.message.set('Booth created and credentials issued.');
     });
   }
@@ -1395,7 +1631,7 @@ export class App {
             name: booth.name,
             code: booth.code,
             status,
-            cashierUserId: this.assignedCashierFor(booth.id)?.id ?? null,
+            cashierUserId: this.assignedPosStaffFor(booth.id)?.id ?? null,
           },
           { withCredentials: true },
         ),
@@ -1405,7 +1641,7 @@ export class App {
     });
   }
 
-  protected async saveBoothRecord(): Promise<void> {
+  protected async saveBoothDetails(): Promise<void> {
     const booth = this.selectedBoothDetail();
 
     if (!booth || !this.boothDetailLocationId()) {
@@ -1423,34 +1659,6 @@ export class App {
             code: this.boothDetailCode(),
             status: this.boothDetailStatus(),
             cashierUserId: this.boothDetailCashierUserId(),
-          },
-          { withCredentials: true },
-        ),
-      );
-      await this.loadOverview();
-      this.syncBoothDetail(updated.id);
-      this.message.set('Booth record saved.');
-    });
-  }
-
-  protected async saveBoothSession(): Promise<void> {
-    const booth = this.selectedBoothDetail();
-
-    if (!booth) {
-      this.error.set('Select a booth first.');
-      return;
-    }
-
-    await this.run(async () => {
-      await firstValueFrom(
-        this.http.put(
-          `${App.apiBaseUrl}/api/admin/booths/${booth.id}/appearance`,
-          {
-            themePreset: this.boothAppearanceThemePreset(),
-            sessionLabel: this.boothAppearanceSessionLabel(),
-            defaultWelcomeHeadline: this.boothAppearanceHeadline(),
-            defaultWelcomeSubtitle: this.boothAppearanceSubtitle(),
-            backgroundImageDataUrl: this.boothAppearanceBackgroundImageDataUrl() || null,
           },
           { withCredentials: true },
         ),
@@ -1478,13 +1686,41 @@ export class App {
       }
 
       await this.loadOverview();
-      this.syncBoothDetail(booth.id);
-      const selectedOffer = this.selectedOfferFor(booth.id);
+      this.syncBoothDetail(updated.id);
+      const selectedOffer = this.selectedOfferFor(updated.id);
       this.message.set(
         selectedOffer?.offerType === 'PER_SESSION'
-          ? 'Booth session saved.'
-          : 'Package saved. Cashier activation is required before customers can start sessions.',
+          ? 'Booth details saved.'
+          : 'Booth details saved. Cashier activation is required before customers can start sessions.',
       );
+    });
+  }
+
+  protected async saveBoothSession(): Promise<void> {
+    const booth = this.selectedBoothDetail();
+
+    if (!booth) {
+      this.error.set('Select a booth first.');
+      return;
+    }
+
+    await this.run(async () => {
+      await firstValueFrom(
+        this.http.put(
+          `${App.apiBaseUrl}/api/admin/booths/${booth.id}/appearance`,
+          {
+            themePreset: this.boothAppearanceThemePreset(),
+            sessionLabel: this.boothAppearanceSessionLabel(),
+            defaultWelcomeHeadline: this.boothAppearanceHeadline(),
+            defaultWelcomeSubtitle: this.boothAppearanceSubtitle(),
+            backgroundImageDataUrl: this.boothAppearanceBackgroundImageDataUrl() || null,
+          },
+          { withCredentials: true },
+        ),
+      );
+      await this.loadOverview();
+      this.syncBoothDetail(booth.id);
+      this.message.set('Session setup saved.');
     });
   }
 
@@ -1577,7 +1813,7 @@ export class App {
           ? await firstValueFrom(
               this.http.put<PrintEntitlementSummary>(
                 `${App.apiBaseUrl}/api/admin/print-entitlements/${selected.id}`,
-                { name, status: selected.status },
+                { name },
                 { withCredentials: true },
               ),
             )
@@ -1590,36 +1826,36 @@ export class App {
             );
 
       await this.loadOverview();
-      this.selectedPrintEntitlementDetailId.set(saved.id);
-      this.printEntitlementName.set(saved.name);
       this.packagePrintEntitlement.set(saved.name);
-      this.printEntitlementModalOpen.set(false);
+      this.closePrintEntitlementDetailModal();
       this.message.set(shouldUpdate ? 'Print entitlement updated.' : 'Print entitlement created.');
     });
   }
 
-  protected async updatePrintEntitlementStatus(
-    entitlement: PrintEntitlementSummary,
-    status: string,
-  ): Promise<void> {
+  protected async deletePrintEntitlement(entitlement: PrintEntitlementSummary): Promise<void> {
     if (!this.isPersistedPrintEntitlement(entitlement)) {
-      this.error.set('Save this print entitlement before changing its status.');
+      this.error.set('Default print entitlements cannot be deleted.');
+      return;
+    }
+
+    if (this.isPrintEntitlementInUse(entitlement)) {
+      this.error.set('Print entitlement is in use by one or more packages.');
       return;
     }
 
     await this.run(async () => {
-      const updated = await firstValueFrom(
-        this.http.put<PrintEntitlementSummary>(
-          `${App.apiBaseUrl}/api/admin/print-entitlements/${entitlement.id}`,
-          { name: entitlement.name, status },
-          { withCredentials: true },
-        ),
+      await firstValueFrom(
+        this.http.delete(`${App.apiBaseUrl}/api/admin/print-entitlements/${entitlement.id}`, {
+          withCredentials: true,
+        }),
       );
       await this.loadOverview();
-      this.viewPrintEntitlement(updated);
-      this.message.set(
-        status === 'ACTIVE' ? 'Print entitlement activated.' : 'Print entitlement deactivated.',
-      );
+
+      if (this.selectedPrintEntitlementDetailId() === entitlement.id) {
+        this.closePrintEntitlementDetailModal();
+      }
+
+      this.message.set('Print entitlement deleted.');
     });
   }
 
@@ -1751,6 +1987,20 @@ export class App {
       this.overview()?.users.find(
         (user) => user.clientAccountId === clientId && user.role === 'CLIENT_OWNER',
       ) ?? null
+    );
+  }
+
+  protected ownerTransferCandidates(clientId: string): readonly UserSummary[] {
+    const currentOwnerId = this.ownerForClient(clientId)?.id ?? null;
+
+    return (
+      this.overview()?.users.filter(
+        (user) =>
+          user.clientAccountId === clientId &&
+          user.status === 'ACTIVE' &&
+          user.id !== currentOwnerId &&
+          this.isPosAssignableRole(user.role),
+      ) ?? []
     );
   }
 
@@ -1890,13 +2140,13 @@ export class App {
     const appearance =
       this.overview()?.appearanceConfigs?.find((item) => item.boothId === booth.id) ?? null;
     const selectedOffer = this.selectedOfferFor(booth.id);
-    const assignedCashier = this.assignedCashierFor(booth.id);
+    const assignedPosStaff = this.assignedPosStaffFor(booth.id);
 
     this.selectedBoothDetailId.set(booth.id);
     this.boothDetailName.set(booth.name);
     this.boothDetailCode.set(booth.code);
     this.boothDetailLocationId.set(booth.locationId);
-    this.boothDetailCashierUserId.set(assignedCashier?.id ?? null);
+    this.boothDetailCashierUserId.set(assignedPosStaff?.id ?? null);
     this.boothDetailStatus.set(booth.status);
     this.boothDetailOfferId.set(selectedOffer?.id ?? this.activeOffers()[0]?.id ?? null);
     this.boothAppearanceSessionLabel.set(appearance?.sessionLabel || 'Self photo booth');
@@ -1913,6 +2163,10 @@ export class App {
 
   protected setBoothDetailTab(tab: BoothDetailTab): void {
     this.boothDetailTab.set(tab);
+  }
+
+  protected setBoothPreviewScreen(screen: BoothPreviewScreenKey): void {
+    this.boothPreviewScreenKey.set(screen);
   }
 
   protected setBoothBackgroundImageFromFile(event: Event): void {
@@ -1986,8 +2240,16 @@ export class App {
     return this.overview()?.booths.find((booth) => booth.id === boothId)?.name ?? 'Unassigned';
   }
 
-  protected assignedCashierFor(boothId: string): UserSummary | null {
-    return this.cashiers().find((cashier) => cashier.assignedBoothId === boothId) ?? null;
+  protected assignedPosStaffFor(boothId: string): UserSummary | null {
+    return this.posAssignableUsers().find((user) => user.assignedBoothId === boothId) ?? null;
+  }
+
+  protected canEditSelectedUserRole(user: UserSummary): boolean {
+    return user.id !== this.session()?.userId && user.role !== 'CLIENT_OWNER';
+  }
+
+  protected canDeactivateUser(user: UserSummary): boolean {
+    return user.id !== this.session()?.userId;
   }
 
   protected activeOfferFor(boothId: string): OfferSummary | null {
@@ -2246,6 +2508,7 @@ export class App {
         view === 'packages' ||
         view === 'package-detail' ||
         view === 'transactions' ||
+        view === 'pos' ||
         view === 'reports' ||
         view === 'settings' ||
         view === 'audit'
@@ -2429,10 +2692,22 @@ export class App {
     canCancelTransaction: boolean;
   } {
     return {
-      canApproveCash: role === 'CASHIER' && permissions.approveCash,
-      canReturnBoothToWelcome: role === 'CASHIER' && permissions.returnBoothToWelcome,
-      canCancelTransaction: role === 'CASHIER' && permissions.cancelTransaction,
+      canApproveCash: role === 'CASHIER' ? permissions.approveCash : this.isPosAssignableRole(role),
+      canReturnBoothToWelcome:
+        role === 'CASHIER' ? permissions.returnBoothToWelcome : this.isPosAssignableRole(role),
+      canCancelTransaction:
+        role === 'CASHIER' ? permissions.cancelTransaction : this.isPosAssignableRole(role),
     };
+  }
+
+  private isPosAssignableRole(role: string): boolean {
+    return role === 'CLIENT_OWNER' || role === 'CLIENT_ADMIN' || role === 'CASHIER';
+  }
+
+  private resetChangePasswordForm(): void {
+    this.changePasswordCurrent.set('');
+    this.changePasswordNew.set('');
+    this.changePasswordConfirm.set('');
   }
 
   private async createUser(

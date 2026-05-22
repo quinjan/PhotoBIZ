@@ -30,6 +30,7 @@ public static class PhotoBizApiEndpoints
         admin.MapPost("/clients", CreateClientAsync);
         admin.MapPost("/clients/onboard", CreateClientWithOwnerAsync);
         admin.MapPut("/clients/{clientId:guid}", UpdateClientAsync);
+        admin.MapPost("/clients/{clientId:guid}/transfer-owner", TransferClientOwnerAsync);
         admin.MapPost("/subscription-plans", CreateSubscriptionPlanAsync);
         admin.MapPut("/subscription-plans/{subscriptionPlanId:guid}", UpdateSubscriptionPlanAsync);
         admin.MapPost("/subscriptions", CreateSubscriptionAsync);
@@ -45,6 +46,7 @@ public static class PhotoBizApiEndpoints
         admin.MapPut("/offers/{offerId:guid}", UpdateOfferAsync);
         admin.MapPost("/print-entitlements", CreatePrintEntitlementAsync);
         admin.MapPut("/print-entitlements/{printEntitlementId:guid}", UpdatePrintEntitlementAsync);
+        admin.MapDelete("/print-entitlements/{printEntitlementId:guid}", DeletePrintEntitlementAsync);
         admin.MapPost("/booths/{boothId:guid}/activate-offer", ActivateOfferAsync);
         admin.MapPut("/booths/{boothId:guid}/appearance", UpdateAppearanceAsync);
         admin.MapPost("/booths/{boothId:guid}/payment-options", AssignPaymentOptionAsync);
@@ -238,8 +240,7 @@ public static class PhotoBizApiEndpoints
         var scopedBoothIds = booths.Select(item => item.Id).ToArray();
         var offers = await ApplyClientScope(dbContext.BoothOffers.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
         var printEntitlements = await ApplyClientScope(dbContext.PrintEntitlements.AsNoTracking(), currentUser, item => item.ClientAccountId)
-            .OrderByDescending(item => item.Status == StatusValues.PrintEntitlement.Active)
-            .ThenBy(item => item.Name)
+            .OrderBy(item => item.Name)
             .ToListAsync(cancellationToken);
         var activations = await ApplyScopedBoothIds(dbContext.BoothOfferActivations.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var paymentAssignments = await ApplyScopedBoothIds(dbContext.BoothPaymentOptionAssignments.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
@@ -431,6 +432,84 @@ public static class PhotoBizApiEndpoints
         await auditService.WriteAsync(currentUser, "client.updated", nameof(ClientAccount), client.Id, new { client.Name, client.Status }, cancellationToken);
 
         return TypedResults.Ok(new ClientSummary(client.Id, client.Name, client.Status));
+    }
+
+    private static async Task<Results<Ok<UserSummary>, ForbidHttpResult, ValidationProblem>> TransferClientOwnerAsync(
+        Guid clientId,
+        TransferClientOwnerRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsApplicationOwner)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var clientExists = await dbContext.ClientAccounts
+            .AsNoTracking()
+            .AnyAsync(item => item.Id == clientId, cancellationToken);
+
+        if (!clientExists)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["clientId"] = ["Client account was not found."]
+            });
+        }
+
+        var newOwner = await dbContext.Users
+            .SingleOrDefaultAsync(item => item.Id == request.NewOwnerUserId && item.ClientAccountId == clientId, cancellationToken);
+
+        if (newOwner is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["newOwnerUserId"] = ["New owner must be an existing user in this client account."]
+            });
+        }
+
+        if (newOwner.Status != StatusValues.User.Active)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["newOwnerUserId"] = ["New owner must be active."]
+            });
+        }
+
+        var existingOwners = await dbContext.Users
+            .Where(item => item.ClientAccountId == clientId && item.Role == StatusValues.User.ClientOwner)
+            .OrderBy(item => item.CreatedAt)
+            .ThenBy(item => item.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var owner in existingOwners.Where(owner => owner.Id != newOwner.Id))
+        {
+            owner.Role = StatusValues.User.ClientAdmin;
+            owner.CanApproveCash = true;
+            owner.CanReturnBoothToWelcome = true;
+            owner.CanCancelTransaction = true;
+        }
+
+        newOwner.Role = StatusValues.User.ClientOwner;
+        newOwner.CanApproveCash = true;
+        newOwner.CanReturnBoothToWelcome = true;
+        newOwner.CanCancelTransaction = true;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(
+            currentUser,
+            "client.owner_transferred",
+            nameof(ClientAccount),
+            clientId,
+            new { NewOwnerUserId = newOwner.Id, newOwner.Email, PreviousOwnerIds = existingOwners.Where(owner => owner.Id != newOwner.Id).Select(owner => owner.Id).ToArray() },
+            cancellationToken);
+
+        return TypedResults.Ok(ToUserSummary(newOwner));
     }
 
     private static async Task<Results<Ok<SubscriptionPlanSummary>, ForbidHttpResult, ValidationProblem>> CreateSubscriptionPlanAsync(
@@ -690,9 +769,12 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        if (currentUser.IsClientAdmin && request.Role == StatusValues.User.ClientOwner)
+        if (request.Role == StatusValues.User.ClientOwner)
         {
-            return TypedResults.Forbid();
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["role"] = ["Client Owner is created during onboarding and transferred by the Application Owner."]
+            });
         }
 
         var clientExists = await dbContext.ClientAccounts
@@ -707,25 +789,25 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        if (request.Role == StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
+        if (IsPosAssignableRole(request.Role) && request.AssignedBoothId.HasValue)
         {
-            var boothIsInClient = await dbContext.Booths
-                .AsNoTracking()
-                .AnyAsync(item => item.Id == request.AssignedBoothId.Value && item.ClientAccountId == clientAccountId.Value, cancellationToken);
+            var assignedBoothValidation = await ValidateAssignedBoothAsync(
+                dbContext,
+                clientAccountId.Value,
+                request.AssignedBoothId.Value,
+                excludedUserId: null,
+                cancellationToken);
 
-            if (!boothIsInClient)
+            if (assignedBoothValidation is not null)
             {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["assignedBoothId"] = ["Assigned booth must belong to the user's client account."]
-                });
+                return assignedBoothValidation;
             }
         }
-        else if (request.Role != StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
+        else if (!IsPosAssignableRole(request.Role) && request.AssignedBoothId.HasValue)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["assignedBoothId"] = ["Only cashier users can be assigned to a booth."]
+                ["assignedBoothId"] = ["Only Client Owner, Client Admin, or Cashier users can be assigned to a booth."]
             });
         }
 
@@ -805,25 +887,42 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
-        if (request.Role == StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
-        {
-            var boothIsInClient = await dbContext.Booths
-                .AsNoTracking()
-                .AnyAsync(item => item.Id == request.AssignedBoothId.Value && item.ClientAccountId == user.ClientAccountId.Value, cancellationToken);
-
-            if (!boothIsInClient)
-            {
-                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                {
-                    ["assignedBoothId"] = ["Assigned booth must belong to the user's client account."]
-                });
-            }
-        }
-        else if (request.Role != StatusValues.User.Cashier && request.AssignedBoothId.HasValue)
+        if (user.Id == currentUser.UserId && request.Status == StatusValues.User.Inactive)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["assignedBoothId"] = ["Only cashier users can be assigned to a booth."]
+                ["status"] = ["You cannot deactivate your own account."]
+            });
+        }
+
+        if (user.Role != request.Role &&
+            (user.Role == StatusValues.User.ClientOwner || request.Role == StatusValues.User.ClientOwner))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["role"] = ["Client Owner role changes must use Application Owner owner transfer."]
+            });
+        }
+
+        if (IsPosAssignableRole(request.Role) && request.AssignedBoothId.HasValue)
+        {
+            var assignedBoothValidation = await ValidateAssignedBoothAsync(
+                dbContext,
+                user.ClientAccountId.Value,
+                request.AssignedBoothId.Value,
+                user.Id,
+                cancellationToken);
+
+            if (assignedBoothValidation is not null)
+            {
+                return assignedBoothValidation;
+            }
+        }
+        else if (!IsPosAssignableRole(request.Role) && request.AssignedBoothId.HasValue)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["assignedBoothId"] = ["Only Client Owner, Client Admin, or Cashier users can be assigned to a booth."]
             });
         }
 
@@ -831,7 +930,7 @@ public static class PhotoBizApiEndpoints
         user.Email = request.Email.Trim();
         user.Role = request.Role;
         user.Status = request.Status;
-        user.AssignedBoothId = request.Role == StatusValues.User.Cashier ? request.AssignedBoothId : null;
+        user.AssignedBoothId = IsPosAssignableRole(request.Role) ? request.AssignedBoothId : null;
         user.CanApproveCash = IsCashierPermissionEnabled(request.Role, request.CanApproveCash);
         user.CanReturnBoothToWelcome = IsCashierPermissionEnabled(request.Role, request.CanReturnBoothToWelcome);
         user.CanCancelTransaction = IsCashierPermissionEnabled(request.Role, request.CanCancelTransaction);
@@ -968,35 +1067,35 @@ public static class PhotoBizApiEndpoints
             return subscriptionValidation;
         }
 
-        ApplicationUser? cashier = null;
+        ApplicationUser? assignedPosStaff = null;
 
         if (request.CashierUserId.HasValue)
         {
-            cashier = await dbContext.Users.SingleOrDefaultAsync(
+            assignedPosStaff = await dbContext.Users.SingleOrDefaultAsync(
                 item => item.Id == request.CashierUserId.Value && item.ClientAccountId == clientAccountId,
                 cancellationToken);
 
-            if (cashier is null)
+            if (assignedPosStaff is null)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned cashier must exist in the selected client account."]
+                    ["cashierUserId"] = ["Assigned POS staff must exist in the selected client account."]
                 });
             }
 
-            if (cashier.Role != StatusValues.User.Cashier)
+            if (!IsPosAssignableRole(assignedPosStaff.Role))
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned user must have the CASHIER role."]
+                    ["cashierUserId"] = ["Assigned user must be a Client Owner, Client Admin, or Cashier."]
                 });
             }
 
-            if (cashier.AssignedBoothId.HasValue)
+            if (assignedPosStaff.AssignedBoothId.HasValue)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned cashier is already linked to another booth."]
+                    ["cashierUserId"] = ["Assigned POS staff is already linked to another booth."]
                 });
             }
         }
@@ -1039,9 +1138,9 @@ public static class PhotoBizApiEndpoints
             AssignedAt = DateTimeOffset.UtcNow
         });
 
-        if (cashier is not null)
+        if (assignedPosStaff is not null)
         {
-            cashier.AssignedBoothId = booth.Id;
+            assignedPosStaff.AssignedBoothId = booth.Id;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -1100,35 +1199,35 @@ public static class PhotoBizApiEndpoints
             });
         }
 
-        ApplicationUser? requestedCashier = null;
+        ApplicationUser? requestedPosStaff = null;
 
         if (request.CashierUserId.HasValue)
         {
-            requestedCashier = await dbContext.Users.SingleOrDefaultAsync(
+            requestedPosStaff = await dbContext.Users.SingleOrDefaultAsync(
                 item => item.Id == request.CashierUserId.Value && item.ClientAccountId == booth.ClientAccountId,
                 cancellationToken);
 
-            if (requestedCashier is null)
+            if (requestedPosStaff is null)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned cashier must exist in the booth's client account."]
+                    ["cashierUserId"] = ["Assigned POS staff must exist in the booth's client account."]
                 });
             }
 
-            if (requestedCashier.Role != StatusValues.User.Cashier)
+            if (!IsPosAssignableRole(requestedPosStaff.Role))
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned user must have the CASHIER role."]
+                    ["cashierUserId"] = ["Assigned user must be a Client Owner, Client Admin, or Cashier."]
                 });
             }
 
-            if (requestedCashier.AssignedBoothId.HasValue && requestedCashier.AssignedBoothId.Value != booth.Id)
+            if (requestedPosStaff.AssignedBoothId.HasValue && requestedPosStaff.AssignedBoothId.Value != booth.Id)
             {
                 return TypedResults.ValidationProblem(new Dictionary<string, string[]>
                 {
-                    ["cashierUserId"] = ["Assigned cashier is already linked to another booth."]
+                    ["cashierUserId"] = ["Assigned POS staff is already linked to another booth."]
                 });
             }
         }
@@ -1148,18 +1247,18 @@ public static class PhotoBizApiEndpoints
         booth.Code = request.Code.Trim().ToUpperInvariant();
         booth.Status = request.Status;
 
-        var existingCashier = await dbContext.Users.SingleOrDefaultAsync(
+        var existingPosStaff = await dbContext.Users.SingleOrDefaultAsync(
             item => item.ClientAccountId == booth.ClientAccountId && item.AssignedBoothId == booth.Id,
             cancellationToken);
 
-        if (existingCashier is not null && existingCashier.Id != request.CashierUserId)
+        if (existingPosStaff is not null && existingPosStaff.Id != request.CashierUserId)
         {
-            existingCashier.AssignedBoothId = null;
+            existingPosStaff.AssignedBoothId = null;
         }
 
-        if (requestedCashier is not null)
+        if (requestedPosStaff is not null)
         {
-            requestedCashier.AssignedBoothId = booth.Id;
+            requestedPosStaff.AssignedBoothId = booth.Id;
         }
 
         if (request.Status == StatusValues.Booth.Inactive)
@@ -1416,14 +1515,6 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
-        if (!IsKnownPrintEntitlementStatus(request.Status))
-        {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["status"] = ["Print entitlement status is not supported."]
-            });
-        }
-
         var entitlement = await ApplyClientScope(dbContext.PrintEntitlements, currentUser, item => item.ClientAccountId)
             .SingleOrDefaultAsync(item => item.Id == printEntitlementId, cancellationToken);
 
@@ -1443,13 +1534,60 @@ public static class PhotoBizApiEndpoints
         }
 
         entitlement.Name = request.Name.Trim();
-        entitlement.Status = request.Status;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await auditService.WriteAsync(currentUser, "print_entitlement.updated", nameof(PrintEntitlement), entitlement.Id, new { entitlement.Name, entitlement.Status }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "print_entitlement.updated", nameof(PrintEntitlement), entitlement.Id, new { entitlement.Name }, cancellationToken);
 
         return TypedResults.Ok(ToPrintEntitlementSummary(entitlement));
+    }
+
+    private static async Task<Results<NoContent, ForbidHttpResult, ValidationProblem>> DeletePrintEntitlementAsync(
+        Guid printEntitlementId,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+
+        if (!currentUser.IsClientScopedAdmin)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var entitlement = await ApplyClientScope(dbContext.PrintEntitlements, currentUser, item => item.ClientAccountId)
+            .SingleOrDefaultAsync(item => item.Id == printEntitlementId, cancellationToken);
+
+        if (entitlement is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["printEntitlementId"] = ["Print entitlement was not found in the selected client account."]
+            });
+        }
+
+        var isUsedByPackage = await dbContext.BoothOffers
+            .AsNoTracking()
+            .AnyAsync(
+                item => item.ClientAccountId == entitlement.ClientAccountId &&
+                    item.IncludedPrintEntitlement == entitlement.Name,
+                cancellationToken);
+
+        if (isUsedByPackage)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["printEntitlementId"] = ["Print entitlement is in use by one or more packages."]
+            });
+        }
+
+        dbContext.PrintEntitlements.Remove(entitlement);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteAsync(currentUser, "print_entitlement.deleted", nameof(PrintEntitlement), entitlement.Id, new { entitlement.Name }, cancellationToken);
+
+        return TypedResults.NoContent();
     }
 
     private static async Task<Results<Ok<OfferActivationSummary>, ForbidHttpResult, ValidationProblem>> ActivateOfferAsync(
@@ -1889,13 +2027,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizTransactionWorkflow workflow,
         CancellationToken cancellationToken)
     {
-        var currentUser = principal.GetRequiredCurrentUser();
-        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanApproveCash, cancellationToken))
+        var currentUser = await ResolveCashierEndpointUserAsync(
+            dbContext,
+            principal.GetRequiredCurrentUser(),
+            user => user.CanApproveCash,
+            cancellationToken);
+
+        if (currentUser is null)
         {
             return TypedResults.Forbid();
         }
 
-        var booth = await LoadScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
+        var booth = await LoadCashierScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
 
         if (booth is null)
         {
@@ -2007,13 +2150,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizTransactionWorkflow workflow,
         CancellationToken cancellationToken)
     {
-        var currentUser = principal.GetRequiredCurrentUser();
-        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanApproveCash, cancellationToken))
+        var currentUser = await ResolveCashierEndpointUserAsync(
+            dbContext,
+            principal.GetRequiredCurrentUser(),
+            user => user.CanApproveCash,
+            cancellationToken);
+
+        if (currentUser is null)
         {
             return TypedResults.Forbid();
         }
 
-        var transaction = await LoadScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
+        var transaction = await LoadCashierScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
 
         if (transaction is null)
         {
@@ -2041,13 +2189,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizTransactionWorkflow workflow,
         CancellationToken cancellationToken)
     {
-        var currentUser = principal.GetRequiredCurrentUser();
-        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanCancelTransaction, cancellationToken))
+        var currentUser = await ResolveCashierEndpointUserAsync(
+            dbContext,
+            principal.GetRequiredCurrentUser(),
+            user => user.CanCancelTransaction,
+            cancellationToken);
+
+        if (currentUser is null)
         {
             return TypedResults.Forbid();
         }
 
-        var transaction = await LoadScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
+        var transaction = await LoadCashierScopedTransactionAsync(dbContext, currentUser, transactionId, cancellationToken);
 
         if (transaction is null)
         {
@@ -2066,8 +2219,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizTransactionWorkflow workflow,
         CancellationToken cancellationToken)
     {
-        var currentUser = principal.GetRequiredCurrentUser();
-        var parentTransaction = await LoadScopedTransactionAsync(dbContext, currentUser, parentTransactionId, cancellationToken);
+        var currentUser = await ResolveCashierEndpointUserAsync(
+            dbContext,
+            principal.GetRequiredCurrentUser(),
+            _ => true,
+            cancellationToken);
+
+        if (currentUser is null)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var parentTransaction = await LoadCashierScopedTransactionAsync(dbContext, currentUser, parentTransactionId, cancellationToken);
 
         if (parentTransaction is null)
         {
@@ -2096,13 +2259,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizAuditService auditService,
         CancellationToken cancellationToken)
     {
-        var currentUser = principal.GetRequiredCurrentUser();
-        if (!await CashierHasPermissionAsync(dbContext, currentUser, user => user.CanReturnBoothToWelcome, cancellationToken))
+        var currentUser = await ResolveCashierEndpointUserAsync(
+            dbContext,
+            principal.GetRequiredCurrentUser(),
+            user => user.CanReturnBoothToWelcome,
+            cancellationToken);
+
+        if (currentUser is null)
         {
             return TypedResults.Forbid();
         }
 
-        var booth = await LoadScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
+        var booth = await LoadCashierScopedBoothAsync(dbContext, currentUser, boothId, cancellationToken);
 
         if (booth is null)
         {
@@ -2482,6 +2650,22 @@ public static class PhotoBizApiEndpoints
         return transaction.ClientAccountId == currentUser.ClientAccountId ? transaction : null;
     }
 
+    private static async Task<Transaction?> LoadCashierScopedTransactionAsync(
+        PhotoBizDbContext dbContext,
+        PhotoBizCurrentUser currentUser,
+        Guid transactionId,
+        CancellationToken cancellationToken)
+    {
+        if (!currentUser.AssignedBoothId.HasValue)
+        {
+            return null;
+        }
+
+        var transaction = await dbContext.Transactions.SingleOrDefaultAsync(item => item.Id == transactionId, cancellationToken);
+
+        return transaction?.BoothId == currentUser.AssignedBoothId.Value ? transaction : null;
+    }
+
     private static async Task<Booth?> LoadScopedBoothAsync(
         PhotoBizDbContext dbContext,
         PhotoBizCurrentUser currentUser,
@@ -2508,22 +2692,49 @@ public static class PhotoBizApiEndpoints
         return booth.ClientAccountId == currentUser.ClientAccountId ? booth : null;
     }
 
-    private static async Task<bool> CashierHasPermissionAsync(
+    private static async Task<Booth?> LoadCashierScopedBoothAsync(
+        PhotoBizDbContext dbContext,
+        PhotoBizCurrentUser currentUser,
+        Guid boothId,
+        CancellationToken cancellationToken)
+    {
+        if (currentUser.AssignedBoothId != boothId)
+        {
+            return null;
+        }
+
+        return await dbContext.Booths.SingleOrDefaultAsync(item => item.Id == boothId, cancellationToken);
+    }
+
+    private static async Task<PhotoBizCurrentUser?> ResolveCashierEndpointUserAsync(
         PhotoBizDbContext dbContext,
         PhotoBizCurrentUser currentUser,
         Func<ApplicationUser, bool> permissionSelector,
         CancellationToken cancellationToken)
     {
-        if (!currentUser.IsCashier)
+        if (!IsPosAssignableRole(currentUser.Role))
         {
-            return true;
+            return null;
         }
 
         var user = await dbContext.Users
             .AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == currentUser.UserId, cancellationToken);
 
-        return user is not null && permissionSelector(user);
+        if (user is null ||
+            user.Status != StatusValues.User.Active ||
+            !IsPosAssignableRole(user.Role) ||
+            !user.AssignedBoothId.HasValue)
+        {
+            return null;
+        }
+
+        if (user.Role == StatusValues.User.Cashier && !permissionSelector(user))
+        {
+            return null;
+        }
+
+        return new PhotoBizCurrentUser(user.Id, user.Role, user.ClientAccountId, user.AssignedBoothId);
     }
 
     private static AuthSessionResponse ToSessionResponse(ApplicationUser user)
@@ -2536,9 +2747,9 @@ public static class PhotoBizApiEndpoints
             user.ClientAccountId,
             user.AssignedBoothId,
             user.MustChangePassword,
-            user.Role == StatusValues.User.Cashier && user.CanApproveCash,
-            user.Role == StatusValues.User.Cashier && user.CanReturnBoothToWelcome,
-            user.Role == StatusValues.User.Cashier && user.CanCancelTransaction);
+            IsCashierPermissionEnabled(user.Role, user.CanApproveCash),
+            IsCashierPermissionEnabled(user.Role, user.CanReturnBoothToWelcome),
+            IsCashierPermissionEnabled(user.Role, user.CanCancelTransaction));
     }
 
     private static async Task SignInUserAsync(HttpContext httpContext, ApplicationUser user)
@@ -2577,14 +2788,16 @@ public static class PhotoBizApiEndpoints
             user.Role,
             user.Status,
             user.AssignedBoothId,
-            user.Role == StatusValues.User.Cashier && user.CanApproveCash,
-            user.Role == StatusValues.User.Cashier && user.CanReturnBoothToWelcome,
-            user.Role == StatusValues.User.Cashier && user.CanCancelTransaction);
+            IsCashierPermissionEnabled(user.Role, user.CanApproveCash),
+            IsCashierPermissionEnabled(user.Role, user.CanReturnBoothToWelcome),
+            IsCashierPermissionEnabled(user.Role, user.CanCancelTransaction));
     }
 
     private static bool IsCashierPermissionEnabled(string role, bool? permission)
     {
-        return role == StatusValues.User.Cashier && permission.GetValueOrDefault(true);
+        return role == StatusValues.User.Cashier
+            ? permission.GetValueOrDefault(true)
+            : IsPosAssignableRole(role);
     }
 
     private static TransactionSummary ToTransactionSummary(Transaction transaction)
@@ -3280,6 +3493,44 @@ public static class PhotoBizApiEndpoints
         return null;
     }
 
+    private static async Task<ValidationProblem?> ValidateAssignedBoothAsync(
+        PhotoBizDbContext dbContext,
+        Guid clientAccountId,
+        Guid assignedBoothId,
+        Guid? excludedUserId,
+        CancellationToken cancellationToken)
+    {
+        var boothIsInClient = await dbContext.Booths
+            .AsNoTracking()
+            .AnyAsync(item => item.Id == assignedBoothId && item.ClientAccountId == clientAccountId, cancellationToken);
+
+        if (!boothIsInClient)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["assignedBoothId"] = ["Assigned booth must belong to the user's client account."]
+            });
+        }
+
+        var assignedToAnotherUser = await dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(
+                item =>
+                    item.AssignedBoothId == assignedBoothId &&
+                    (!excludedUserId.HasValue || item.Id != excludedUserId.Value),
+                cancellationToken);
+
+        if (assignedToAnotherUser)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["assignedBoothId"] = ["Assigned booth is already linked to another POS staff user."]
+            });
+        }
+
+        return null;
+    }
+
     private static void AddDefaultPrintEntitlements(PhotoBizDbContext dbContext, Guid clientAccountId)
     {
         foreach (var name in new[]
@@ -3301,6 +3552,11 @@ public static class PhotoBizApiEndpoints
     }
 
     private static bool IsKnownClientUserRole(string role)
+    {
+        return role is StatusValues.User.ClientOwner or StatusValues.User.ClientAdmin or StatusValues.User.Cashier;
+    }
+
+    private static bool IsPosAssignableRole(string role)
     {
         return role is StatusValues.User.ClientOwner or StatusValues.User.ClientAdmin or StatusValues.User.Cashier;
     }
@@ -3328,11 +3584,6 @@ public static class PhotoBizApiEndpoints
     private static bool IsKnownOfferType(string offerType)
     {
         return offerType is StatusValues.OfferType.PerSession or StatusValues.OfferType.TimeUnlimited or StatusValues.OfferType.SessionCount;
-    }
-
-    private static bool IsKnownPrintEntitlementStatus(string status)
-    {
-        return status is StatusValues.PrintEntitlement.Active or StatusValues.PrintEntitlement.Inactive;
     }
 
     private static string? NormalizeLumaboothSessionMode(string value)
@@ -3542,6 +3793,7 @@ public sealed record AuditLogSummary(
 public sealed record CreateClientRequest(string Name);
 public sealed record CreateClientWithOwnerRequest(string? ClientName, string? OwnerName, string? OwnerEmail);
 public sealed record UpdateClientRequest(string Name, string Status);
+public sealed record TransferClientOwnerRequest(Guid NewOwnerUserId);
 public sealed record CreateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency);
 public sealed record UpdateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record CreateSubscriptionRequest(Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance, string? Notes);
@@ -3598,7 +3850,7 @@ public sealed record UpdateOfferRequest(
     string LumaboothSessionMode,
     bool Active);
 public sealed record CreatePrintEntitlementRequest(Guid ClientAccountId, string Name);
-public sealed record UpdatePrintEntitlementRequest(string Name, string Status);
+public sealed record UpdatePrintEntitlementRequest(string Name);
 public sealed record ActivateOfferRequest(Guid BoothOfferId);
 public sealed record UpdateAppearanceRequest(
     string ThemePreset,

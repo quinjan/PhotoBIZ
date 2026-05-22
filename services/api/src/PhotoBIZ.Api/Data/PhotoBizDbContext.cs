@@ -161,6 +161,10 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(user => user.Email).IsUnique();
             entity.HasIndex(user => new { user.ClientAccountId, user.Role });
+            entity.HasIndex(user => user.ClientAccountId)
+                .IsUnique()
+                .HasFilter("role = 'CLIENT_OWNER' AND client_account_id IS NOT NULL")
+                .HasDatabaseName("ix_users_one_client_owner_per_client");
         });
 
         modelBuilder.Entity<Booth>(entity =>

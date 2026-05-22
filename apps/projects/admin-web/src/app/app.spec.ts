@@ -174,6 +174,7 @@ describe('App', () => {
       '-Booths',
       '-Packages',
       '-Transactions',
+      '-Cashier POS',
       '-Reports',
       '-Settings',
       '-Audit Log',
@@ -388,7 +389,18 @@ describe('App', () => {
 
       const compiled = fixture.nativeElement as HTMLElement;
       expect(compiled.textContent).toContain('Account');
+      expect(compiled.textContent).toContain('Account Information');
       expect(compiled.textContent).toContain('Change Password');
+      expect(compiled.textContent).not.toContain('Signed In');
+      expect(compiled.textContent).not.toContain('CURRENT PASSWORD');
+
+      const changePasswordButton = Array.from(compiled.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Change Password',
+      ) as HTMLButtonElement;
+      changePasswordButton.click();
+      fixture.detectChanges();
+      await fixture.whenStable();
+
       expect(compiled.textContent).toContain('CURRENT PASSWORD');
     }
   });
@@ -553,7 +565,7 @@ describe('App', () => {
 
     compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Manage Location');
-    expect(compiled.textContent).toContain('Delete Location');
+    expect(compiled.textContent).toContain('Deactivate');
     expect(
       (compiled.querySelector('input[name="locationDetailName"]') as HTMLInputElement).value,
     ).toBe('SM Manila');
@@ -569,6 +581,10 @@ describe('App', () => {
       setView: (value: string) => void;
       viewBooth: (value: unknown) => void;
       setBoothDetailTab: (value: string) => void;
+      setBoothPreviewScreen: (value: string) => void;
+      openBoothModal: (locationId?: string) => void;
+      closeBoothModal: () => void;
+      boothSecret: { set: (value: unknown) => void };
     };
     const session = {
       userId: 'user-id',
@@ -691,6 +707,23 @@ describe('App', () => {
     expect(compiled.textContent).toContain('Manage');
     expect(compiled.textContent).toContain('OFFLINE');
 
+    app.openBoothModal('location-id');
+    app.boothSecret.set({
+      boothId: 'booth-id',
+      boothName: 'Booth A',
+      boothCode: 'SMA-001',
+      kioskToken: 'kiosk-token',
+      agentCredential: 'agent-credential',
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Register Booth');
+    expect(compiled.textContent).not.toContain('KIOSK TOKEN');
+    expect(compiled.textContent).not.toContain('AGENT CREDENTIAL');
+
+    app.closeBoothModal();
     app.viewBooth({
       id: 'booth-id',
       clientAccountId: 'client-id',
@@ -701,13 +734,36 @@ describe('App', () => {
       currentState: 'OFFLINE',
       lastHeartbeatAt: null,
     });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Booth Credentials');
+    expect(compiled.textContent).toContain('KIOSK TOKEN');
+    expect(compiled.textContent).toContain('AGENT CREDENTIAL');
+    expect(compiled.textContent).toContain('Save Booth Details');
+    expect(compiled.textContent).not.toContain('Save Booth Record');
+    expect(compiled.textContent).not.toContain('Save Package And Payment');
+
     app.setBoothDetailTab('session');
     fixture.detectChanges();
     await fixture.whenStable();
 
     compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Preview Booth');
+    expect(compiled.textContent).toContain('Booth Flow Preview');
+    expect(compiled.textContent).toContain('Welcome');
+    expect(compiled.textContent).toContain('Payment');
+    expect(compiled.textContent).toContain('Cash Waiting');
+    expect(compiled.textContent).toContain('Payment Failed');
     expect(compiled.textContent).toContain('Step Into The Memory Box');
+
+    app.setBoothPreviewScreen('cash-waiting');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Cashier Approval');
+    expect(compiled.textContent).toContain('Please wait while the cashier confirms payment.');
   });
 
   it('should expose the cashier POS view', async () => {
@@ -1457,6 +1513,12 @@ describe('App', () => {
           name: '2 pcs 6x2 or 1 pc 6x4',
           status: 'ACTIVE',
         },
+        {
+          id: 'unused-entitlement-id',
+          clientAccountId: 'client-id',
+          name: '4 pcs 2x6',
+          status: 'ACTIVE',
+        },
       ],
       activations: [],
       paymentAssignments: [],
@@ -1472,7 +1534,6 @@ describe('App', () => {
     expect(compiled.textContent).toContain('Packages');
     expect(compiled.textContent).toContain('Add-On Print Price');
     expect(compiled.textContent).toContain('Print Entitlements');
-    expect(compiled.textContent).toContain('+ New Entitlement');
     expect(compiled.textContent).toContain('Manage');
     expect(compiled.textContent).not.toContain('Config');
     expect(compiled.textContent).not.toContain('Per paid session');
@@ -1480,8 +1541,29 @@ describe('App', () => {
     expect(compiled.textContent).not.toContain('One selected per booth');
     expect(compiled.textContent).not.toContain('PACKAGE NAME');
     expect(compiled.textContent).not.toContain('Print Entitlement Detail');
+    expect(compiled.textContent).not.toContain('+ New Entitlement');
 
-    const newEntitlementButton = Array.from(compiled.querySelectorAll('button')).find(
+    const printEntitlementsButton = Array.from(compiled.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Print Entitlements',
+    ) as HTMLButtonElement;
+    printEntitlementsButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('+ New Entitlement');
+    expect(compiled.textContent).toContain('In Use');
+    expect(compiled.textContent).toContain('Not Used');
+    expect(compiled.textContent).not.toContain('New Print Entitlement');
+    expect(compiled.textContent).not.toContain('PRINT ENTITLEMENT');
+    expect(compiled.querySelectorAll('.modal-backdrop').length).toBe(1);
+
+    const entitlementListModal = compiled.querySelector('.modal-backdrop') as HTMLElement;
+    expect(entitlementListModal.textContent).not.toContain('ACTIVE');
+    expect(entitlementListModal.textContent).not.toContain('INACTIVE');
+    expect(entitlementListModal.textContent).not.toContain('Deactivate');
+    expect(entitlementListModal.textContent).not.toContain('Activate');
+    const newEntitlementButton = Array.from(entitlementListModal.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === '+ New Entitlement',
     ) as HTMLButtonElement;
     newEntitlementButton.click();
@@ -1489,10 +1571,42 @@ describe('App', () => {
     await fixture.whenStable();
 
     compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelectorAll('.modal-backdrop').length).toBe(2);
     expect(compiled.textContent).toContain('New Print Entitlement');
     expect(compiled.textContent).toContain('PRINT ENTITLEMENT');
-    expect(compiled.querySelector('.modal-backdrop')).not.toBeNull();
 
+    const addCancelButton = Array.from(compiled.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cancel',
+    ) as HTMLButtonElement;
+    addCancelButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    const manageEntitlementButton = Array.from(
+      (compiled.querySelector('.modal-backdrop') as HTMLElement).querySelectorAll('button'),
+    ).find((button) => button.textContent?.trim() === 'Manage') as HTMLButtonElement;
+    manageEntitlementButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Manage Print Entitlement');
+    const manageDetailModal = Array.from(compiled.querySelectorAll('.modal-backdrop'))[1] as
+      | HTMLElement
+      | undefined;
+    expect(manageDetailModal?.textContent).toContain('PRINT ENTITLEMENT');
+    expect(manageDetailModal?.textContent).not.toContain('Deactivate');
+    expect(manageDetailModal?.textContent).not.toContain('Activate');
+
+    const manageCancelButton = Array.from(compiled.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Cancel',
+    ) as HTMLButtonElement;
+    manageCancelButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    compiled = fixture.nativeElement as HTMLElement;
     const closeEntitlementButton = Array.from(compiled.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Close',
     ) as HTMLButtonElement;
@@ -1612,6 +1726,7 @@ describe('App', () => {
     let compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Today sales');
     expect(compiled.textContent).toContain('Booth A');
+    expect(compiled.textContent).not.toContain('Manual MRR');
 
     app.setView('audit');
     fixture.detectChanges();

@@ -93,6 +93,7 @@ Permissions:
 ### Client Owner
 
 The Client Owner owns one subscribed client account.
+There is exactly one Client Owner per client account. The Application Owner-created onboarding user is the initial Client Owner, and only the Application Owner can transfer ownership to another same-client active user.
 
 Permissions:
 
@@ -105,6 +106,8 @@ Permissions:
 - Manage active booth session appearance.
 - View transactions, reports, and audit logs for their client account.
 - Configure client-level payment resources and assign allowed payment options per booth.
+- Use Cashier POS for the assigned booth after being assigned as POS staff.
+- Cannot create another Client Owner, change their own role, or deactivate their own account.
 
 ### Client Admin
 
@@ -119,6 +122,7 @@ Permissions:
 - Manage booth-level payment option assignments from active client payment resources.
 - View client transactions and reports.
 - Perform booth recovery actions.
+- Use Cashier POS for the assigned booth after being assigned as POS staff.
 - Cannot manage subscription, billing status, or Application Owner support access.
 
 ### Cashier
@@ -135,10 +139,11 @@ Permissions:
 - View today's transactions and sales for the assigned booth.
 - Trigger basic recovery actions, such as returning booth to welcome screen and clearing a stuck active booth transaction, when the saved cashier permission is enabled.
 
-Cashier workflow note:
+POS staff workflow note:
 
 - Cashier user records may be created before booth assignment.
-- Cashier-to-booth assignment happens during booth registration in the Admin Web workflow.
+- Client Owner, Client Admin, and Cashier users may be assigned as the booth's one POS staff user during booth registration or Manage Booth.
+- Unassigned Client Owner/Admin users can manage tenant setup but cannot use Cashier POS actions until assigned.
 - Client Owner/Admin user detail management persists cashier permissions for approve cash, cancel transaction, and return booth to welcome.
 
 ## Subscription Model
@@ -201,7 +206,7 @@ Admin Web account rules:
 - New Admin Web users receive the default initial password `PhotoBIZ!123`.
 - New users must change the default password before accessing dashboard, setup, cashier, reports, or audit log workflows.
 
-In the client tenant UI, Packages is the user-facing label for booth offers. The Packages section also owns the client-scoped print entitlement list used by package forms.
+In the client tenant UI, Packages is the user-facing label for booth offers. The Packages section also owns the client-scoped Print Entitlements modal used by package forms.
 
 The Booths section is an inventory-first workflow. The list shows every booth with location, booth code, effective agent state, active package, runtime payment status, assigned cashier, lifecycle status, and a Manage action. Registration captures only MVP booth record fields: booth name, booth code, location, and optional assigned cashier. After creation, PhotoBIZ shows the one-time kiosk token and Windows Agent credential; Manage Booth can re-issue booth credentials when staff need to configure or recover the Windows Agent. Re-issuing credentials rotates both the Agent credential and kiosk token, and the old Agent credential stops working. Hardware inventory fields such as camera, printer, and notes are intentionally out of MVP scope.
 
@@ -397,7 +402,7 @@ MVP booth offer types:
 
 Clients may create multiple packages for each offer type. A booth can activate exactly one package at a time from the full active package catalog, regardless of offer type.
 
-Clients manage a tenant-scoped print entitlement list under Packages. The package form uses active print entitlements as its dropdown options. New client accounts start with common MVP defaults, including `2 pcs 6x2 or 1 pc 6x4`, `2 pcs 6x2`, and `1 pc 6x4`. Print entitlements can be activated or deactivated; inactive entitlements remain available for historical package records but are not offered for new package selection.
+Clients manage a tenant-scoped print entitlement list from the Packages page. The package form uses print entitlements as its dropdown options. New client accounts start with common MVP defaults, including `2 pcs 6x2 or 1 pc 6x4`, `2 pcs 6x2`, and `1 pc 6x4`. Print entitlements do not have active/inactive lifecycle states. The print entitlement list shows `In Use` when any package references the entitlement and `Not Used` otherwise. Unused print entitlements may be deleted, while in-use entitlements cannot be deleted.
 
 MVP booth offer fields:
 
@@ -406,7 +411,7 @@ MVP booth offer fields:
 - Description.
 - Offer type.
 - Price in PHP.
-- Included print entitlement: selected from the active client print entitlement list.
+- Included print entitlement: selected from the client print entitlement list.
 - Duration in hours, required only for `TIME_UNLIMITED`.
 - Session allowance, required only for `SESSION_COUNT`.
 - Extra print add-on eligibility, true only for `PER_SESSION`.
@@ -607,7 +612,7 @@ Requirements:
 
 - Cash is the only real MVP payment method.
 - Cash can be assigned per booth and is the only payment option that can be runtime-enabled in MVP.
-- Payment approval requires an authenticated cashier, Client Admin, or Client Owner.
+- Payment approval requires an authenticated cashier, Client Admin, or Client Owner assigned to the booth.
 - Cash approval is blocked when the assigned booth's agent is offline, so staff do not collect cash for a session the agent cannot start.
 - Approval must write an audit log.
 - Approval must include timestamp and approving user ID.
@@ -674,6 +679,7 @@ Audit logs should capture:
 - Tenant isolation for all client-scoped data.
 - Application Owner can access all clients for platform management and support.
 - Client Owner and Client Admin can access only their client account.
+- Client Owner and Client Admin can use Cashier POS only for their assigned booth.
 - Cashiers can only access their assigned booth.
 - Backend validates all payment transitions.
 - Backend validates subscription status and booth allowance before activating booths or starting sessions.

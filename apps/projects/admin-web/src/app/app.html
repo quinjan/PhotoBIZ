@@ -157,7 +157,7 @@
           ) {
             <button type="button" class="button" (click)="setView('users')">Back to Users</button>
             @if (selectedUser(); as user) {
-              @if (user.status === 'ACTIVE') {
+              @if (user.status === 'ACTIVE' && canDeactivateUser(user)) {
                 <button
                   type="button"
                   class="button danger"
@@ -165,7 +165,7 @@
                 >
                   Deactivate
                 </button>
-              } @else {
+              } @else if (user.status !== 'ACTIVE') {
                 <button
                   type="button"
                   class="button green-button"
@@ -219,6 +219,9 @@
           @if (
             !isApplicationOwner() && session()?.role !== 'CASHIER' && activeView() === 'packages'
           ) {
+            <button type="button" class="button" (click)="openPrintEntitlementsModal()">
+              Print Entitlements
+            </button>
             <button type="button" class="button primary" (click)="startNewPackage()">
               + New Package
             </button>
@@ -251,13 +254,6 @@
               }
             }
           }
-          @if (
-            !isApplicationOwner() &&
-            session()?.role !== 'CASHIER' &&
-            activeView() === 'transactions'
-          ) {
-            <button type="button" class="button">Export CSV</button>
-          }
         </div>
       </header>
 
@@ -268,41 +264,7 @@
       @if (activeView() === 'account') {
         <section class="content-grid two">
           <article class="card form-card">
-            <div class="section-head"><h2 class="section-title">Change Password</h2></div>
-            <label class="field">
-              <span>CURRENT PASSWORD</span>
-              <input
-                type="password"
-                [ngModel]="changePasswordCurrent()"
-                name="changePasswordCurrent"
-                (ngModelChange)="changePasswordCurrent.set($event)"
-              />
-            </label>
-            <label class="field">
-              <span>NEW PASSWORD</span>
-              <input
-                type="password"
-                [ngModel]="changePasswordNew()"
-                name="changePasswordNew"
-                (ngModelChange)="changePasswordNew.set($event)"
-              />
-            </label>
-            <label class="field">
-              <span>CONFIRM NEW PASSWORD</span>
-              <input
-                type="password"
-                [ngModel]="changePasswordConfirm()"
-                name="changePasswordConfirm"
-                (ngModelChange)="changePasswordConfirm.set($event)"
-              />
-            </label>
-            <button type="button" class="button primary fill" (click)="changeOwnPassword()">
-              Save Password
-            </button>
-          </article>
-
-          <article class="card form-card">
-            <div class="section-head"><h2 class="section-title">Signed In</h2></div>
+            <div class="section-head"><h2 class="section-title">Account Information</h2></div>
             <label class="field">
               <span>NAME</span>
               <input [value]="session()?.name ?? ''" readonly />
@@ -315,6 +277,9 @@
               <span>ROLE</span>
               <input [value]="roleLabel()" readonly />
             </label>
+            <button type="button" class="button primary fill" (click)="openChangePasswordModal()">
+              Change Password
+            </button>
           </article>
         </section>
       }
@@ -603,6 +568,29 @@
                     ><span>OWNER EMAIL</span><input [value]="owner?.email ?? 'No owner'" readonly
                   /></label>
                 </div>
+                @if (ownerTransferCandidates(client.id).length > 0) {
+                  <div class="assignment-panel">
+                    <label class="field">
+                      <span>TRANSFER OWNER</span>
+                      <select
+                        [ngModel]="
+                          ownerTransferUserId() ?? ownerTransferCandidates(client.id)[0].id
+                        "
+                        (ngModelChange)="ownerTransferUserId.set($event)"
+                      >
+                        @for (candidate of ownerTransferCandidates(client.id); track candidate.id) {
+                          <option [ngValue]="candidate.id">
+                            {{ candidate.name }} / {{ candidate.email }} /
+                            {{ roleLabel(candidate.role) }}
+                          </option>
+                        }
+                      </select>
+                    </label>
+                    <button type="button" class="button" (click)="transferClientOwner(client.id)">
+                      Transfer Owner
+                    </button>
+                  </div>
+                }
                 <div class="assignment-panel">
                   <div>
                     <span class="metric-label">Assigned Subscription</span>
@@ -1081,9 +1069,7 @@
                     <td>{{ user.email }}</td>
                     <td>{{ roleLabel(user.role) }}</td>
                     <td>
-                      {{
-                        user.role === 'CASHIER' ? boothNameFor(user.assignedBoothId) : 'All booths'
-                      }}
+                      {{ boothNameFor(user.assignedBoothId) }}
                     </td>
                     <td>
                       <span
@@ -1156,28 +1142,22 @@
                 </label>
                 <label class="field">
                   <span>ROLE</span>
-                  <select
-                    [ngModel]="userDetailRole()"
-                    name="userDetailRole"
-                    (ngModelChange)="setUserDetailRole($event)"
-                  >
-                    @if (session()?.role !== 'CLIENT_ADMIN') {
-                      <option value="CLIENT_OWNER">CLIENT_OWNER</option>
-                    }
-                    <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
-                    <option value="CASHIER">CASHIER</option>
-                  </select>
+                  @if (canEditSelectedUserRole(user)) {
+                    <select
+                      [ngModel]="userDetailRole()"
+                      name="userDetailRole"
+                      (ngModelChange)="setUserDetailRole($event)"
+                    >
+                      <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
+                      <option value="CASHIER">CASHIER</option>
+                    </select>
+                  } @else {
+                    <input [value]="roleLabel(userDetailRole())" readonly />
+                  }
                 </label>
                 <label class="field">
                   <span>ASSIGNED BOOTH</span>
-                  <input
-                    [value]="
-                      userDetailRole() === 'CASHIER'
-                        ? boothNameFor(user.assignedBoothId)
-                        : 'All booths'
-                    "
-                    readonly
-                  />
+                  <input [value]="boothNameFor(user.assignedBoothId)" readonly />
                 </label>
                 <button type="button" class="button primary fill" (click)="saveUserDetail()">
                   Save User
@@ -1282,8 +1262,8 @@
               <span class="metric-note">{{ activeBooths().length }} active</span>
             </article>
             <article class="card">
-              <span class="metric-label">Cashiers assigned</span>
-              <strong class="metric-value">{{ cashiers().length }}</strong>
+              <span class="metric-label">POS staff assigned</span>
+              <strong class="metric-value">{{ posAssignableUsers().length }}</strong>
               <span class="metric-note">{{ inactiveUsers().length }} inactive users</span>
             </article>
           </section>
@@ -1474,78 +1454,6 @@
             }
           </section>
 
-          <section class="card">
-            <div class="section-head">
-              <h2 class="section-title">Print Entitlements</h2>
-              <button type="button" class="button" (click)="startNewPrintEntitlement()">
-                + New Entitlement
-              </button>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Entitlement</th>
-                  <th>Status</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (
-                  entitlement of pagedItems('print-entitlements-grid', printEntitlements());
-                  track entitlement.id
-                ) {
-                  <tr>
-                    <td>
-                      <strong>{{ entitlement.name }}</strong>
-                    </td>
-                    <td>
-                      <span
-                        class="status"
-                        [class.green]="entitlement.status === 'ACTIVE'"
-                        [class.red]="entitlement.status !== 'ACTIVE'"
-                        ><span class="dot"></span>{{ entitlement.status }}</span
-                      >
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        class="button"
-                        (click)="viewPrintEntitlement(entitlement)"
-                      >
-                        Manage
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-            @if (pageInfo('print-entitlements-grid', printEntitlements().length); as page) {
-              @if (page.totalPages > 1) {
-                <footer class="section-head">
-                  <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
-                  <div class="top-actions">
-                    <button
-                      type="button"
-                      class="button"
-                      [disabled]="!page.hasPrevious"
-                      (click)="previousPage('print-entitlements-grid', page.total)"
-                    >
-                      Previous
-                    </button>
-                    <span>Page {{ page.page }} / {{ page.totalPages }}</span>
-                    <button
-                      type="button"
-                      class="button"
-                      [disabled]="!page.hasNext"
-                      (click)="nextPage('print-entitlements-grid', page.total)"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </footer>
-              }
-            }
-          </section>
         }
 
         @if (activeView() === 'package-detail') {
@@ -1680,7 +1588,7 @@
                     <th>Agent State</th>
                     <th>Active Package</th>
                     <th>Payment</th>
-                    <th>Assigned Cashier</th>
+                    <th>Assigned POS Staff</th>
                     <th>Status</th>
                     <th>Manage</th>
                   </tr>
@@ -1690,7 +1598,7 @@
                     booth of pagedItems('booths-grid', overview()?.booths ?? []);
                     track booth.id
                   ) {
-                    @let cashier = assignedCashierFor(booth.id);
+                    @let cashier = assignedPosStaffFor(booth.id);
                     @let activation = selectedActivationFor(booth.id);
                     <tr>
                       <td>
@@ -1754,27 +1662,103 @@
         @if (activeView() === 'booth-detail') {
           @if (selectedBoothDetail(); as booth) {
             <section class="content-grid booth-detail-grid">
-              <div class="tab-strip">
-                <button
-                  type="button"
-                  class="button"
-                  [class.active]="boothDetailTab() === 'details'"
-                  (click)="setBoothDetailTab('details')"
+              <div class="card">
+                <div
+                  class="top-actions"
+                  role="tablist"
+                  aria-label="Booth setup steps"
+                  style="gap: 14px"
                 >
-                  Details
-                </button>
-                <button
-                  type="button"
-                  class="button"
-                  [class.active]="boothDetailTab() === 'session'"
-                  (click)="setBoothDetailTab('session')"
-                >
-                  Session Setup
-                </button>
+                  <button
+                    type="button"
+                    class="button"
+                    role="tab"
+                    [attr.aria-selected]="boothDetailTab() === 'details'"
+                    [style.color]="
+                      boothDetailTab() === 'details' ? 'var(--admin-text)' : 'var(--admin-muted)'
+                    "
+                    style="
+                      background: transparent;
+                      border: 0;
+                      gap: 12px;
+                      min-height: 44px;
+                      padding: 0;
+                    "
+                    (click)="setBoothDetailTab('details')"
+                  >
+                    <span
+                      style="
+                        align-items: center;
+                        border-radius: 999px;
+                        color: #ffffff;
+                        display: inline-flex;
+                        height: 36px;
+                        justify-content: center;
+                        width: 36px;
+                      "
+                      [style.background]="
+                        boothDetailTab() === 'details' || boothDetailTab() === 'session'
+                          ? 'var(--admin-blue)'
+                          : '#98a2b3'
+                      "
+                    >
+                      @if (boothDetailTab() === 'session') {
+                        &#10003;
+                      } @else {
+                        1
+                      }
+                    </span>
+                    <strong>Booth Details</strong>
+                  </button>
+                  <span
+                    aria-hidden="true"
+                    style="
+                      background: var(--admin-line);
+                      flex: 1 1 140px;
+                      height: 1px;
+                      min-width: 80px;
+                    "
+                  ></span>
+                  <button
+                    type="button"
+                    class="button"
+                    role="tab"
+                    [attr.aria-selected]="boothDetailTab() === 'session'"
+                    [style.color]="
+                      boothDetailTab() === 'session' ? 'var(--admin-text)' : 'var(--admin-muted)'
+                    "
+                    style="
+                      background: transparent;
+                      border: 0;
+                      gap: 12px;
+                      min-height: 44px;
+                      padding: 0;
+                    "
+                    (click)="setBoothDetailTab('session')"
+                  >
+                    <span
+                      style="
+                        align-items: center;
+                        border-radius: 999px;
+                        color: #ffffff;
+                        display: inline-flex;
+                        height: 36px;
+                        justify-content: center;
+                        width: 36px;
+                      "
+                      [style.background]="
+                        boothDetailTab() === 'session' ? 'var(--admin-blue)' : '#98a2b3'
+                      "
+                    >
+                      2
+                    </span>
+                    <strong>Session Setup</strong>
+                  </button>
+                </div>
               </div>
 
               @if (boothDetailTab() === 'details') {
-                <section class="content-grid two">
+                <section class="content-grid">
                   <article class="card form-card">
                     <div class="section-head">
                       <h2 class="section-title">Booth Record</h2>
@@ -1811,13 +1795,13 @@
                         </select>
                       </label>
                       <label class="field">
-                        <span>ASSIGNED CASHIER</span>
+                        <span>ASSIGNED POS STAFF</span>
                         <select
                           [ngModel]="boothDetailCashierUserId()"
                           (ngModelChange)="boothDetailCashierUserId.set($event)"
                         >
                           <option [ngValue]="null">Unassigned</option>
-                          @for (cashier of boothDetailCashierOptions(); track cashier.id) {
+                          @for (cashier of boothDetailPosStaffOptions(); track cashier.id) {
                             <option [ngValue]="cashier.id">
                               {{ cashier.name }} / {{ cashier.email }}
                             </option>
@@ -1825,14 +1809,8 @@
                         </select>
                       </label>
                     </div>
-                    <button type="button" class="button primary" (click)="saveBoothRecord()">
-                      Save Booth Record
-                    </button>
-                  </article>
-
-                  <article class="card form-card">
                     <div class="section-head">
-                      <h2 class="section-title">Package And Payment</h2>
+                      <h2 class="section-title">Package & Payment</h2>
                     </div>
                     <label class="field">
                       <span>ACTIVE PACKAGE</span>
@@ -1871,12 +1849,12 @@
                         </div>
                       }
                     }
-                    <button type="button" class="button primary" (click)="saveBoothSession()">
-                      Save Package And Payment
+                    <button type="button" class="button primary fill" (click)="saveBoothDetails()">
+                      Save Booth Details
                     </button>
                   </article>
 
-                  <article class="card form-card span-two">
+                  <article class="card form-card">
                     <div class="section-head">
                       <h2 class="section-title">Booth Credentials</h2>
                       <button type="button" class="button" (click)="issueBoothCredentials()">
@@ -1962,15 +1940,33 @@
                     </button>
                   </article>
 
-                  <article class="card booth-preview-card">
+                  <article class="card form-card">
                     <div class="section-head">
-                      <h2 class="section-title">Preview Booth</h2>
+                      <h2 class="section-title">Booth Flow Preview</h2>
                       <span class="muted">Uses unsaved values from this page</span>
+                    </div>
+                    <div class="top-actions" role="tablist" aria-label="Booth preview screens">
+                      @for (preview of boothPreviewScreens; track preview.key) {
+                        <button
+                          type="button"
+                          class="button"
+                          role="tab"
+                          [class.primary]="boothPreviewScreenKey() === preview.key"
+                          [attr.aria-selected]="boothPreviewScreenKey() === preview.key"
+                          (click)="setBoothPreviewScreen(preview.key)"
+                        >
+                          <strong>{{ preview.label }}</strong>
+                        </button>
+                      }
+                    </div>
+                    <div class="booth-meta">
+                      <strong>{{ selectedBoothPreviewScreen().label }}</strong>
+                      <span>{{ selectedBoothPreviewScreen().description }}</span>
                     </div>
                     <div class="booth-preview-frame">
                       <photobiz-booth-stage
-                        [config]="boothPreviewConfig()"
-                        screen="offer"
+                        [config]="selectedBoothPreviewConfig()"
+                        [screen]="selectedBoothPreviewScreen().screen"
                         [loading]="false"
                       ></photobiz-booth-stage>
                     </div>
@@ -2197,12 +2193,6 @@
                 formatMoney(overview()?.reports?.sales?.todayCashSalesCents ?? 0)
               }}</strong>
             </article>
-            <article class="card">
-              <span class="metric-label">Manual MRR</span
-              ><strong class="metric-value">{{
-                formatMoney(overview()?.reports?.platform?.manualMrrCents ?? 0)
-              }}</strong>
-            </article>
           </section>
 
           <section class="content-grid two">
@@ -2346,173 +2336,225 @@
         }
 
         @if (activeView() === 'pos') {
-          <section class="content-grid two">
-            <article class="card pos-card">
-              @if (assignedBooth(); as booth) {
-                <header>
-                  <h3 class="section-title">Current Payment Request</h3>
-                  <span class="pill">{{ booth.currentState }}</span>
-                </header>
-                @if (boothPackageStatusFor(booth); as packageStatus) {
-                  <p>{{ packageStatus.packageName }} / {{ packageStatus.detail }}</p>
-                }
-                <p>{{ booth.name }} · {{ locationNameFor(booth.locationId) }} / {{ booth.code }}</p>
-              } @else {
-                <header>
-                  <h3 class="section-title">Current Payment Request</h3>
-                  <span class="pill">OFFLINE</span>
-                </header>
-              }
-              @if (cashierTransaction(); as transaction) {
-                @if (transactionActivityFor(transaction); as activity) {
-                  <strong>{{ activity.title }}</strong>
-                  <p>
-                    {{ activity.detail }} · {{ transaction.paymentMethod }} · {{ activity.value }}
-                  </p>
-                  <small class="activity-meta">{{ activity.auditText }}</small>
-                }
-                <div class="top-actions">
-                  @if (transaction.status === 'PENDING_CASH') {
-                    @if (canApproveCashAction()) {
-                      <button
-                        type="button"
-                        class="button primary"
-                        (click)="approveCash(transaction.id)"
-                      >
-                        Approve Cash
-                      </button>
-                    }
-                    @if (canCancelTransactionAction()) {
-                      <button
-                        type="button"
-                        class="button warning"
-                        (click)="cancelTransaction(transaction.id)"
-                      >
-                        Cancel
-                      </button>
-                    }
-                  }
-                  @if (canReturnBoothToWelcomeAction()) {
-                    @if (assignedBooth(); as booth) {
-                      <button type="button" class="button" (click)="returnBoothToWelcome(booth.id)">
-                        Return To Welcome
-                      </button>
-                    }
-                  }
-                </div>
-              } @else {
-                <p>No active payment request.</p>
-                @if (pendingPlanActivation(); as activation) {
-                  @if (pendingPlanActivationOffer(); as offer) {
-                    <div class="status-panel">
-                      <strong>Activate Package</strong>
-                      <span>{{ offer.name }} / {{ offer.offerType }}</span>
-                      <span>{{ offer.includedPrintEntitlement }}</span>
-                      <span>{{ activationDetailFor(activation, offer) }}</span>
-                      <p>Total {{ formatMoney(offer.priceCents) }}</p>
-                      <button
-                        type="button"
-                        class="button primary"
-                        (click)="createPlanActivation(activation.boothId)"
-                      >
-                        Activate Package
-                      </button>
-                    </div>
-                  }
-                }
-                @if (extraPrintCandidate(); as transaction) {
-                  <div class="status-panel">
-                    <strong>Extra Prints</strong>
-                    <span>{{ transaction.transactionNumber }}</span>
-                    <label class="field">
-                      <span>Copies</span>
-                      <select
-                        [ngModel]="extraPrintCopies()"
-                        (ngModelChange)="extraPrintCopies.set(+$event)"
-                      >
-                        @for (copyCount of copyOptions(); track copyCount) {
-                          <option [ngValue]="copyCount">{{ copyCount }}</option>
-                        }
-                      </select>
-                    </label>
-                    <p>Total {{ formatMoney(extraPrintTotalCents()) }}</p>
-                    <button
-                      type="button"
-                      class="button primary"
-                      (click)="createExtraPrintAddOn(transaction.id)"
-                    >
-                      Create Extra Prints
-                    </button>
-                  </div>
-                }
-              }
-            </article>
-
-            <article class="card">
-              <header class="section-head activity-head">
-                <h3 class="section-title">Assigned Booth Activity</h3>
-                <div class="tab-strip compact-tabs">
-                  @for (filter of activityFilters; track filter.value) {
-                    <button
-                      type="button"
-                      class="button"
-                      [class.active]="cashierActivityFilter() === filter.value"
-                      (click)="setCashierActivityFilter(filter.value)"
-                    >
-                      {{ filter.label }}
-                    </button>
-                  }
-                </div>
-              </header>
-              <div class="table-list">
-                @for (
-                  transaction of pagedItems('cashier-activity', cashierActivityTransactions());
-                  track transaction.id
-                ) {
-                  @if (transactionActivityFor(transaction); as activity) {
-                    <div class="row">
-                      <div>
-                        <strong>{{ activity.title }}</strong>
-                        <span>{{ activity.detail }}</span>
-                        <small class="activity-meta">{{ activity.auditText }}</small>
-                      </div>
-                      <span class="pill">{{ activity.value }}</span>
-                    </div>
-                  }
-                }
+          @if (!assignedBooth()) {
+            <section class="card">
+              <div class="section-head">
+                <h2 class="section-title">Cashier POS</h2>
+                <span class="pill">Unassigned</span>
               </div>
-              @if (pageInfo('cashier-activity', cashierActivityTransactions().length); as page) {
-                @if (page.totalPages > 1) {
-                  <footer class="section-head">
-                    <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
-                    <div class="top-actions">
+              <div class="callout">
+                Assign your user account to a booth before using cashier actions.
+              </div>
+            </section>
+          } @else {
+            <section class="content-grid two">
+              <article class="card pos-card">
+                @if (assignedBooth(); as booth) {
+                  <header>
+                    <h3 class="section-title">Current Payment Request</h3>
+                    <span class="pill">{{ booth.currentState }}</span>
+                  </header>
+                  @if (boothPackageStatusFor(booth); as packageStatus) {
+                    <p>{{ packageStatus.packageName }} / {{ packageStatus.detail }}</p>
+                  }
+                  <p>
+                    {{ booth.name }} · {{ locationNameFor(booth.locationId) }} / {{ booth.code }}
+                  </p>
+                }
+                @if (cashierTransaction(); as transaction) {
+                  @if (transactionActivityFor(transaction); as activity) {
+                    <strong>{{ activity.title }}</strong>
+                    <p>
+                      {{ activity.detail }} · {{ transaction.paymentMethod }} · {{ activity.value }}
+                    </p>
+                    <small class="activity-meta">{{ activity.auditText }}</small>
+                  }
+                  <div class="top-actions">
+                    @if (transaction.status === 'PENDING_CASH') {
+                      @if (canApproveCashAction()) {
+                        <button
+                          type="button"
+                          class="button primary"
+                          (click)="approveCash(transaction.id)"
+                        >
+                          Approve Cash
+                        </button>
+                      }
+                      @if (canCancelTransactionAction()) {
+                        <button
+                          type="button"
+                          class="button warning"
+                          (click)="cancelTransaction(transaction.id)"
+                        >
+                          Cancel
+                        </button>
+                      }
+                    }
+                    @if (canReturnBoothToWelcomeAction()) {
+                      @if (assignedBooth(); as booth) {
+                        <button
+                          type="button"
+                          class="button"
+                          (click)="returnBoothToWelcome(booth.id)"
+                        >
+                          Return To Welcome
+                        </button>
+                      }
+                    }
+                  </div>
+                } @else {
+                  <p>No active payment request.</p>
+                  @if (pendingPlanActivation(); as activation) {
+                    @if (pendingPlanActivationOffer(); as offer) {
+                      <div class="status-panel">
+                        <strong>Activate Package</strong>
+                        <span>{{ offer.name }} / {{ offer.offerType }}</span>
+                        <span>{{ offer.includedPrintEntitlement }}</span>
+                        <span>{{ activationDetailFor(activation, offer) }}</span>
+                        <p>Total {{ formatMoney(offer.priceCents) }}</p>
+                        <button
+                          type="button"
+                          class="button primary"
+                          (click)="createPlanActivation(activation.boothId)"
+                        >
+                          Activate Package
+                        </button>
+                      </div>
+                    }
+                  }
+                  @if (extraPrintCandidate(); as transaction) {
+                    <div class="status-panel">
+                      <strong>Extra Prints</strong>
+                      <span>{{ transaction.transactionNumber }}</span>
+                      <label class="field">
+                        <span>Copies</span>
+                        <select
+                          [ngModel]="extraPrintCopies()"
+                          (ngModelChange)="extraPrintCopies.set(+$event)"
+                        >
+                          @for (copyCount of copyOptions(); track copyCount) {
+                            <option [ngValue]="copyCount">{{ copyCount }}</option>
+                          }
+                        </select>
+                      </label>
+                      <p>Total {{ formatMoney(extraPrintTotalCents()) }}</p>
                       <button
                         type="button"
-                        class="button"
-                        [disabled]="!page.hasPrevious"
-                        (click)="previousPage('cashier-activity', page.total)"
+                        class="button primary"
+                        (click)="createExtraPrintAddOn(transaction.id)"
                       >
-                        Previous
-                      </button>
-                      <span>Page {{ page.page }} / {{ page.totalPages }}</span>
-                      <button
-                        type="button"
-                        class="button"
-                        [disabled]="!page.hasNext"
-                        (click)="nextPage('cashier-activity', page.total)"
-                      >
-                        Next
+                        Create Extra Prints
                       </button>
                     </div>
-                  </footer>
+                  }
                 }
-              }
-            </article>
-          </section>
+              </article>
+
+              <article class="card">
+                <header class="section-head activity-head">
+                  <h3 class="section-title">Assigned Booth Activity</h3>
+                  <div class="tab-strip compact-tabs">
+                    @for (filter of activityFilters; track filter.value) {
+                      <button
+                        type="button"
+                        class="button"
+                        [class.active]="cashierActivityFilter() === filter.value"
+                        (click)="setCashierActivityFilter(filter.value)"
+                      >
+                        {{ filter.label }}
+                      </button>
+                    }
+                  </div>
+                </header>
+                <div class="table-list">
+                  @for (
+                    transaction of pagedItems('cashier-activity', cashierActivityTransactions());
+                    track transaction.id
+                  ) {
+                    @if (transactionActivityFor(transaction); as activity) {
+                      <div class="row">
+                        <div>
+                          <strong>{{ activity.title }}</strong>
+                          <span>{{ activity.detail }}</span>
+                          <small class="activity-meta">{{ activity.auditText }}</small>
+                        </div>
+                        <span class="pill">{{ activity.value }}</span>
+                      </div>
+                    }
+                  }
+                </div>
+                @if (pageInfo('cashier-activity', cashierActivityTransactions().length); as page) {
+                  @if (page.totalPages > 1) {
+                    <footer class="section-head">
+                      <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+                      <div class="top-actions">
+                        <button
+                          type="button"
+                          class="button"
+                          [disabled]="!page.hasPrevious"
+                          (click)="previousPage('cashier-activity', page.total)"
+                        >
+                          Previous
+                        </button>
+                        <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                        <button
+                          type="button"
+                          class="button"
+                          [disabled]="!page.hasNext"
+                          (click)="nextPage('cashier-activity', page.total)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </footer>
+                  }
+                }
+              </article>
+            </section>
+          }
         }
       }
     </section>
   </main>
+
+  @if (changePasswordModalOpen()) {
+    <section class="modal-backdrop">
+      <form class="modal-card" (submit)="$event.preventDefault(); changeOwnPassword()">
+        <div class="section-head">
+          <h2 class="section-title">Change Password</h2>
+          <button type="button" class="button" (click)="closeChangePasswordModal()">Close</button>
+        </div>
+        <label class="field">
+          <span>CURRENT PASSWORD</span>
+          <input
+            type="password"
+            [ngModel]="changePasswordCurrent()"
+            name="changePasswordCurrent"
+            (ngModelChange)="changePasswordCurrent.set($event)"
+          />
+        </label>
+        <label class="field">
+          <span>NEW PASSWORD</span>
+          <input
+            type="password"
+            [ngModel]="changePasswordNew()"
+            name="changePasswordNew"
+            (ngModelChange)="changePasswordNew.set($event)"
+          />
+        </label>
+        <label class="field">
+          <span>CONFIRM NEW PASSWORD</span>
+          <input
+            type="password"
+            [ngModel]="changePasswordConfirm()"
+            name="changePasswordConfirm"
+            (ngModelChange)="changePasswordConfirm.set($event)"
+          />
+        </label>
+        <button type="submit" class="button primary fill">Save Password</button>
+      </form>
+    </section>
+  }
 
   @if (clientModalOpen()) {
     <section class="modal-backdrop">
@@ -2640,12 +2682,16 @@
           <div class="top-actions">
             <button type="submit" class="button primary">Save Location</button>
             @if (location.status === 'ACTIVE') {
-              <button type="button" class="button danger" (click)="deleteLocation(location)">
-                Delete Location
+              <button type="button" class="button danger" (click)="deactivateLocation(location)">
+                Deactivate
               </button>
             } @else {
-              <button type="button" class="button green-button" (click)="restoreLocation(location)">
-                Restore Location
+              <button
+                type="button"
+                class="button green-button"
+                (click)="activateLocation(location)"
+              >
+                Activate
               </button>
             }
           </div>
@@ -2658,21 +2704,116 @@
 
   @if (printEntitlementModalOpen()) {
     <section class="modal-backdrop">
+      <section
+        class="modal-card"
+        style="max-width: 820px; width: min(100%, 820px)"
+      >
+        <div class="section-head">
+          <h2 class="section-title">Print Entitlements</h2>
+          <div class="top-actions">
+            <button type="button" class="button primary" (click)="startNewPrintEntitlement()">
+              + New Entitlement
+            </button>
+            <button type="button" class="button" (click)="closePrintEntitlementModal()">
+              Close
+            </button>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Entitlement</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (
+              entitlement of pagedItems('print-entitlements-modal', printEntitlements());
+              track entitlement.id
+            ) {
+              <tr>
+                <td>
+                  <strong>{{ entitlement.name }}</strong>
+                </td>
+                <td>
+                  <span
+                    class="status"
+                    [class.amber]="isPrintEntitlementInUse(entitlement)"
+                    [class.green]="!isPrintEntitlementInUse(entitlement)"
+                    ><span class="dot"></span>{{ printEntitlementUsageStatus(entitlement) }}</span
+                  >
+                </td>
+                <td>
+                  <div class="top-actions">
+                    <button
+                      type="button"
+                      class="button"
+                      (click)="viewPrintEntitlement(entitlement)"
+                    >
+                      Manage
+                    </button>
+                    @if (canDeletePrintEntitlement(entitlement)) {
+                      <button
+                        type="button"
+                        class="button danger"
+                        (click)="deletePrintEntitlement(entitlement)"
+                      >
+                        Delete
+                      </button>
+                    } @else if (isPersistedPrintEntitlement(entitlement)) {
+                      <span class="booth-meta">In use by packages</span>
+                    } @else {
+                      <span class="booth-meta">System default</span>
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (pageInfo('print-entitlements-modal', printEntitlements().length); as page) {
+          @if (page.totalPages > 1) {
+            <footer class="section-head">
+              <span>{{ page.start }}-{{ page.end }} of {{ page.total }}</span>
+              <div class="top-actions">
+                <button
+                  type="button"
+                  class="button"
+                  [disabled]="!page.hasPrevious"
+                  (click)="previousPage('print-entitlements-modal', page.total)"
+                >
+                  Previous
+                </button>
+                <span>Page {{ page.page }} / {{ page.totalPages }}</span>
+                <button
+                  type="button"
+                  class="button"
+                  [disabled]="!page.hasNext"
+                  (click)="nextPage('print-entitlements-modal', page.total)"
+                >
+                  Next
+                </button>
+              </div>
+            </footer>
+          }
+        }
+      </section>
+    </section>
+  }
+
+  @if (printEntitlementDetailModalOpen()) {
+    <section class="modal-backdrop">
       <form class="modal-card" (submit)="$event.preventDefault(); savePrintEntitlement()">
         <div class="section-head">
           <h2 class="section-title">
             {{ selectedPrintEntitlement() ? 'Manage Print Entitlement' : 'New Print Entitlement' }}
           </h2>
-          <button type="button" class="button" (click)="closePrintEntitlementModal()">Close</button>
+          <button type="button" class="button" (click)="closePrintEntitlementDetailModal()">
+            Cancel
+          </button>
         </div>
-        @if (selectedPrintEntitlement(); as entitlement) {
-          <span
-            class="status"
-            [class.green]="entitlement.status === 'ACTIVE'"
-            [class.red]="entitlement.status !== 'ACTIVE'"
-            ><span class="dot"></span>{{ entitlement.status }}</span
-          >
-        }
         <label class="field">
           <span>PRINT ENTITLEMENT</span>
           <input
@@ -2681,32 +2822,7 @@
             name="printEntitlementName"
           />
         </label>
-        <div class="top-actions">
-          <button type="submit" class="button primary">Save Entitlement</button>
-          @if (selectedPrintEntitlement(); as entitlement) {
-            @if (entitlement.status === 'ACTIVE') {
-              @if (isPersistedPrintEntitlement(entitlement)) {
-                <button
-                  type="button"
-                  class="button danger"
-                  (click)="updatePrintEntitlementStatus(entitlement, 'INACTIVE')"
-                >
-                  Deactivate
-                </button>
-              }
-            } @else {
-              @if (isPersistedPrintEntitlement(entitlement)) {
-                <button
-                  type="button"
-                  class="button green-button"
-                  (click)="updatePrintEntitlementStatus(entitlement, 'ACTIVE')"
-                >
-                  Activate
-                </button>
-              }
-            }
-          }
-        </div>
+        <button type="submit" class="button primary fill">Save Entitlement</button>
       </form>
     </section>
   }
@@ -2739,9 +2855,6 @@
             name="newUserRole"
             (ngModelChange)="newUserRole.set($event)"
           >
-            @if (session()?.role !== 'CLIENT_ADMIN') {
-              <option value="CLIENT_OWNER">CLIENT_OWNER</option>
-            }
             <option value="CLIENT_ADMIN">CLIENT_ADMIN</option>
             <option value="CASHIER">CASHIER</option>
           </select>
@@ -2806,8 +2919,8 @@
         }
         <div class="callout">
           Default password will be set to <strong>{{ defaultInitialPassword }}</strong
-          >. The user must update it on first sign-in. Cashier booth assignment happens during booth
-          registration.
+          >. The user must update it on first sign-in. POS staff booth assignment happens during
+          booth registration.
         </div>
         <button type="submit" class="button primary fill">Create User</button>
       </form>
@@ -2850,31 +2963,18 @@
           /></label>
         </div>
         <label class="field">
-          <span>ASSIGNED CASHIER</span>
+          <span>ASSIGNED POS STAFF</span>
           <select
             [ngModel]="boothCashierUserId()"
             name="boothCashierUserId"
             (ngModelChange)="boothCashierUserId.set($event)"
           >
             <option [ngValue]="null">Assign later</option>
-            @for (cashier of availableCashiers(); track cashier.id) {
+            @for (cashier of availablePosStaff(); track cashier.id) {
               <option [ngValue]="cashier.id">{{ cashier.name }} / {{ cashier.email }}</option>
             }
           </select>
         </label>
-        @if (boothSecret(); as secret) {
-          <section class="callout secret-callout">
-            <strong>{{ secret.boothName }} / {{ secret.boothCode }}</strong>
-            <label class="field">
-              <span>KIOSK TOKEN</span>
-              <input [value]="secret.kioskToken" readonly />
-            </label>
-            <label class="field">
-              <span>AGENT CREDENTIAL</span>
-              <input [value]="secret.agentCredential" readonly />
-            </label>
-          </section>
-        }
         <button type="submit" class="button primary fill">Create Booth</button>
       </form>
     </section>
