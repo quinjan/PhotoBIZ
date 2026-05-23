@@ -7,7 +7,8 @@ namespace PhotoBIZ.WindowsAgent;
 public interface IPhotoBizAgentApiClient
 {
     Task PairAsync(string boothCode, CancellationToken cancellationToken);
-    Task HeartbeatAsync(string boothCode, CancellationToken cancellationToken);
+    Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken);
+    Task OfflineAsync(string boothCode, CancellationToken cancellationToken);
     Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken);
     Task<AgentCommandPayload?> GetNextCommandAsync(string boothCode, CancellationToken cancellationToken);
     Task MarkSessionStartedAsync(ActiveLumaBoothSession session, string lumaboothEventType, CancellationToken cancellationToken);
@@ -30,10 +31,17 @@ public sealed class PhotoBizAgentApiClient(
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task HeartbeatAsync(string boothCode, CancellationToken cancellationToken)
+    public async Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken)
     {
         ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync("/api/agent/heartbeat", new { boothCode }, cancellationToken);
+        var response = await httpClient.PostAsJsonAsync("/api/agent/heartbeat", heartbeat, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task OfflineAsync(string boothCode, CancellationToken cancellationToken)
+    {
+        ConfigureHttpClient();
+        var response = await httpClient.PostAsJsonAsync("/api/agent/offline", new { boothCode }, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
@@ -139,3 +147,14 @@ public sealed class PhotoBizAgentApiClient(
         }
     }
 }
+
+public sealed record AgentHeartbeatPayload(
+    string BoothCode,
+    string AgentVersion,
+    string RuntimeKind,
+    bool KioskRunning,
+    string LumaBoothMode,
+    bool ApiReachable,
+    bool ChromeLaunched,
+    bool TriggerListenerRunning,
+    bool? LumaBoothReachable);

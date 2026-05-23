@@ -177,6 +177,12 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(booth => booth.CurrentState).HasMaxLength(60);
             entity.Property(booth => booth.KioskTokenHash).HasMaxLength(1000);
             entity.Property(booth => booth.AgentCredentialHash).HasMaxLength(1000);
+            entity.Property(booth => booth.AgentVersion).HasMaxLength(80);
+            entity.Property(booth => booth.AgentRuntimeKind).HasMaxLength(80);
+            entity.Property(booth => booth.AgentLumaBoothMode).HasMaxLength(40);
+            entity.Property(booth => booth.AgentHealthStatus)
+                .HasMaxLength(40)
+                .HasDefaultValue(StatusValues.AgentHealth.Unknown);
             entity.HasOne(booth => booth.ClientAccount)
                 .WithMany()
                 .HasForeignKey(booth => booth.ClientAccountId)

@@ -123,6 +123,16 @@ public sealed class Booth
     public DateTimeOffset? LastHeartbeatAt { get; set; }
     public string? KioskTokenHash { get; set; }
     public string? AgentCredentialHash { get; set; }
+    public string? AgentVersion { get; set; }
+    public string? AgentRuntimeKind { get; set; }
+    public bool? AgentKioskRunning { get; set; }
+    public string? AgentLumaBoothMode { get; set; }
+    public bool? AgentApiReachable { get; set; }
+    public bool? AgentChromeLaunched { get; set; }
+    public bool? AgentTriggerListenerRunning { get; set; }
+    public bool? AgentLumaBoothReachable { get; set; }
+    public string AgentHealthStatus { get; set; } = StatusValues.AgentHealth.Unknown;
+    public DateTimeOffset? AgentMetadataUpdatedAt { get; set; }
 
     public ClientAccount? ClientAccount { get; set; }
     public Location? Location { get; set; }

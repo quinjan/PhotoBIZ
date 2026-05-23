@@ -9,4 +9,11 @@ public class AgentMetadataTests
     {
         Assert.Equal("PhotoBIZ.WindowsAgent", AgentMetadata.ServiceName);
     }
+
+    [Fact]
+    public void RuntimeKindIdentifiesControlCenter()
+    {
+        Assert.Equal("ControlCenter", AgentMetadata.RuntimeKind);
+        Assert.False(string.IsNullOrWhiteSpace(AgentMetadata.Version));
+    }
 }

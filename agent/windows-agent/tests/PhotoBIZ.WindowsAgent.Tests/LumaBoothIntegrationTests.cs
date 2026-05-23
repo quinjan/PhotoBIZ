@@ -252,7 +252,12 @@ public sealed class LumaBoothIntegrationTests
             return Task.CompletedTask;
         }
 
-        public Task HeartbeatAsync(string boothCode, CancellationToken cancellationToken)
+        public Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task OfflineAsync(string boothCode, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }

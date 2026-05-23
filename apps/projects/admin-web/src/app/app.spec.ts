@@ -1418,6 +1418,19 @@ function makeBooth(overrides: Partial<BoothSummary> = {}): BoothSummary {
     locationId: 'location-1',
     name: 'Booth A',
     status: 'ACTIVE',
+    agentStatus: {
+      apiReachable: null,
+      chromeLaunched: null,
+      healthStatus: 'UNKNOWN',
+      kioskRunning: false,
+      lumaBoothMode: null,
+      lumaBoothReachable: null,
+      metadataUpdatedAt: null,
+      runtimeKind: null,
+      triggerListenerRunning: null,
+      updateStatus: 'UNKNOWN',
+      version: null,
+    },
     ...overrides,
   };
 }

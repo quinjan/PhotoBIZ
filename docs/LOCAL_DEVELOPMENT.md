@@ -105,13 +105,13 @@ npm run start:booth
 
 Booth URL: `http://localhost:4201`
 
-### Optional Terminal E: Windows Agent (local console mode)
+### Optional Terminal E: Windows Agent Control Center / dev host
 
 ```powershell
 dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 ```
 
-Note: on Windows, this project is service-capable (`AddWindowsService`) but runs fine from `dotnet run` during development.
+The production Agent shape is a logged-in Windows user-session Control Center. During the transition to the WPF shell, the existing dev host remains useful for simulator and API-mode testing. The important runtime contract is the same: validate pairing, request a launch token, launch Chrome, then heartbeat and poll commands only while the local booth runtime is intentionally started.
 
 ## 7) Configure Windows Agent LumaBooth Settings
 
@@ -128,6 +128,7 @@ dotnet user-secrets set "PhotoBIZ:BoothCode" "<booth-code>" --project agent/wind
 dotnet user-secrets set "PhotoBIZ:AgentCredential" "<agent-credential>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "false" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 ```
 
 ### Simulator Mode
@@ -156,17 +157,17 @@ Simulator mode is the default and is best for normal backend/UI development with
       "ChromeExecutablePath": "",
       "ChromeUserDataDir": "",
       "LaunchBoothUiOnStartup": true,
-      "KioskMode": true
+      "KioskMode": false
     }
   }
 }
 ```
 
-In simulator mode, the Agent still pairs, requests a fresh Booth UI launch token, opens Chrome to `PhotoBIZ:Display:BoothUiBaseUrl/{token}` when `LaunchBoothUiOnStartup` is true, heartbeats, polls for commands, reports session started/completed, completes `PRINT_COPIES` commands without calling LumaBooth, and returns Booth UI focus after `SimulatedSessionDurationSeconds`.
+In simulator mode, the Agent still pairs, requests a fresh Booth UI launch token, opens Chrome to `PhotoBIZ:Display:BoothUiBaseUrl/{token}` when `LaunchBoothUiOnStartup` is true, heartbeats, polls for commands, reports session started/completed, completes `PRINT_COPIES` commands without calling LumaBooth, and returns Booth UI focus after `SimulatedSessionDurationSeconds`. Pairing and launch-token creation do not make the booth online; the backend treats the booth as online only after heartbeat begins. Use `POST /api/agent/offline` or stop the local Agent runtime to take the booth offline immediately.
 
 The Booth UI does not show a manual kiosk-token input. For normal booth testing, start the Windows Agent and let it launch Chrome to the token route, for example `http://localhost:4201/43E836977240C5E33F3C56581DC59E07A15BB08F8512C6C2`. That token route is what loads the booth's selected theme and active transaction state. The Agent correlates the launch token by sending its configured `BoothCode` and `AgentCredential` to the backend, then the backend returns the booth-scoped kiosk token for that booth.
 
-When `PhotoBIZ:Display:KioskMode` is `true`, the Agent starts Chrome with kiosk flags and an isolated profile directory. Leave `PhotoBIZ:Display:ChromeUserDataDir` empty to use the default `%ProgramData%\PhotoBIZ\chrome-kiosk`, or set it to a booth-specific folder when testing multiple booths on one machine. Alt-Tab remains available because this is Chrome kiosk mode, not Windows assigned access.
+When `PhotoBIZ:Display:KioskMode` is `true`, the Agent starts Chrome with kiosk flags and an isolated profile directory. Leave `PhotoBIZ:Display:ChromeUserDataDir` empty to use the default `%ProgramData%\PhotoBIZ\chrome-kiosk`, or set it to a booth-specific folder when testing multiple booths on one machine. Alt-Tab remains available because this is Chrome kiosk mode, not Windows assigned access. Keep `KioskMode` false for daily development so Chrome opens as a normal window.
 
 ### LumaBooth API Mode
 

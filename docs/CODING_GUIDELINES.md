@@ -51,7 +51,7 @@ docs/
 - `apps/admin-web` contains the Central Web App for Application Owner, client users, and cashiers.
 - `apps/booth-ui` contains the customer-facing kiosk UI.
 - `services/api` contains the ASP.NET Core backend API and background worker code unless a later architecture update splits them.
-- `agent/windows-agent` contains the .NET Windows Service that integrates with LumaBooth.
+- `agent/windows-agent` contains the .NET Windows Agent Control Center runtime that integrates with LumaBooth and kiosk Chrome from the logged-in Windows user session.
 - Shared frontend DTOs, API clients, validation helpers, constants, and UI primitives should live in Angular workspace libraries once the workspace exists.
 
 Do not add another top-level runtime surface without updating `docs/ARCHITECTURE.md`.
@@ -171,7 +171,9 @@ Booth UI themes are PhotoBIZ-owned presets, not tenant-authored skins. They may 
 - Use Hangfire for background jobs such as transaction expiration and scheduled recovery tasks.
 - Use Redis for realtime backplane, cache, and distributed locks according to the architecture.
 - Agent commands must be idempotent or safely retryable where possible.
-- The Windows Agent owns local Windows and LumaBooth integration. The API owns command authorization and durable state.
+- The Windows Agent Control Center owns local Windows, kiosk Chrome, and LumaBooth integration. The API owns command authorization, durable state, and online/offline truth from heartbeats.
+- Pairing and Booth UI launch-token creation must not mark a booth online. Heartbeat starts only after the local booth runtime starts, and graceful stop should call the authenticated Agent offline endpoint.
+- Agent diagnostics, logs, heartbeat metadata, and exported bundles must be sanitized. Never write raw Agent credentials, kiosk tokens, LumaBooth API passwords, provider secrets, or secret headers.
 - Booth UI must not start LumaBooth directly.
 
 ## Testing Expectations

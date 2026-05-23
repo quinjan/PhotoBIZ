@@ -257,18 +257,24 @@ The Windows Booth Agent runs locally on the booth laptop.
 
 Responsibilities:
 
-- Authenticate and pair with a booth record.
-- Request a fresh booth-scoped Booth UI launch token after successful pairing or startup.
+- Provide a local Agent Control Center for staff and technicians in the logged-in Windows user session.
+- Authenticate, pair, and re-pair with a booth record using Admin Web-issued booth code and Agent credential.
+- Store saved Agent credential and LumaBooth API password encrypted locally.
+- Show production API settings by default, with technician-only local/dev overrides.
+- Request a fresh booth-scoped Booth UI launch token when `Start Booth` begins the runtime.
 - Launch Chrome in kiosk mode to the configured Booth UI URL with the launch token, using an isolated Chrome profile so customers cannot access normal browser controls.
-- Maintain heartbeat connection with backend.
+- Start kiosk Chrome, heartbeat, command polling, and the LumaBooth trigger listener together when staff click `Start Booth`.
+- Stop heartbeat and command polling, call the backend offline endpoint, and close only the PhotoBIZ-launched Chrome instance when staff click `Stop Booth`.
+- Maintain heartbeat connection with backend only while the booth runtime is intentionally online.
 - Be treated as offline when no heartbeat has been received or the last heartbeat is older than 60 seconds.
 - Receive commands from backend.
 - Start LumaBooth sessions through the local dslrBooth/LumaBooth API or simulator mode.
 - Receive LumaBooth URL trigger events through its local loopback listener.
 - Report session state changes.
-- Report basic local health.
+- Report basic local health and non-secret runtime metadata such as Agent version, kiosk running status, runtime kind, and LumaBooth mode.
 - Manage Booth UI and LumaBooth window focus where possible.
 - Recover to welcome screen after session completion or failure.
+- Show sanitized logs and export diagnostics without exposing credentials, kiosk tokens, API passwords, or provider secrets.
 
 ### 4. Tenant Booth UI Customization
 

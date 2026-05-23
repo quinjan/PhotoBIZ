@@ -1231,6 +1231,140 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task AgentPairAndBoothUiLaunchDoNotMarkBoothOnline()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-pair-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            agentCredential: agentCredential);
+        client.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var pairResponse = await client.PostAsJsonAsync("/api/agent/pair", new
+        {
+            boothCode = seed.BoothCode
+        });
+        var launchResponse = await client.PostAsJsonAsync("/api/agent/booth-ui-launch", new
+        {
+            boothCode = seed.BoothCode
+        });
+
+        pairResponse.EnsureSuccessStatusCode();
+        launchResponse.EnsureSuccessStatusCode();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+        var booth = await dbContext.Booths.SingleAsync(item => item.Id == seed.BoothId);
+
+        Assert.Null(booth.LastHeartbeatAt);
+        Assert.Equal(StatusValues.Booth.Offline, PhotoBizBoothAvailability.GetEffectiveState(booth, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public async Task AgentHeartbeatStoresRuntimeMetadataAndExposesOverviewStatus()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var adminClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-heartbeat-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            agentCredential: agentCredential);
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var heartbeatResponse = await agentClient.PostAsJsonAsync("/api/agent/heartbeat", new
+        {
+            boothCode = seed.BoothCode,
+            agentVersion = "1.2.3",
+            runtimeKind = "ControlCenter",
+            kioskRunning = true,
+            lumaBoothMode = "Simulator",
+            apiReachable = true,
+            chromeLaunched = true,
+            triggerListenerRunning = true,
+            lumaBoothReachable = true
+        });
+        await LoginAsync(adminClient, seed.ClientOwnerEmail);
+        var overview = await adminClient.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
+
+        heartbeatResponse.EnsureSuccessStatusCode();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+        var booth = await dbContext.Booths.SingleAsync(item => item.Id == seed.BoothId);
+        var boothSummary = Assert.Single(overview!.Booths, item => item.Id == seed.BoothId);
+
+        Assert.NotNull(booth.LastHeartbeatAt);
+        Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
+        Assert.Equal("1.2.3", booth.AgentVersion);
+        Assert.Equal("ControlCenter", booth.AgentRuntimeKind);
+        Assert.True(booth.AgentKioskRunning);
+        Assert.Equal("Simulator", booth.AgentLumaBoothMode);
+        Assert.Equal(StatusValues.AgentHealth.Ok, booth.AgentHealthStatus);
+        Assert.Equal(StatusValues.AgentHealth.Ok, boothSummary.AgentStatus.HealthStatus);
+        Assert.Equal(StatusValues.AgentUpdate.Unknown, boothSummary.AgentStatus.UpdateStatus);
+        Assert.Equal("1.2.3", boothSummary.AgentStatus.Version);
+        Assert.True(boothSummary.AgentStatus.KioskRunning);
+    }
+
+    [Fact]
+    public async Task AgentOfflineEndpointClearsFreshHeartbeatWithoutCancellingActiveTransaction()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string agentCredential = "agent-offline-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true,
+            agentCredential: agentCredential);
+        var transactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.StartingSession, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetBoothStateAsync(seed.BoothId, StatusValues.Booth.StartingLumabooth);
+        client.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+
+        var response = await client.PostAsJsonAsync("/api/agent/offline", new
+        {
+            boothCode = seed.BoothCode
+        });
+
+        response.EnsureSuccessStatusCode();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+        var booth = await dbContext.Booths.SingleAsync(item => item.Id == seed.BoothId);
+        var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
+
+        Assert.Null(booth.LastHeartbeatAt);
+        Assert.False(booth.AgentKioskRunning);
+        Assert.Equal(StatusValues.AgentHealth.Offline, booth.AgentHealthStatus);
+        Assert.Equal(StatusValues.Booth.StartingLumabooth, booth.CurrentState);
+        Assert.Equal(StatusValues.Booth.Offline, PhotoBizBoothAvailability.GetEffectiveState(booth, DateTimeOffset.UtcNow));
+        Assert.Equal(StatusValues.Transaction.StartingSession, transaction.Status);
+        Assert.Null(transaction.CancelledAt);
+    }
+
+    [Fact]
     public async Task AgentCanRequestFreshBoothUiLaunchToken()
     {
         await using var factory = new PhotoBizApiFactory();

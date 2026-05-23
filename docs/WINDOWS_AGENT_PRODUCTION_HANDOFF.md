@@ -9,13 +9,67 @@ Read these files first, in order:
 3. `docs/CODING_GUIDELINES.md`
 4. This file
 
-`docs/ARCHITECTURE.md` is still the source of truth today, but it currently describes the Windows Agent as a `.NET 10 LTS Windows Service`. The decisions below intentionally change that production shape. The first implementation step must update `docs/ARCHITECTURE.md` and any conflicting docs so the source of truth matches this handoff before code changes are merged.
+`docs/ARCHITECTURE.md` is the source of truth. It now matches this handoff's user-session Agent Control Center direction. If future implementation work changes the runtime model again, update `docs/ARCHITECTURE.md` first and then bring this handoff back into sync.
 
 ## Goal
 
 Build a production-ready Windows Agent package for booth laptops.
 
 The Agent must be easy for a PhotoBIZ technician to install, pair, start, monitor, stop, diagnose, and re-pair. The Agent and kiosk Chrome must be operationally tied: the booth is online only when the Agent runtime and kiosk Chrome are intentionally started together.
+
+## Current Implementation Status
+
+Status: foundation started, production Agent not complete.
+
+Overall distance to desired production state: about 25% complete. The documentation and backend lifecycle contract are mostly in place. The remaining majority is the local Windows app: runtime service extraction, WPF GUI, encrypted configuration, kiosk process ownership, diagnostics, installer, signing, and hardware QA.
+
+Completed:
+
+- Source-of-truth documentation now describes the production Agent as a logged-in Windows user-session Control Center instead of an always-on Windows Service.
+- `docs/ARCHITECTURE.md`, `docs/PRD.md`, `docs/CODING_GUIDELINES.md`, `docs/LOCAL_DEVELOPMENT.md`, and `docs/DEPLOYMENT.md` were updated for the Control Center lifecycle, local dev defaults, and installer direction.
+- Backend pairing now validates booth code and Agent credential without marking the booth online.
+- Backend Booth UI launch-token creation no longer implies online status.
+- Backend heartbeat remains the authoritative online signal.
+- Backend now has authenticated graceful shutdown through `POST /api/agent/offline`.
+- Backend persists non-secret Agent runtime metadata: Agent version, runtime kind, kiosk running flag, LumaBooth mode, health flags, health status, and metadata timestamp.
+- Admin overview DTOs expose the latest Agent status summary for future Admin Web display.
+- EF migration `20260523220631_AddAgentRuntimeMetadata` adds the Agent metadata fields to `booths`.
+- The current Agent dev host sends the new heartbeat payload and calls the offline endpoint on shutdown.
+- Focused backend tests cover pair/launch-not-online, heartbeat metadata, immediate offline behavior, and preserving active transactions during graceful offline.
+- Current validation passed:
+  - `dotnet test services/api/tests/PhotoBIZ.Api.Tests/PhotoBIZ.Api.Tests.csproj --no-restore`
+  - `dotnet test agent/windows-agent/tests/PhotoBIZ.WindowsAgent.Tests/PhotoBIZ.WindowsAgent.Tests.csproj --no-restore`
+  - `npm run build:admin`
+  - `npm run format:check`
+  - `dotnet ef database update`
+
+Not complete yet:
+
+- No WPF Agent Control Center project exists yet.
+- Existing `PhotoBIZ.WindowsAgent` is still a worker/dev-host style project and still references Windows Service hosting.
+- Runtime behavior has not yet been extracted into start/stop services that the WPF app can own.
+- Kiosk Chrome launch does not yet store and close only the PhotoBIZ-launched process.
+- Pairing/config is not yet stored under `C:\ProgramData\PhotoBIZ\Agent`.
+- Agent credential and LumaBooth API password are not yet encrypted locally with DPAPI.
+- Staff mode and technician/admin mode screens are not implemented.
+- Sanitized local logs and diagnostics export are not implemented.
+- Unauthorized Agent responses do not yet drive a re-pair-required GUI state.
+- Admin Web has the data contract for Agent status but does not yet render the new status fields.
+- The signed self-contained `.exe` installer, login auto-start registration, uninstall behavior, update behavior, and code signing are not implemented.
+- Clean Windows install QA and real LumaBooth hardware smoke testing are not done.
+
+Recommended next implementation slices:
+
+1. Extract the current worker behavior into reusable runtime services with explicit `StartBoothAsync` and `StopBoothAsync` orchestration.
+2. Add kiosk process ownership: launch Chrome, record process identity, relaunch, and close only the PhotoBIZ-launched instance.
+3. Add local config and secret storage under `C:\ProgramData\PhotoBIZ\Agent`, with DPAPI for Agent credential and LumaBooth API password.
+4. Add the WPF Agent Control Center project and wire Dashboard plus Start/Stop Booth against the runtime services.
+5. Add Pair/Re-pair screens and handle unauthorized API responses as a re-pair-required state.
+6. Add Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
+7. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
+8. Render Agent status in Admin Web using the new overview DTO fields.
+9. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
+10. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
 
 ## Decisions Already Made
 
@@ -62,23 +116,28 @@ The app owns the runtime lifecycle:
 
 Do not build an always-on background service for v1. Do not let heartbeat continue when kiosk Chrome is intentionally stopped.
 
-## Required Documentation Updates
+## Documentation Update Status
 
-Before or alongside code implementation, update:
+Completed:
 
 - `docs/ARCHITECTURE.md`
-  - Replace the Windows Service decision with the Agent Control Center runtime model.
-  - Explain that heartbeat means the booth runtime is online, not merely that credentials were paired.
-  - Explain that kiosk Chrome and heartbeat are started/stopped together.
-  - Update Agent configuration and deployment sections.
+  - Replaced the Windows Service decision with the Agent Control Center runtime model.
+  - Explained that heartbeat means the booth runtime is online, not merely that credentials were paired.
+  - Explained that kiosk Chrome and heartbeat are started/stopped together.
+  - Updated Agent configuration and deployment sections.
 - `docs/PRD.md`
-  - Update Windows Agent responsibilities to include local GUI, pairing, diagnostics, and start/stop booth lifecycle.
+  - Updated Windows Agent responsibilities to include local GUI, pairing, diagnostics, and start/stop booth lifecycle.
 - `docs/CODING_GUIDELINES.md`
-  - Replace service-only language with Windows Agent Control Center guidance.
+  - Replaced service-only language with Windows Agent Control Center guidance.
 - `docs/LOCAL_DEVELOPMENT.md`
-  - Document how to run the WPF app locally, simulator mode, dev config, and normal-window Chrome mode.
+  - Documented the current Agent Control Center/dev-host transition, simulator mode, dev config, and normal-window Chrome mode.
 - `docs/DEPLOYMENT.md`
-  - Add the signed self-contained installer as the booth-laptop deployment artifact.
+  - Added the signed self-contained installer as the booth-laptop deployment artifact.
+
+Still needed once the WPF shell exists:
+
+- Update `docs/LOCAL_DEVELOPMENT.md` with exact WPF run commands, project path, and screenshots or screen names if they differ from this handoff.
+- Update `docs/DEPLOYMENT.md` with the actual installer technology, publish command, signing command, artifact names, and release process.
 
 ## Backend API Changes
 
@@ -371,4 +430,3 @@ The work is complete when:
 - Real API mode is ready for booth hardware smoke testing.
 - Sensitive values are encrypted at rest and never shown in logs/diagnostics.
 - Focused backend, agent, and GUI tests cover the lifecycle and failure modes above.
-

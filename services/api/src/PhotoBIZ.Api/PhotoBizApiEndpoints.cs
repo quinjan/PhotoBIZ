@@ -18,6 +18,9 @@ public static class PhotoBizApiEndpoints
     private const string DefaultCompletionThankYouMessage = "Thanks for sharing your smile.";
     private const string DefaultInitialPassword = "PhotoBIZ!123";
     private const int MinimumPasswordLength = 8;
+    private const int AgentVersionMaxLength = 80;
+    private const int AgentRuntimeKindMaxLength = 80;
+    private const int AgentLumaBoothModeMaxLength = 40;
 
     public static void MapPhotoBizApi(this IEndpointRouteBuilder app)
     {
@@ -76,6 +79,7 @@ public static class PhotoBizApiEndpoints
         var agent = app.MapGroup("/api/agent");
         agent.MapPost("/pair", PairAgentAsync);
         agent.MapPost("/heartbeat", AgentHeartbeatAsync);
+        agent.MapPost("/offline", AgentOfflineAsync);
         agent.MapPost("/booth-ui-launch", CreateAgentBoothUiLaunchAsync);
         agent.MapGet("/commands/next", GetNextAgentCommandAsync);
         agent.MapPost("/transactions/{transactionId:guid}/session-started", AgentSessionStartedAsync);
@@ -321,7 +325,7 @@ public static class PhotoBizApiEndpoints
             .Take(25)
             .ToListAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
-        var boothSummaries = booths.Select(booth => new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, PhotoBizBoothAvailability.GetEffectiveState(booth, now), booth.LastHeartbeatAt)).ToArray();
+        var boothSummaries = booths.Select(booth => BuildBoothSummary(booth, PhotoBizBoothAvailability.GetEffectiveState(booth, now))).ToArray();
 
         var sessionUser = users.Single(item => item.Id == currentUser.UserId);
 
@@ -1247,7 +1251,7 @@ public static class PhotoBizApiEndpoints
         await auditService.WriteAsync(currentUser, "booth.created", nameof(Booth), booth.Id, new { booth.Name, booth.Code, request.CashierUserId }, cancellationToken);
 
         return TypedResults.Ok(new CreateBoothResponse(
-            new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, booth.CurrentState, booth.LastHeartbeatAt),
+            BuildBoothSummary(booth, booth.CurrentState),
             kioskToken,
             agentCredential));
     }
@@ -1389,7 +1393,7 @@ public static class PhotoBizApiEndpoints
 
         await auditService.WriteAsync(currentUser, "booth.updated", nameof(Booth), booth.Id, new { booth.Name, booth.Code, booth.Status, request.CashierUserId }, cancellationToken);
 
-        return TypedResults.Ok(new BoothSummary(booth.Id, booth.ClientAccountId, booth.LocationId, booth.Name, booth.Code, booth.Status, booth.CurrentState, booth.LastHeartbeatAt));
+        return TypedResults.Ok(BuildBoothSummary(booth, booth.CurrentState));
     }
 
     private static async Task<Results<Ok<BoothCredentialResponse>, ForbidHttpResult>> IssueBoothCredentialsAsync(
@@ -2739,13 +2743,37 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
-        PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, DateTimeOffset.UtcNow);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
         return TypedResults.Ok(new AgentPairResponse(booth.Id, booth.Name, booth.Code));
     }
 
     private static async Task<Results<Ok, UnauthorizedHttpResult>> AgentHeartbeatAsync(
+        AgentHeartbeatRequest request,
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTokenHasher tokenHasher,
+        CancellationToken cancellationToken)
+    {
+        var booth = await ResolveBoothFromAgentCredentialAsync(request.BoothCode, httpContext, dbContext, tokenHasher, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (!await IsAgentSurfaceAvailableAsync(dbContext, booth, cancellationToken))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, now);
+        ApplyAgentHeartbeatMetadata(booth, request, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok, UnauthorizedHttpResult>> AgentOfflineAsync(
         AgentBoothRequest request,
         HttpContext httpContext,
         PhotoBizDbContext dbContext,
@@ -2764,7 +2792,7 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
-        PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, DateTimeOffset.UtcNow);
+        PhotoBizBoothAvailability.MarkAgentOffline(booth, DateTimeOffset.UtcNow);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok();
@@ -2791,7 +2819,6 @@ public static class PhotoBizApiEndpoints
 
         var kioskToken = tokenHasher.GenerateOpaqueToken();
         booth.KioskTokenHash = tokenHasher.Hash(kioskToken);
-        PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, DateTimeOffset.UtcNow);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return TypedResults.Ok(new AgentBoothUiLaunchResponse(booth.Id, booth.Code, kioskToken));
@@ -3063,6 +3090,72 @@ public static class PhotoBizApiEndpoints
         });
     }
 
+    private static BoothSummary BuildBoothSummary(Booth booth, string currentState)
+    {
+        return new BoothSummary(
+            booth.Id,
+            booth.ClientAccountId,
+            booth.LocationId,
+            booth.Name,
+            booth.Code,
+            booth.Status,
+            currentState,
+            booth.LastHeartbeatAt,
+            new AgentStatusSummary(
+                booth.AgentHealthStatus,
+                StatusValues.AgentUpdate.Unknown,
+                booth.AgentVersion,
+                booth.AgentRuntimeKind,
+                booth.AgentKioskRunning ?? false,
+                booth.AgentLumaBoothMode,
+                booth.AgentApiReachable,
+                booth.AgentChromeLaunched,
+                booth.AgentTriggerListenerRunning,
+                booth.AgentLumaBoothReachable,
+                booth.AgentMetadataUpdatedAt));
+    }
+
+    private static void ApplyAgentHeartbeatMetadata(Booth booth, AgentHeartbeatRequest request, DateTimeOffset now)
+    {
+        booth.AgentVersion = NormalizeAgentMetadataValue(request.AgentVersion, AgentVersionMaxLength);
+        booth.AgentRuntimeKind = NormalizeAgentMetadataValue(request.RuntimeKind, AgentRuntimeKindMaxLength);
+        booth.AgentKioskRunning = request.KioskRunning;
+        booth.AgentLumaBoothMode = NormalizeAgentMetadataValue(request.LumaBoothMode, AgentLumaBoothModeMaxLength);
+        booth.AgentApiReachable = request.ApiReachable;
+        booth.AgentChromeLaunched = request.ChromeLaunched;
+        booth.AgentTriggerListenerRunning = request.TriggerListenerRunning;
+        booth.AgentLumaBoothReachable = request.LumaBoothReachable;
+        booth.AgentHealthStatus = DetermineAgentHealthStatus(request);
+        booth.AgentMetadataUpdatedAt = now;
+    }
+
+    private static string DetermineAgentHealthStatus(AgentHeartbeatRequest request)
+    {
+        var flags = new[]
+        {
+            request.KioskRunning,
+            request.ApiReachable,
+            request.ChromeLaunched,
+            request.TriggerListenerRunning,
+            request.LumaBoothReachable
+        };
+
+        return flags.Any(flag => flag == false)
+            ? StatusValues.AgentHealth.Degraded
+            : StatusValues.AgentHealth.Ok;
+    }
+
+    private static string? NormalizeAgentMetadataValue(string? value, int maxLength)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        return normalized.Length <= maxLength ? normalized : normalized[..maxLength];
+    }
+
     private static async Task<bool> IsAgentSurfaceAvailableAsync(
         PhotoBizDbContext dbContext,
         Booth booth,
@@ -3102,13 +3195,18 @@ public static class PhotoBizApiEndpoints
         PhotoBizTokenHasher tokenHasher,
         CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(boothCode))
+        {
+            return null;
+        }
+
         if (!httpContext.Request.Headers.TryGetValue("X-Agent-Credential", out var credentialValues))
         {
             return null;
         }
 
         var credential = credentialValues.ToString();
-        var normalizedBoothCode = boothCode.ToUpperInvariant();
+        var normalizedBoothCode = boothCode.Trim().ToUpperInvariant();
         var booths = await dbContext.Booths.Where(item => item.Code == normalizedBoothCode).ToListAsync(cancellationToken);
         var booth = booths.SingleOrDefault();
 
@@ -3992,6 +4090,14 @@ public static class PhotoBizApiEndpoints
         var agentCredential = tokenHasher.GenerateOpaqueToken();
         booth.KioskTokenHash = tokenHasher.Hash(kioskToken);
         booth.AgentCredentialHash = tokenHasher.Hash(agentCredential);
+        PhotoBizBoothAvailability.MarkAgentOffline(booth, DateTimeOffset.UtcNow);
+        booth.AgentVersion = null;
+        booth.AgentRuntimeKind = null;
+        booth.AgentLumaBoothMode = null;
+        booth.AgentApiReachable = null;
+        booth.AgentChromeLaunched = null;
+        booth.AgentTriggerListenerRunning = null;
+        booth.AgentLumaBoothReachable = null;
 
         return new BoothCredentialResponse(booth.Id, booth.Code, kioskToken, agentCredential);
     }
@@ -4308,7 +4414,28 @@ public sealed record UserSummary(
     bool CanCancelTransaction);
 public sealed record ClientOnboardingResponse(ClientSummary Client, UserSummary Owner);
 public sealed record LocationSummary(Guid Id, Guid ClientAccountId, string Name, string? Address, string Status);
-public sealed record BoothSummary(Guid Id, Guid ClientAccountId, Guid LocationId, string Name, string Code, string Status, string CurrentState, DateTimeOffset? LastHeartbeatAt);
+public sealed record BoothSummary(
+    Guid Id,
+    Guid ClientAccountId,
+    Guid LocationId,
+    string Name,
+    string Code,
+    string Status,
+    string CurrentState,
+    DateTimeOffset? LastHeartbeatAt,
+    AgentStatusSummary AgentStatus);
+public sealed record AgentStatusSummary(
+    string HealthStatus,
+    string UpdateStatus,
+    string? Version,
+    string? RuntimeKind,
+    bool KioskRunning,
+    string? LumaBoothMode,
+    bool? ApiReachable,
+    bool? ChromeLaunched,
+    bool? TriggerListenerRunning,
+    bool? LumaBoothReachable,
+    DateTimeOffset? MetadataUpdatedAt);
 public sealed record OfferSummary(
     Guid Id,
     Guid ClientAccountId,
@@ -4559,6 +4686,16 @@ public sealed record SelectPaymentMethodRequest(string Method);
 public sealed record CancelBoothUiTransactionRequest(string? Trigger);
 public sealed record CreateExtraPrintAddOnRequest(int CopyCount);
 public sealed record AgentBoothRequest(string BoothCode, string? LumaboothSessionRef = null, string? LumaboothEventType = null);
+public sealed record AgentHeartbeatRequest(
+    string BoothCode,
+    string? AgentVersion = null,
+    string? RuntimeKind = null,
+    bool? KioskRunning = null,
+    string? LumaBoothMode = null,
+    bool? ApiReachable = null,
+    bool? ChromeLaunched = null,
+    bool? TriggerListenerRunning = null,
+    bool? LumaBoothReachable = null);
 public sealed record AgentPairResponse(Guid BoothId, string BoothName, string BoothCode);
 public sealed record AgentBoothUiLaunchResponse(Guid BoothId, string BoothCode, string KioskToken);
 public sealed record AgentCommandResponse(

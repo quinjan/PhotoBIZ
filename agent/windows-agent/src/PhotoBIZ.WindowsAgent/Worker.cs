@@ -26,6 +26,7 @@ public class Worker(
             LogLevel.Warning,
             new EventId(1002, nameof(LogAgentWarning)),
             "{Message}");
+    private bool kioskRunning;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -37,24 +38,39 @@ public class Worker(
             return;
         }
 
-        await photoBizApi.PairAsync(settings.BoothCode, stoppingToken);
-        await LaunchBoothUiAsync(settings, stoppingToken);
-
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            LogHeartbeat(logger, AgentMetadata.ServiceName, TimeProvider.System.GetUtcNow(), null);
-            await photoBizApi.HeartbeatAsync(settings.BoothCode, stoppingToken);
-            await PollForCommandAsync(settings, stoppingToken);
+            await photoBizApi.PairAsync(settings.BoothCode, stoppingToken);
+            kioskRunning = await LaunchBoothUiAsync(settings, stoppingToken);
+            if (settings.Display.LaunchBoothUiOnStartup && !kioskRunning)
+            {
+                LogAgentWarning(logger, "Agent runtime is not starting heartbeat because Booth UI launch failed.", null);
+                return;
+            }
 
-            await Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                LogHeartbeat(logger, AgentMetadata.ServiceName, TimeProvider.System.GetUtcNow(), null);
+                await photoBizApi.HeartbeatAsync(BuildHeartbeatPayload(settings), stoppingToken);
+                await PollForCommandAsync(settings, stoppingToken);
+
+                await Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), stoppingToken);
+            }
+        }
+        finally
+        {
+            if (!string.IsNullOrWhiteSpace(settings.BoothCode) && !string.IsNullOrWhiteSpace(settings.AgentCredential))
+            {
+                await MarkOfflineAsync(settings);
+            }
         }
     }
 
-    private async Task LaunchBoothUiAsync(PhotoBizAgentOptions settings, CancellationToken cancellationToken)
+    private async Task<bool> LaunchBoothUiAsync(PhotoBizAgentOptions settings, CancellationToken cancellationToken)
     {
         if (!settings.Display.LaunchBoothUiOnStartup)
         {
-            return;
+            return false;
         }
 
         try
@@ -62,10 +78,12 @@ public class Worker(
             var launch = await photoBizApi.CreateBoothUiLaunchAsync(settings.BoothCode, cancellationToken);
             await boothUiLauncher.LaunchAsync(launch, cancellationToken);
             await windowFocusService.ShowBoothUiAsync(cancellationToken);
+            return true;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             LogAgentWarning(logger, $"Could not launch Booth UI browser: {ex.Message}", ex);
+            return false;
         }
     }
 
@@ -143,5 +161,31 @@ public class Worker(
     private static bool IsSimulatorMode(PhotoBizAgentOptions settings)
     {
         return !string.Equals(settings.LumaBooth.Mode, LumaBoothIntegrationMode.Api, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private AgentHeartbeatPayload BuildHeartbeatPayload(PhotoBizAgentOptions settings)
+    {
+        return new AgentHeartbeatPayload(
+            settings.BoothCode,
+            AgentMetadata.Version,
+            AgentMetadata.RuntimeKind,
+            kioskRunning,
+            settings.LumaBooth.Mode,
+            ApiReachable: true,
+            ChromeLaunched: kioskRunning,
+            TriggerListenerRunning: true,
+            LumaBoothReachable: IsSimulatorMode(settings) ? true : null);
+    }
+
+    private async Task MarkOfflineAsync(PhotoBizAgentOptions settings)
+    {
+        try
+        {
+            await photoBizApi.OfflineAsync(settings.BoothCode, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            LogAgentWarning(logger, $"Could not notify PhotoBIZ API that the agent stopped: {ex.Message}", ex);
+        }
     }
 }

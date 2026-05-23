@@ -37,4 +37,17 @@ public static class PhotoBizBoothAvailability
             ? StatusValues.Booth.Welcome
             : booth.CurrentState;
     }
+
+    public static void MarkAgentOffline(Booth booth, DateTimeOffset now)
+    {
+        booth.LastHeartbeatAt = null;
+        booth.AgentKioskRunning = false;
+        booth.AgentHealthStatus = StatusValues.AgentHealth.Offline;
+        booth.AgentMetadataUpdatedAt = now;
+
+        if (booth.CurrentState is StatusValues.Booth.Welcome or StatusValues.Booth.Offline)
+        {
+            booth.CurrentState = StatusValues.Booth.Offline;
+        }
+    }
 }

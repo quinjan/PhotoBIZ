@@ -113,9 +113,9 @@ sequenceDiagram
   B->>B: Select the configured theme renderer and render current state
 ```
 
-Booth UI token access is separate from Windows Agent availability. A valid kiosk token may still load Booth UI config when the agent is closed, but the backend treats the booth as `OFFLINE` when the booth has no agent heartbeat or the last heartbeat is older than 60 seconds. While effective booth state is `OFFLINE`, Booth UI must show an agent-offline unavailable state and the backend must reject new kiosk transactions.
+Booth UI token access is separate from Windows Agent runtime availability. A valid kiosk token may still load Booth UI config when the agent runtime is stopped, but the backend treats the booth as `OFFLINE` when the booth has no fresh runtime heartbeat or the last heartbeat is older than 60 seconds. While effective booth state is `OFFLINE`, Booth UI must show an agent-offline unavailable state and the backend must reject new kiosk transactions. Pairing a booth credential and issuing a Booth UI launch token do not make the booth online; only runtime heartbeat does.
 
-Booth registration issues one-time booth credentials. Because raw credentials are not stored after issue, Admin Web can re-issue credentials from Manage Booth; re-issue rotates both the Agent credential and kiosk token and invalidates the previous Agent credential. On startup, an authenticated Windows Agent identifies the booth by configured booth code plus Agent credential, requests a fresh booth-scoped kiosk token from `/api/agent/booth-ui-launch`, then launches Chrome in kiosk mode at the configured Booth UI URL with the token in the first path segment, for example `http://localhost:4201/{token}`. The Agent uses an isolated Chrome user data directory for kiosk launches so an existing normal Chrome profile/window cannot downgrade the launch into a browser with address-bar controls.
+Booth registration issues one-time booth credentials. Because raw credentials are not stored after issue, Admin Web can re-issue credentials from Manage Booth; re-issue rotates both the Agent credential and kiosk token and invalidates the previous Agent credential. The production Windows Agent is a logged-in user-session Agent Control Center, not an always-on service. On startup or re-pair, an authenticated Agent validates the booth code plus Agent credential. When a staff member clicks `Start Booth`, the Agent requests a fresh booth-scoped kiosk token from `/api/agent/booth-ui-launch`, launches Chrome in kiosk mode at the configured Booth UI URL with the token in the first path segment, for example `http://localhost:4201/{token}`, and then starts heartbeat, command polling, and the LumaBooth trigger listener. `Stop Booth` stops heartbeat and command polling, calls the authenticated `/api/agent/offline` shutdown endpoint, and closes only the PhotoBIZ-launched kiosk Chrome process. The Agent uses an isolated Chrome user data directory for kiosk launches so an existing normal Chrome profile/window cannot downgrade the launch into a browser with address-bar controls.
 
 The backend also enforces one active kiosk transaction per booth. A booth must not create a new session purchase while another transaction for that booth is still in a non-terminal state such as `CREATED`, `PENDING_CASH`, `PAID`, `STARTING_SESSION`, `IN_SESSION`, or `SESSION_FAILED`. Cashier manual recovery through `return-to-welcome` resolves that inconsistency by cancelling the active booth transaction and returning the booth to `WELCOME`.
 
@@ -230,8 +230,13 @@ Agent command payload. `command` is `START_SESSION` for normal capture sessions 
 
 Agent session callbacks may include `lumaboothSessionRef`, `lumaboothEventType`, and failure `reason`.
 
+Agent heartbeats include non-secret runtime metadata so Admin Web and support workflows can show the latest Agent version, runtime kind, kiosk Chrome status, LumaBooth mode, and basic health flags. The backend persists only operational metadata and never stores or returns raw Agent credentials, kiosk launch tokens, or LumaBooth API passwords from heartbeat payloads.
+
 Agent configuration keys:
 
+- `PhotoBIZ:ApiBaseUrl`
+- `PhotoBIZ:BoothCode`
+- `PhotoBIZ:PollIntervalSeconds`
 - `PhotoBIZ:LumaBooth:Mode`
 - `PhotoBIZ:LumaBooth:ApiBaseUrl`
 - `PhotoBIZ:LumaBooth:ApiPassword`
@@ -431,19 +436,25 @@ The MVP reporting read model includes active/offline booth counts, subscription 
 Stack:
 
 - .NET 10 LTS.
-- Windows Service.
+- WPF Agent Control Center running in the logged-in Windows user session.
+- Signed, self-contained Windows installer for production booth laptops.
 
 Responsibilities:
 
-- Pair with backend booth record.
-- Maintain heartbeat.
-- Listen for start-session commands.
+- Pair and re-pair with backend booth records using Admin Web-issued booth code and Agent credential.
+- Store Agent credentials and LumaBooth API password encrypted locally with Windows DPAPI.
+- Auto-open the Control Center after Windows login.
+- Let staff or technicians start and stop the booth runtime explicitly.
+- Start kiosk Chrome, heartbeat, command polling, and the LumaBooth trigger listener together when `Start Booth` is clicked.
+- Stop heartbeat and command polling, notify the backend through `/api/agent/offline`, and close only the PhotoBIZ-launched kiosk Chrome instance when `Stop Booth` is clicked.
+- Maintain heartbeat only while the booth runtime is intentionally online.
+- Listen for start-session and print-copy commands.
 - Call LumaBooth through simulator or local API mode.
 - Receive LumaBooth URL trigger events through the local loopback listener.
 - Report session state.
 - Manage local recovery.
 - Manage Booth UI and LumaBooth app/window focus on the booth laptop.
-- Request fresh Booth UI kiosk launch tokens and open Chrome in kiosk mode for the customer-facing Booth UI.
+- Show local status, sanitized logs, and diagnostics export without exposing saved secrets.
 
 ## Repository Structure
 
@@ -832,13 +843,13 @@ flowchart TB
 - Realtime: SignalR.
 - Background jobs: Hangfire with PostgreSQL storage.
 - Cache/locks/backplane: Redis.
-- Windows Agent: .NET 10 LTS Windows Service.
+- Windows Agent: .NET 10 LTS WPF Agent Control Center running in the logged-in Windows user session.
 - Admin authentication: email/password login with secure HttpOnly cookie sessions.
 - New Admin Web users created through client onboarding or user management receive the default initial password `PhotoBIZ!123` and must change it before accessing admin or cashier workflows.
 - All authenticated Admin Web users can change their own password from the account surface.
 - Booth UI authentication: booth-scoped kiosk token issued during booth registration or Agent launch. No cashier unlock/login is required to show the Booth UI.
 - Agent authentication: booth agent credential issued during pairing.
-- Agent availability: the backend treats a booth as `OFFLINE` when the agent has not heartbeated within 60 seconds. Agent heartbeat restores an offline booth to `WELCOME`; kiosk token access remains valid but transaction creation is blocked while offline.
+- Agent availability: the backend treats a booth as `OFFLINE` when the Agent Control Center runtime has not heartbeated within 60 seconds or has called `/api/agent/offline`. Pairing and launch-token creation do not imply online status. Agent heartbeat restores an offline active booth to `WELCOME`; kiosk token access remains valid but transaction creation is blocked while offline.
 - Hosting: DigitalOcean Singapore VPS using Docker Compose.
 - DNS: Cloudflare.
 - CI/CD: GitHub Actions deploying over SSH.

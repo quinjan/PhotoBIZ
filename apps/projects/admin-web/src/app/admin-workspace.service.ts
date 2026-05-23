@@ -62,6 +62,20 @@ export type BoothSummary = {
   readonly status: string;
   readonly currentState: string;
   readonly lastHeartbeatAt: string | null;
+  readonly agentStatus: AgentStatusSummary;
+};
+export type AgentStatusSummary = {
+  readonly healthStatus: string;
+  readonly updateStatus: string;
+  readonly version: string | null;
+  readonly runtimeKind: string | null;
+  readonly kioskRunning: boolean;
+  readonly lumaBoothMode: string | null;
+  readonly apiReachable: boolean | null;
+  readonly chromeLaunched: boolean | null;
+  readonly triggerListenerRunning: boolean | null;
+  readonly lumaBoothReachable: boolean | null;
+  readonly metadataUpdatedAt: string | null;
 };
 export type OfferSummary = {
   readonly id: string;

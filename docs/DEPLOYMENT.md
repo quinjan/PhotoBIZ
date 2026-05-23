@@ -4,7 +4,7 @@
 
 Use a low-cost Singapore-region VPS for MVP and early production.
 
-The first deployment runs the Angular Admin Web, Angular Booth UI, ASP.NET Core API, PostgreSQL, Redis, and reverse proxy on one VPS using Docker Compose.
+The first deployment runs the Angular Admin Web, Angular Booth UI, ASP.NET Core API, PostgreSQL, Redis, and reverse proxy on one VPS using Docker Compose. Booth laptops run the separate Windows Agent Control Center from a signed, self-contained Windows `.exe` installer.
 
 Starting provider:
 
@@ -78,7 +78,7 @@ flowchart TB
   Worker --> DB
   Worker --> Redis
 
-  BoothLaptop["Booth Laptop<br/>Booth UI + Windows Agent"] <--> Proxy
+  BoothLaptop["Booth Laptop<br/>Agent Control Center + kiosk Chrome"] <--> Proxy
 ```
 
 ## Domains
@@ -95,9 +95,15 @@ For local booth configuration, each booth stores:
 
 - API base URL.
 - Booth ID or booth code.
-- Booth UI kiosk token issued during booth pairing.
 - Agent pairing credential.
+- Booth UI base URL.
+- Chrome kiosk settings.
+- LumaBooth simulator/API settings.
 - Environment name: local or production.
+
+The production booth-laptop artifact is a signed, self-contained `win-x64` Windows `.exe` installer. The installer installs under `Program Files`, creates the required `C:\ProgramData\PhotoBIZ\Agent` folders, adds a login auto-start entry for the Agent Control Center, and does not require a separate .NET runtime. Manual installer updates preserve existing configuration. Uninstall removes local pairing/config for v1. Silent install and auto-update are intentionally out of v1 scope.
+
+Code signing is required before client or live booth installation. Unsigned Agent builds are allowed only for local development or internal lab testing.
 
 ## CI/CD Plan
 

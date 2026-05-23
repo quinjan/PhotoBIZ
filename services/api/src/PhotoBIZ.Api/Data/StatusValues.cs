@@ -43,6 +43,19 @@ public static class StatusValues
         public const string Error = "ERROR";
     }
 
+    public static class AgentHealth
+    {
+        public const string Unknown = "UNKNOWN";
+        public const string Ok = "OK";
+        public const string Degraded = "DEGRADED";
+        public const string Offline = "OFFLINE";
+    }
+
+    public static class AgentUpdate
+    {
+        public const string Unknown = "UNKNOWN";
+    }
+
     public static class Theme
     {
         public const string Vintage = "VINTAGE";
