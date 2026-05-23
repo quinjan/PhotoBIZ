@@ -7,8 +7,14 @@ public sealed class PhotoBizAgentOptions
     public string AgentCredential { get; set; } = string.Empty;
     public int PollIntervalSeconds { get; set; } = 5;
     public int SimulatedSessionDurationSeconds { get; set; } = 6;
+    public AgentStorageOptions Storage { get; set; } = new();
     public LumaBoothOptions LumaBooth { get; set; } = new();
     public DisplayOptions Display { get; set; } = new();
+}
+
+public sealed class AgentStorageOptions
+{
+    public string BaseDirectory { get; set; } = string.Empty;
 }
 
 public sealed class LumaBoothOptions

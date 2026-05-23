@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 namespace PhotoBIZ.WindowsAgent;
 
 public interface IAgentBoothRuntime
@@ -16,7 +14,7 @@ public sealed class AgentBoothRuntime(
     IWindowFocusService windowFocusService,
     IBoothUiLauncher boothUiLauncher,
     ILumaBoothTriggerListener triggerListener,
-    IOptions<PhotoBizAgentOptions> options,
+    IAgentRuntimeOptionsProvider optionsProvider,
     ILogger<AgentBoothRuntime> logger) : IAgentBoothRuntime, IDisposable
 {
     private static readonly Action<ILogger, string, DateTimeOffset, Exception?> LogHeartbeat =
@@ -46,6 +44,7 @@ public sealed class AgentBoothRuntime(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await stateLock.WaitAsync(cancellationToken);
+        PhotoBizAgentOptions? settings = null;
         try
         {
             if (IsRunning)
@@ -53,7 +52,7 @@ public sealed class AgentBoothRuntime(
                 return;
             }
 
-            var settings = options.Value;
+            settings = await optionsProvider.LoadAsync(cancellationToken);
             ValidateStartSettings(settings);
 
             await photoBizApi.PairAsync(settings.BoothCode, cancellationToken);
@@ -72,7 +71,7 @@ public sealed class AgentBoothRuntime(
         }
         catch
         {
-            await StopStartedResourcesAsync(options.Value, cancellationToken);
+            await StopStartedResourcesAsync(settings ?? new PhotoBizAgentOptions(), cancellationToken);
             throw;
         }
         finally
@@ -86,7 +85,7 @@ public sealed class AgentBoothRuntime(
         await stateLock.WaitAsync(cancellationToken);
         try
         {
-            var settings = runningSettings ?? options.Value;
+            var settings = runningSettings ?? await optionsProvider.LoadAsync(cancellationToken);
             var loop = runtimeLoop;
             var cancellation = runtimeCancellation;
 

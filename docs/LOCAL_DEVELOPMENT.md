@@ -105,30 +105,41 @@ npm run start:booth
 
 Booth URL: `http://localhost:4201`
 
-### Optional Terminal E: Windows Agent Control Center / dev host
+### Optional Terminal E: Windows Agent Control Center
+
+```powershell
+dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+```
+
+The production Agent shape is a logged-in Windows user-session Control Center. The WPF shell can pair/re-pair with Admin Web-issued credentials, start/stop the booth runtime, launch Chrome, heartbeat, and poll commands only while the local booth runtime is intentionally started.
+
+For fast headless debugging, the worker/dev host is still available:
 
 ```powershell
 dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
 ```
 
-The production Agent shape is a logged-in Windows user-session Control Center. During the transition to the WPF shell, the existing dev host remains useful for simulator and API-mode testing. The important runtime contract is the same: validate pairing, request a launch token, launch Chrome, then heartbeat and poll commands only while the local booth runtime is intentionally started.
-
 ## 7) Configure Windows Agent LumaBooth Settings
 
-The Agent reads settings from the `PhotoBIZ` configuration section. Local defaults live in:
+The Control Center stores local pairing/configuration at:
 
 ```text
+C:\ProgramData\PhotoBIZ\Agent\config.json
+```
+
+Agent credential and LumaBooth API password are encrypted at rest with Windows DPAPI. Local development defaults live in:
+
+```text
+agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/appsettings.Development.json
 agent/windows-agent/src/PhotoBIZ.WindowsAgent/appsettings.Development.json
 ```
 
-Use user secrets for real booth credentials or local API passwords so they do not land in git:
+Use the Control Center Pair/Re-pair screen for booth code and Agent credential. Until the editable LumaBooth settings screen is finished, use user secrets for local API-mode settings that should not land in git:
 
 ```powershell
-dotnet user-secrets set "PhotoBIZ:BoothCode" "<booth-code>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:AgentCredential" "<agent-credential>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "false" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "false" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
 ```
 
 ### Simulator Mode
@@ -167,24 +178,24 @@ In simulator mode, the Agent still pairs, requests a fresh Booth UI launch token
 
 The Booth UI does not show a manual kiosk-token input. For normal booth testing, start the Windows Agent and let it launch Chrome to the token route, for example `http://localhost:4201/43E836977240C5E33F3C56581DC59E07A15BB08F8512C6C2`. That token route is what loads the booth's selected theme and active transaction state. The Agent correlates the launch token by sending its configured `BoothCode` and `AgentCredential` to the backend, then the backend returns the booth-scoped kiosk token for that booth.
 
-When `PhotoBIZ:Display:KioskMode` is `true`, the Agent starts Chrome with kiosk flags and an isolated profile directory. Leave `PhotoBIZ:Display:ChromeUserDataDir` empty to use the default `%ProgramData%\PhotoBIZ\chrome-kiosk`, or set it to a booth-specific folder when testing multiple booths on one machine. Alt-Tab remains available because this is Chrome kiosk mode, not Windows assigned access. Keep `KioskMode` false for daily development so Chrome opens as a normal window.
+When `PhotoBIZ:Display:KioskMode` is `true`, the Agent starts Chrome with kiosk flags and an isolated profile directory. Leave `PhotoBIZ:Display:ChromeUserDataDir` empty to use the default `%ProgramData%\PhotoBIZ\Agent\chrome-kiosk`, or set it to a booth-specific folder when testing multiple booths on one machine. Alt-Tab remains available because this is Chrome kiosk mode, not Windows assigned access. Keep `KioskMode` false for daily development so Chrome opens as a normal window.
 
 ### LumaBooth API Mode
 
 Use API mode only on a Windows booth laptop with LumaBooth/dslrBooth Professional API enabled:
 
 ```powershell
-dotnet user-secrets set "PhotoBIZ:LumaBooth:Mode" "Api" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiBaseUrl" "http://localhost:1500" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:LumaBooth:TriggerListenerUrl" "http://127.0.0.1:5617/lumabooth/events" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:LumaBooth:StartTimeoutSeconds" "15" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:LumaBoothWindowTitle" "dslrBooth" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:BoothUiWindowTitle" "BoothUi" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:ChromeExecutablePath" "C:\Program Files\Google\Chrome\Application\chrome.exe" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:ChromeUserDataDir" "C:\ProgramData\PhotoBIZ\chrome-kiosk" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:LaunchBoothUiOnStartup" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
-dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:Mode" "Api" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiBaseUrl" "http://localhost:1500" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:TriggerListenerUrl" "http://127.0.0.1:5617/lumabooth/events" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:LumaBooth:StartTimeoutSeconds" "15" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:LumaBoothWindowTitle" "dslrBooth" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiWindowTitle" "BoothUi" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:BoothUiBaseUrl" "http://localhost:4201" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:ChromeExecutablePath" "C:\Program Files\Google\Chrome\Application\chrome.exe" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:ChromeUserDataDir" "C:\ProgramData\PhotoBIZ\Agent\chrome-kiosk" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:LaunchBoothUiOnStartup" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+dotnet user-secrets set "PhotoBIZ:Display:KioskMode" "true" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
 ```
 
 API mode behavior:
@@ -218,7 +229,7 @@ http://127.0.0.1:5617/lumabooth/events?event_type=printing&param1=<value>
 The Agent stores the active local session context at:
 
 ```text
-%ProgramData%\PhotoBIZ\agent\active-session.json
+%ProgramData%\PhotoBIZ\Agent\active-session.json
 ```
 
 If local development gets stuck after killing the Agent or LumaBooth mid-session, stop the Agent, clear the stuck transaction through the cashier recovery flow when possible, and delete this file before restarting the Agent.

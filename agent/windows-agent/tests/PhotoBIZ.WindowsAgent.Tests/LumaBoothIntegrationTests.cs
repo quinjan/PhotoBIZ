@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using PhotoBIZ.WindowsAgent;
 
 namespace PhotoBIZ.WindowsAgent.Tests;
@@ -14,7 +13,7 @@ public sealed class LumaBoothIntegrationTests
         var handler = new CapturingHandler();
         var client = new DslrBoothApiClient(
             new HttpClient(handler),
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 LumaBooth = new LumaBoothOptions
                 {
@@ -37,7 +36,7 @@ public sealed class LumaBoothIntegrationTests
         var handler = new CapturingHandler();
         var client = new DslrBoothApiClient(
             new HttpClient(handler),
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 LumaBooth = new LumaBoothOptions
                 {
@@ -63,7 +62,7 @@ public sealed class LumaBoothIntegrationTests
         var handler = new CapturingHandler();
         var client = new DslrBoothApiClient(
             new HttpClient(handler),
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 LumaBooth = new LumaBoothOptions
                 {
@@ -84,7 +83,7 @@ public sealed class LumaBoothIntegrationTests
         var handler = new CapturingHandler();
         var client = new DslrBoothApiClient(
             new HttpClient(handler),
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 LumaBooth = new LumaBoothOptions
                 {
@@ -131,7 +130,7 @@ public sealed class LumaBoothIntegrationTests
             $$"""{"boothId":"{{boothId}}","boothCode":"SMA-001","kioskToken":"kiosk-secret"}""");
         var client = new PhotoBizAgentApiClient(
             new HttpClient(handler),
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 ApiBaseUrl = "http://localhost:5082",
                 AgentCredential = "agent-secret"
@@ -145,6 +144,30 @@ public sealed class LumaBoothIntegrationTests
         Assert.Equal(boothId, launch.BoothId);
         Assert.Equal("SMA-001", launch.BoothCode);
         Assert.Equal("kiosk-secret", launch.KioskToken);
+    }
+
+    [Fact]
+    public async Task AgentApiClientPairsWithPastedCredential()
+    {
+        var boothId = Guid.NewGuid();
+        var handler = new CapturingHandler(
+            $$"""{"boothId":"{{boothId}}","boothName":"Small Mall Booth","boothCode":"SMA-001"}""");
+        var client = new PhotoBizAgentApiClient(
+            new HttpClient(handler),
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions()));
+
+        var pair = await client.PairAsync(
+            "http://localhost:5082",
+            "SMA-001",
+            "agent-secret",
+            CancellationToken.None);
+
+        Assert.NotNull(handler.RequestUri);
+        Assert.Equal("/api/agent/pair", handler.RequestUri.PathAndQuery);
+        Assert.Equal("agent-secret", handler.AgentCredential);
+        Assert.Equal(boothId, pair.BoothId);
+        Assert.Equal("Small Mall Booth", pair.BoothName);
+        Assert.Equal("SMA-001", pair.BoothCode);
     }
 
     [Fact]
@@ -247,9 +270,18 @@ public sealed class LumaBoothIntegrationTests
         public Guid? StartedTransactionId { get; private set; }
         public Guid? CompletedTransactionId { get; private set; }
 
-        public Task PairAsync(string boothCode, CancellationToken cancellationToken)
+        public Task<AgentPairPayload> PairAsync(string boothCode, CancellationToken cancellationToken)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(new AgentPairPayload(Guid.NewGuid(), "Test Booth", boothCode));
+        }
+
+        public Task<AgentPairPayload> PairAsync(
+            string apiBaseUrl,
+            string boothCode,
+            string agentCredential,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AgentPairPayload(Guid.NewGuid(), "Test Booth", boothCode));
         }
 
         public Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken)

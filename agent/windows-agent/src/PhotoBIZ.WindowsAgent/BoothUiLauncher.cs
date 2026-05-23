@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Options;
 
 namespace PhotoBIZ.WindowsAgent;
 
@@ -13,7 +12,7 @@ public interface IBoothUiLauncher
 public sealed record BoothUiLaunchResult(int ProcessId, string Url);
 
 public sealed class ChromeBoothUiLauncher(
-    IOptions<PhotoBizAgentOptions> options,
+    IAgentRuntimeOptionsProvider optionsProvider,
     ILogger<ChromeBoothUiLauncher> logger) : IBoothUiLauncher
 {
     private static readonly Action<ILogger, string, Exception?> LogBoothUiLaunched =
@@ -27,7 +26,6 @@ public sealed class ChromeBoothUiLauncher(
             new EventId(3001, nameof(LogBoothUiClosed)),
             "Closed PhotoBIZ-launched Booth UI browser process {ProcessId}.");
 
-    private readonly DisplayOptions displayOptions = options.Value.Display;
     private Process? launchedProcess;
 
     public bool IsLaunchedProcessRunning
@@ -57,6 +55,7 @@ public sealed class ChromeBoothUiLauncher(
 
         await CloseLaunchedAsync(cancellationToken);
 
+        var displayOptions = (await optionsProvider.LoadAsync(cancellationToken)).Display;
         var url = BuildBoothUiUrl(displayOptions.BoothUiBaseUrl, launch.KioskToken);
         var chromePath = ResolveChromePath(displayOptions.ChromeExecutablePath);
         var userDataDir = ResolveChromeUserDataDir(displayOptions.ChromeUserDataDir);

@@ -105,6 +105,20 @@ The production booth-laptop artifact is a signed, self-contained `win-x64` Windo
 
 Code signing is required before client or live booth installation. Unsigned Agent builds are allowed only for local development or internal lab testing.
 
+Current Agent Control Center project path:
+
+```powershell
+agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj
+```
+
+Pre-installer publish command for lab validation:
+
+```powershell
+dotnet publish agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj -c Release -r win-x64 --self-contained true
+```
+
+The installer technology, signing command, artifact naming, and release process still need to be finalized before live booth installation.
+
 ## CI/CD Plan
 
 Use GitHub Actions.

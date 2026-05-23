@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-
 namespace PhotoBIZ.WindowsAgent;
 
 public interface ILumaBoothClient
@@ -21,14 +19,37 @@ public sealed class SimulatorLumaBoothClient : ILumaBoothClient
     }
 }
 
-public sealed class DslrBoothApiClient(
-    HttpClient httpClient,
-    IOptions<PhotoBizAgentOptions> options) : ILumaBoothClient
+public sealed class ConfiguredLumaBoothClient(
+    IAgentRuntimeOptionsProvider optionsProvider,
+    SimulatorLumaBoothClient simulatorClient,
+    DslrBoothApiClient apiClient) : ILumaBoothClient
 {
-    private readonly PhotoBizAgentOptions settings = options.Value;
-
     public async Task StartSessionAsync(ActiveLumaBoothSession session, CancellationToken cancellationToken)
     {
+        await (await ResolveClientAsync(cancellationToken)).StartSessionAsync(session, cancellationToken);
+    }
+
+    public async Task PrintCopiesAsync(int copyCount, CancellationToken cancellationToken)
+    {
+        await (await ResolveClientAsync(cancellationToken)).PrintCopiesAsync(copyCount, cancellationToken);
+    }
+
+    private async Task<ILumaBoothClient> ResolveClientAsync(CancellationToken cancellationToken)
+    {
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        return string.Equals(settings.LumaBooth.Mode, LumaBoothIntegrationMode.Api, StringComparison.OrdinalIgnoreCase)
+            ? apiClient
+            : simulatorClient;
+    }
+}
+
+public sealed class DslrBoothApiClient(
+    HttpClient httpClient,
+    IAgentRuntimeOptionsProvider optionsProvider) : ILumaBoothClient
+{
+    public async Task StartSessionAsync(ActiveLumaBoothSession session, CancellationToken cancellationToken)
+    {
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
         var apiMode = LumaBoothSessionModes.ToApiMode(session.LumaboothSessionMode);
         var requestPath = $"/api/start?mode={Uri.EscapeDataString(apiMode)}";
 
@@ -37,7 +58,7 @@ public sealed class DslrBoothApiClient(
             requestPath += $"&password={Uri.EscapeDataString(settings.LumaBooth.ApiPassword)}";
         }
 
-        await SendLumaBoothRequestAsync(requestPath, cancellationToken);
+        await SendLumaBoothRequestAsync(settings, requestPath, cancellationToken);
     }
 
     public async Task PrintCopiesAsync(int copyCount, CancellationToken cancellationToken)
@@ -47,6 +68,7 @@ public sealed class DslrBoothApiClient(
             throw new InvalidOperationException("Extra print copy count must be between 1 and 5.");
         }
 
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
         var requestPath = $"/api/print?count={copyCount}";
 
         if (!string.IsNullOrWhiteSpace(settings.LumaBooth.ApiPassword))
@@ -54,17 +76,18 @@ public sealed class DslrBoothApiClient(
             requestPath += $"&password={Uri.EscapeDataString(settings.LumaBooth.ApiPassword)}";
         }
 
-        await SendLumaBoothRequestAsync(requestPath, cancellationToken);
+        await SendLumaBoothRequestAsync(settings, requestPath, cancellationToken);
     }
 
-    private async Task SendLumaBoothRequestAsync(string requestPath, CancellationToken cancellationToken)
+    private async Task SendLumaBoothRequestAsync(
+        PhotoBizAgentOptions settings,
+        string requestPath,
+        CancellationToken cancellationToken)
     {
-        httpClient.BaseAddress ??= new Uri(settings.LumaBooth.ApiBaseUrl);
-
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(Math.Max(1, settings.LumaBooth.StartTimeoutSeconds)));
 
-        using var response = await httpClient.GetAsync(requestPath, timeoutCts.Token);
+        using var response = await httpClient.GetAsync(new Uri(new Uri(settings.LumaBooth.ApiBaseUrl), requestPath), timeoutCts.Token);
         response.EnsureSuccessStatusCode();
     }
 }

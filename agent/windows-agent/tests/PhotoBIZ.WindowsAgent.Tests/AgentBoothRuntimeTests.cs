@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using PhotoBIZ.WindowsAgent;
 
 namespace PhotoBIZ.WindowsAgent.Tests;
@@ -75,7 +74,7 @@ public sealed class AgentBoothRuntimeTests
             new RecordingWindowFocusService(),
             launcher,
             triggerListener,
-            Options.Create(new PhotoBizAgentOptions
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
             {
                 BoothCode = "SMA-001",
                 AgentCredential = "agent-secret",
@@ -104,9 +103,18 @@ public sealed class AgentBoothRuntimeTests
         public bool HeartbeatSawLaunchedProcess { get; private set; }
         public int OfflineCalls { get; private set; }
 
-        public Task PairAsync(string boothCode, CancellationToken cancellationToken)
+        public Task<AgentPairPayload> PairAsync(string boothCode, CancellationToken cancellationToken)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(new AgentPairPayload(Guid.NewGuid(), "Test Booth", boothCode));
+        }
+
+        public Task<AgentPairPayload> PairAsync(
+            string apiBaseUrl,
+            string boothCode,
+            string agentCredential,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new AgentPairPayload(Guid.NewGuid(), "Test Booth", boothCode));
         }
 
         public Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken)

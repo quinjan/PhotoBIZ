@@ -1,12 +1,12 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Extensions.Options;
 
 namespace PhotoBIZ.WindowsAgent;
 
 public interface IPhotoBizAgentApiClient
 {
-    Task PairAsync(string boothCode, CancellationToken cancellationToken);
+    Task<AgentPairPayload> PairAsync(string boothCode, CancellationToken cancellationToken);
+    Task<AgentPairPayload> PairAsync(string apiBaseUrl, string boothCode, string agentCredential, CancellationToken cancellationToken);
     Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken);
     Task OfflineAsync(string boothCode, CancellationToken cancellationToken);
     Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken);
@@ -20,35 +20,55 @@ public interface IPhotoBizAgentApiClient
 
 public sealed class PhotoBizAgentApiClient(
     HttpClient httpClient,
-    IOptions<PhotoBizAgentOptions> options) : IPhotoBizAgentApiClient
+    IAgentRuntimeOptionsProvider optionsProvider) : IPhotoBizAgentApiClient
 {
-    private readonly PhotoBizAgentOptions settings = options.Value;
-
-    public async Task PairAsync(string boothCode, CancellationToken cancellationToken)
+    public async Task<AgentPairPayload> PairAsync(string boothCode, CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync("/api/agent/pair", new { boothCode }, cancellationToken);
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        return await PairAsync(settings.ApiBaseUrl, boothCode, settings.AgentCredential, cancellationToken);
+    }
+
+    public async Task<AgentPairPayload> PairAsync(
+        string apiBaseUrl,
+        string boothCode,
+        string agentCredential,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildApiUri(apiBaseUrl, "/api/agent/pair"))
+        {
+            Content = JsonContent.Create(new { boothCode })
+        };
+        AddAgentCredential(request, agentCredential);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<AgentPairPayload>(cancellationToken)
+            ?? throw new InvalidOperationException("PhotoBIZ agent pair response was empty.");
     }
 
     public async Task HeartbeatAsync(AgentHeartbeatPayload heartbeat, CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync("/api/agent/heartbeat", heartbeat, cancellationToken);
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        using var response = await PostAgentJsonAsync(settings.ApiBaseUrl, settings.AgentCredential, "/api/agent/heartbeat", heartbeat, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task OfflineAsync(string boothCode, CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync("/api/agent/offline", new { boothCode }, cancellationToken);
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        using var response = await PostAgentJsonAsync(settings.ApiBaseUrl, settings.AgentCredential, "/api/agent/offline", new { boothCode }, cancellationToken);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync("/api/agent/booth-ui-launch", new { boothCode }, cancellationToken);
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        using var response = await PostAgentJsonAsync(
+            settings.ApiBaseUrl,
+            settings.AgentCredential,
+            "/api/agent/booth-ui-launch",
+            new { boothCode },
+            cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<AgentBoothUiLaunchPayload>(cancellationToken)
             ?? throw new InvalidOperationException("PhotoBIZ booth UI launch response was empty.");
@@ -56,8 +76,13 @@ public sealed class PhotoBizAgentApiClient(
 
     public async Task<AgentCommandPayload?> GetNextCommandAsync(string boothCode, CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(boothCode)}", cancellationToken);
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        using var request = new HttpRequestMessage(
+            HttpMethod.Get,
+            BuildApiUri(settings.ApiBaseUrl, $"/api/agent/commands/next?boothCode={Uri.EscapeDataString(boothCode)}"));
+        AddAgentCredential(request, settings.AgentCredential);
+
+        using var response = await httpClient.SendAsync(request, cancellationToken);
 
         if (response.StatusCode == HttpStatusCode.NoContent)
         {
@@ -125,8 +150,8 @@ public sealed class PhotoBizAgentApiClient(
         string? reason,
         CancellationToken cancellationToken)
     {
-        ConfigureHttpClient();
-        var response = await httpClient.PostAsJsonAsync(path, new
+        var settings = await optionsProvider.LoadAsync(cancellationToken);
+        using var response = await PostAgentJsonAsync(settings.ApiBaseUrl, settings.AgentCredential, path, new
         {
             boothCode = settings.BoothCode,
             lumaboothSessionRef = session.LumaboothSessionRef,
@@ -137,16 +162,41 @@ public sealed class PhotoBizAgentApiClient(
         response.EnsureSuccessStatusCode();
     }
 
-    private void ConfigureHttpClient()
+    private async Task<HttpResponseMessage> PostAgentJsonAsync(
+        string apiBaseUrl,
+        string agentCredential,
+        string path,
+        object payload,
+        CancellationToken cancellationToken)
     {
-        httpClient.BaseAddress ??= new Uri(settings.ApiBaseUrl);
-        if (!httpClient.DefaultRequestHeaders.Contains("X-Agent-Credential") &&
-            !string.IsNullOrWhiteSpace(settings.AgentCredential))
+        using var request = new HttpRequestMessage(HttpMethod.Post, BuildApiUri(apiBaseUrl, path))
         {
-            httpClient.DefaultRequestHeaders.Add("X-Agent-Credential", settings.AgentCredential);
+            Content = JsonContent.Create(payload)
+        };
+        AddAgentCredential(request, agentCredential);
+        return await httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private static void AddAgentCredential(HttpRequestMessage request, string agentCredential)
+    {
+        if (!string.IsNullOrWhiteSpace(agentCredential))
+        {
+            request.Headers.Add("X-Agent-Credential", agentCredential);
         }
     }
+
+    private static Uri BuildApiUri(string apiBaseUrl, string path)
+    {
+        if (!Uri.TryCreate(apiBaseUrl.Trim(), UriKind.Absolute, out var baseUri))
+        {
+            throw new InvalidOperationException("PhotoBIZ API base URL must be an absolute URL.");
+        }
+
+        return new Uri(baseUri, path);
+    }
 }
+
+public sealed record AgentPairPayload(Guid BoothId, string BoothName, string BoothCode);
 
 public sealed record AgentHeartbeatPayload(
     string BoothCode,

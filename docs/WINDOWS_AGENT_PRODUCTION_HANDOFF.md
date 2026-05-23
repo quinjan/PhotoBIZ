@@ -21,7 +21,7 @@ The Agent must be easy for a PhotoBIZ technician to install, pair, start, monito
 
 Status: foundation started, production Agent not complete.
 
-Overall distance to desired production state: about 35% complete. The documentation, backend lifecycle contract, and core start/stop runtime service are now in place. The remaining majority is the local Windows app: WPF GUI, encrypted configuration, staff/technician screens, diagnostics, installer, signing, and hardware QA.
+Overall distance to desired production state: about 62% complete. The documentation, backend lifecycle contract, core start/stop runtime service, local configuration pathing, encrypted secret storage, Pair/Re-pair application service, runtime config bridge, and first WPF Control Center shell are now in place. The remaining work is hardening the local Windows operations experience: tray behavior, staff/technician modes, editable settings, diagnostics, installer, signing, and hardware QA.
 
 Completed:
 
@@ -40,22 +40,40 @@ Completed:
 - LumaBooth trigger listening is no longer an always-on hosted service; the runtime starts and stops it with the booth lifecycle.
 - Kiosk Chrome launch now tracks the PhotoBIZ-launched process and can close only that owned process on stop/relaunch.
 - The current Agent project no longer registers Windows Service hosting or references `Microsoft.Extensions.Hosting.WindowsServices`.
+- Local Agent data paths now resolve to `C:\ProgramData\PhotoBIZ\Agent` by default, with test/dev override support.
+- Local Agent configuration is stored as structured JSON at `config.json` under the Agent data directory.
+- Agent credential and LumaBooth API password are protected through a DPAPI-backed `IAgentSecretProtector`.
+- Config snapshots expose only non-secret values and secret presence flags, while runtime options can decrypt secrets for Agent use.
+- Active local session context now uses the same Agent data path abstraction.
+- Agent API pairing now returns the backend booth summary and supports validating an explicit API URL, booth code, and pasted Agent credential before anything is saved locally.
+- Pair/Re-pair application service now validates credentials, saves the Agent credential through encrypted local configuration, preserves existing non-secret settings, and preserves the LumaBooth API password unless explicitly changed elsewhere.
+- Re-pair application service now stops a running booth runtime, clears active local session context, and closes PhotoBIZ-launched kiosk state before replacing the saved credential.
+- Agent runtime settings now load from encrypted local configuration through `IAgentRuntimeOptionsProvider`, while still falling back to configured development options when no local pairing exists.
+- PhotoBIZ API calls, kiosk launch settings, and LumaBooth API settings now resolve runtime options dynamically instead of being frozen to startup configuration.
+- WPF `PhotoBIZ.WindowsAgent.ControlCenter` project now exists and is included in `PhotoBIZ.slnx`.
+- The Control Center starts through the standard .NET host, registers the Agent runtime services, and uses production/local appsettings defaults.
+- Initial WPF screens now exist for Dashboard, Pair/Re-pair, Kiosk/Display, LumaBooth, Logs, Diagnostics, and About.
+- Dashboard Start/Stop actions call `AgentBoothRuntime`, while Pair/Re-pair actions call `IAgentPairingService`.
 - Focused backend tests cover pair/launch-not-online, heartbeat metadata, immediate offline behavior, and preserving active transactions during graceful offline.
 - Focused Agent tests cover kiosk launch before heartbeat, graceful stop calling offline and closing the owned kiosk process, and failed kiosk launch preventing heartbeat.
+- Focused config tests cover encrypted-at-rest secrets, masked snapshots, runtime decryption, secret preservation on partial settings updates, secret clearing, and config deletion.
+- Focused Pair/Re-pair tests cover validation-before-save, failed validation preserving the existing encrypted config, runtime/session/kiosk cleanup during re-pair, and non-secret setting preservation.
+- Focused runtime option tests cover saved local config taking precedence and development appsettings fallback when no local pairing exists.
 - Current validation passed:
   - `dotnet test services/api/tests/PhotoBIZ.Api.Tests/PhotoBIZ.Api.Tests.csproj --no-restore`
   - `dotnet test agent/windows-agent/tests/PhotoBIZ.WindowsAgent.Tests/PhotoBIZ.WindowsAgent.Tests.csproj --no-restore`
+  - `dotnet build agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj --no-restore`
+  - `dotnet build PhotoBIZ.slnx --no-restore`
   - `npm run build:admin`
   - `npm run format:check`
   - `dotnet ef database update`
 
 Not complete yet:
 
-- No WPF Agent Control Center project exists yet.
+- WPF Control Center is only an initial shell; tray behavior, minimize-on-close while online, technician/staff modes, settings editing, diagnostics export, and polished error states are not done.
 - Existing `PhotoBIZ.WindowsAgent` is still a worker/dev-host style project, although its core lifecycle now lives behind reusable runtime services.
 - Kiosk process ownership is implemented in-process only; it does not yet persist launched process identity across app restarts.
-- Pairing/config is not yet stored under `C:\ProgramData\PhotoBIZ\Agent`.
-- Agent credential and LumaBooth API password are not yet encrypted locally with DPAPI.
+- Pair/Re-pair GUI is present but does not yet persist booth display name or show a dedicated re-pair-required state after unauthorized runtime API responses.
 - Staff mode and technician/admin mode screens are not implemented.
 - Sanitized local logs and diagnostics export are not implemented.
 - Unauthorized Agent responses do not yet drive a re-pair-required GUI state.
@@ -65,15 +83,14 @@ Not complete yet:
 
 Recommended next implementation slices:
 
-1. Add local config and secret storage under `C:\ProgramData\PhotoBIZ\Agent`, with DPAPI for Agent credential and LumaBooth API password.
-2. Add Pair/Re-pair application services that validate credentials, save encrypted secrets, clear old local kiosk/session state, and handle unauthorized API responses as a re-pair-required state.
-3. Add the WPF Agent Control Center project and wire Dashboard plus Start/Stop Booth against `AgentBoothRuntime`.
-4. Add Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
-5. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
-6. Render Agent status in Admin Web using the new overview DTO fields.
-7. Improve kiosk process ownership for crash/restart scenarios if needed, such as storing launched process identity in local runtime state.
-8. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
-9. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
+1. Harden the WPF shell: tray icon, close/minimize behavior while online, staff/technician modes, clearer error states, and persisted booth display name.
+2. Add editable Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
+3. Add unauthorized Agent response handling that drives a dedicated re-pair-required GUI state.
+4. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
+5. Render Agent status in Admin Web using the new overview DTO fields.
+6. Improve kiosk process ownership for crash/restart scenarios if needed, such as storing launched process identity in local runtime state.
+7. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
+8. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
 
 ## Decisions Already Made
 

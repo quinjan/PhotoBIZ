@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "PhotoBIZ.WindowsAgent.ControlCenter": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

@@ -13,13 +13,9 @@ public sealed class FileActiveLumaBoothSessionStore : IActiveLumaBoothSessionSto
 {
     private readonly string filePath;
 
-    public FileActiveLumaBoothSessionStore()
+    public FileActiveLumaBoothSessionStore(IAgentDataPaths dataPaths)
     {
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-            "PhotoBIZ",
-            "agent");
-        filePath = Path.Combine(root, "active-session.json");
+        filePath = dataPaths.ActiveSessionFilePath;
     }
 
     public async Task<ActiveLumaBoothSession?> LoadAsync(CancellationToken cancellationToken)
