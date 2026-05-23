@@ -772,6 +772,7 @@ public sealed class PhotoBizManagementApiTests
             sessionLabel = "Neon Weekend",
             defaultWelcomeHeadline = "Pop In. Pose Big.",
             defaultWelcomeSubtitle = "Tap start and jump into LumaBooth.",
+            completionThankYouMessage = "Thanks for going neon.",
             backgroundImageDataUrl = imageDataUrl
         });
         var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
@@ -792,6 +793,7 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(imageDataUrl, config.Theme.BackgroundImageDataUrl);
         Assert.Null(config.Theme.BackgroundImageUrl);
         Assert.Equal("Pop In. Pose Big.", config.Session.WelcomeHeadline);
+        Assert.Equal("Thanks for going neon.", config.Session.CompletionThankYouMessage);
     }
 
     [Fact]
@@ -1303,6 +1305,288 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal("SM Southmall - Neon Weekend", config.Session.Label);
         Assert.Equal("Booth unavailable", config.Session.WelcomeHeadline);
         Assert.Equal("No active booth offer configured", config.Session.WelcomeSubtitle);
+    }
+
+    [Fact]
+    public async Task BoothUiConfigIncludesActiveTransactionAndCompletionMessage()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "active-transaction-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        await factory.SetBoothAppearanceAsync(
+            seed.BoothId,
+            StatusValues.Theme.Vintage,
+            "SM Manila",
+            "Ready?",
+            "Tap start.",
+            "Thanks for sharing your smile.");
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var transactionResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        transactionResponse.EnsureSuccessStatusCode();
+        var transaction = await transactionResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(transaction);
+        Assert.NotNull(config);
+        Assert.NotNull(config.ActiveTransaction);
+        Assert.Equal(transaction.Id, config.ActiveTransaction.Id);
+        Assert.Equal(transaction.TransactionNumber, config.ActiveTransaction.TransactionNumber);
+        Assert.Equal(StatusValues.Transaction.Created, config.ActiveTransaction.Status);
+        Assert.Equal(StatusValues.PaymentMethod.Cash, config.ActiveTransaction.PaymentMethod);
+        Assert.Equal(25000, config.ActiveTransaction.AmountCents);
+        Assert.Equal("PHP", config.ActiveTransaction.Currency);
+        Assert.Equal(transaction.CreatedAt, config.ActiveTransaction.CreatedAt);
+        Assert.Equal(transaction.CreatedAt.AddMinutes(1), config.ActiveTransaction.ExpiresAt);
+        Assert.Equal("Booth 1", config.Booth.Name);
+        Assert.Equal(seed.BoothCode, config.Booth.Code);
+        Assert.Equal($"Location {seed.LocationId:N}", config.Booth.LocationName);
+        Assert.Equal("Thanks for sharing your smile.", config.Session.CompletionThankYouMessage);
+    }
+
+    [Fact]
+    public async Task BoothUiCanCancelCreatedAndPendingCashTransactions()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "kiosk-cancel-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var createdResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        createdResponse.EnsureSuccessStatusCode();
+        var created = await createdResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(created);
+
+        var createdCancelResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{created.Id}/cancel", new
+        {
+            trigger = StatusValues.BoothUiCancelTrigger.BackButton
+        });
+        createdCancelResponse.EnsureSuccessStatusCode();
+        var createdRecord = await factory.LoadTransactionRecordAsync(created.Id);
+        var createdAuditCount = await factory.CountAuditLogsAsync(seed.ClientAccountId, "transaction.kiosk_cancelled");
+        var createdConfig = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        Assert.NotNull(createdConfig);
+
+        var pendingResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        pendingResponse.EnsureSuccessStatusCode();
+        var pending = await pendingResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(pending);
+        var paymentResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{pending.Id}/payment-method", new
+        {
+            method = StatusValues.PaymentMethod.Cash
+        });
+        paymentResponse.EnsureSuccessStatusCode();
+
+        var pendingCancelResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{pending.Id}/cancel", new
+        {
+            trigger = StatusValues.BoothUiCancelTrigger.BackButton
+        });
+        pendingCancelResponse.EnsureSuccessStatusCode();
+        var pendingRecord = await factory.LoadTransactionRecordAsync(pending.Id);
+        var pendingAuditCount = await factory.CountAuditLogsAsync(seed.ClientAccountId, "transaction.kiosk_cancelled");
+
+        Assert.Equal(StatusValues.Transaction.Cancelled, createdRecord.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, createdRecord.BoothState);
+        Assert.Equal("Customer cancelled at the booth.", createdRecord.FailureReason);
+        Assert.Equal(StatusValues.CancellationActor.BoothUser, createdRecord.CancelledByActorType);
+        Assert.Null(createdRecord.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.BoothUiPaymentOptionsBack, createdRecord.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.Created, createdRecord.CancellationPreviousStatus);
+        Assert.Null(createdConfig.RecentTransaction);
+        Assert.Equal(1, createdAuditCount);
+        Assert.Equal(StatusValues.Transaction.Cancelled, pendingRecord.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, pendingRecord.BoothState);
+        Assert.Equal("Customer cancelled at the booth.", pendingRecord.FailureReason);
+        Assert.Equal(StatusValues.CancellationActor.BoothUser, pendingRecord.CancelledByActorType);
+        Assert.Null(pendingRecord.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.BoothUiWaitingForPaymentBack, pendingRecord.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.PendingCash, pendingRecord.CancellationPreviousStatus);
+        Assert.Equal(2, pendingAuditCount);
+    }
+
+    [Fact]
+    public async Task BoothUiIdleCancelTracksPaymentOptionsTimeout()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "kiosk-idle-cancel-token";
+        await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var createdResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        createdResponse.EnsureSuccessStatusCode();
+        var transaction = await createdResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(transaction);
+
+        var cancelResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{transaction.Id}/cancel", new
+        {
+            trigger = StatusValues.BoothUiCancelTrigger.IdleTimeout
+        });
+        cancelResponse.EnsureSuccessStatusCode();
+
+        var record = await factory.LoadTransactionRecordAsync(transaction.Id);
+
+        Assert.Equal(StatusValues.Transaction.Cancelled, record.Status);
+        Assert.Equal(StatusValues.CancellationActor.BoothUser, record.CancelledByActorType);
+        Assert.Null(record.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.BoothUiPaymentOptionsIdleTimeout, record.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.Created, record.CancellationPreviousStatus);
+    }
+
+    [Fact]
+    public async Task BoothUiConfigExpiresOverduePendingCashTransaction()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "kiosk-config-expire-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var transactionResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        transactionResponse.EnsureSuccessStatusCode();
+        var transaction = await transactionResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(transaction);
+
+        var paymentResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{transaction.Id}/payment-method", new
+        {
+            method = StatusValues.PaymentMethod.Cash
+        });
+        paymentResponse.EnsureSuccessStatusCode();
+        await factory.MarkTransactionExpiredDueAsync(transaction.Id);
+
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        var record = await factory.LoadTransactionRecordAsync(transaction.Id);
+
+        Assert.NotNull(config);
+        Assert.Null(config.ActiveTransaction);
+        Assert.NotNull(config.RecentTransaction);
+        Assert.Equal(transaction.Id, config.RecentTransaction.Id);
+        Assert.Equal(StatusValues.Transaction.Expired, config.RecentTransaction.Status);
+        Assert.Equal(StatusValues.Transaction.Expired, record.Status);
+        Assert.Equal(StatusValues.Booth.Welcome, record.BoothState);
+    }
+
+    [Fact]
+    public async Task BoothUiCancelRejectsWrongBoothAndPaidTransactions()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "kiosk-cancel-scope-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        var otherSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: "other-kiosk-cancel-token",
+            ownerEmail: "cancel-other-owner@photobiz.test");
+        var paidTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Paid, StatusValues.LumaboothSessionMode.Print);
+        var otherTransactionId = await factory.SeedSessionTransactionAsync(otherSeed, StatusValues.Transaction.PendingCash, StatusValues.LumaboothSessionMode.Print);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var paidCancelResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{paidTransactionId}/cancel", new
+        {
+            trigger = StatusValues.BoothUiCancelTrigger.BackButton
+        });
+        var wrongBoothCancelResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{otherTransactionId}/cancel", new
+        {
+            trigger = StatusValues.BoothUiCancelTrigger.BackButton
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, paidCancelResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, wrongBoothCancelResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task BoothUiAcknowledgesTerminalPaymentOutcomesFromBackend()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "terminal-ack-kiosk-token";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken);
+        var transactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PaymentFailed, StatusValues.LumaboothSessionMode.Print);
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+
+        var configBefore = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        var ackResponse = await client.PostAsJsonAsync($"/api/booth-ui/recent-transactions/{transactionId}/acknowledge", new { });
+        var configAfter = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(configBefore);
+        Assert.Equal(transactionId, configBefore.RecentTransaction?.Id);
+        Assert.Equal(HttpStatusCode.OK, ackResponse.StatusCode);
+        Assert.NotNull(configAfter);
+        Assert.Null(configAfter.RecentTransaction);
     }
 
     [Fact]
@@ -1951,6 +2235,9 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(StatusValues.Transaction.Cancelled, recovered.Status);
         Assert.Equal(StatusValues.Booth.Welcome, recovered.BoothState);
         Assert.Equal("Manual booth recovery returned the booth to welcome.", recovered.FailureReason);
+        Assert.Equal(StatusValues.CancellationActor.Cashier, recovered.CancelledByActorType);
+        Assert.Equal(StatusValues.CancellationSource.CashierPosReturnToWelcome, recovered.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.Created, recovered.CancellationPreviousStatus);
 
         var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
         Assert.NotNull(config);
@@ -1959,6 +2246,9 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(StatusValues.Transaction.Cancelled, config.RecentTransaction.Status);
         Assert.Equal(StatusValues.TransactionType.SessionPurchase, config.RecentTransaction.TransactionType);
         Assert.Equal("Manual booth recovery returned the booth to welcome.", config.RecentTransaction.Reason);
+        Assert.Equal(StatusValues.CancellationActor.Cashier, config.RecentTransaction.CancelledByActorType);
+        Assert.Equal(StatusValues.CancellationSource.CashierPosReturnToWelcome, config.RecentTransaction.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.Created, config.RecentTransaction.CancellationPreviousStatus);
 
         var secondTransaction = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
         secondTransaction.EnsureSuccessStatusCode();
@@ -1995,6 +2285,41 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(HttpStatusCode.Forbidden, approveResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, cancelResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, returnResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task CashierCancelTransactionTracksActorAndSource()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-cancel@photobiz.test");
+        var cashierId = await factory.LoadUserIdByEmailAsync(cashierEmail);
+        var transactionId = await factory.SeedSessionTransactionAsync(
+            seed,
+            StatusValues.Transaction.PendingCash,
+            StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(cashierClient, cashierEmail);
+
+        var cancelResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{transactionId}/cancel", new { });
+        cancelResponse.EnsureSuccessStatusCode();
+
+        var record = await factory.LoadTransactionRecordAsync(transactionId);
+
+        Assert.Equal(StatusValues.Transaction.Cancelled, record.Status);
+        Assert.Equal(StatusValues.CancellationActor.Cashier, record.CancelledByActorType);
+        Assert.Equal(cashierId, record.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.CashierPosCancelTransaction, record.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.PendingCash, record.CancellationPreviousStatus);
     }
 
     [Fact]
@@ -2272,7 +2597,8 @@ public sealed class PhotoBizManagementApiTests
                         AccentColor = "#f5d27e",
                         SessionLabel = "Test session",
                         DefaultWelcomeHeadline = "Welcome",
-                        DefaultWelcomeSubtitle = "Test subtitle"
+                        DefaultWelcomeSubtitle = "Test subtitle",
+                        CompletionThankYouMessage = "Thanks for sharing your smile."
                     });
                 }
             }
@@ -2344,6 +2670,16 @@ public sealed class PhotoBizManagementApiTests
             await dbContext.SaveChangesAsync();
 
             return email;
+        }
+
+        public async Task<Guid> LoadUserIdByEmailAsync(string email)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            return await dbContext.Users
+                .Where(user => user.Email == email)
+                .Select(user => user.Id)
+                .SingleAsync();
         }
 
         public async Task<Guid> SeedSessionTransactionAsync(
@@ -2461,6 +2797,14 @@ public sealed class PhotoBizManagementApiTests
             await dbContext.SaveChangesAsync();
         }
 
+        public async Task<int> CountAuditLogsAsync(Guid clientAccountId, string action)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            return await dbContext.AuditLogs.CountAsync(
+                item => item.ClientAccountId == clientAccountId && item.Action == action);
+        }
+
         public async Task<Guid> GetSecondBoothIdAsync(SeedResult seed)
         {
             await using var scope = Services.CreateAsyncScope();
@@ -2536,7 +2880,8 @@ public sealed class PhotoBizManagementApiTests
             string themePreset,
             string sessionLabel,
             string welcomeHeadline,
-            string welcomeSubtitle)
+            string welcomeSubtitle,
+            string completionThankYouMessage = "Thanks for sharing your smile.")
         {
             await using var scope = Services.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
@@ -2545,6 +2890,7 @@ public sealed class PhotoBizManagementApiTests
             appearance.SessionLabel = sessionLabel;
             appearance.DefaultWelcomeHeadline = welcomeHeadline;
             appearance.DefaultWelcomeSubtitle = welcomeSubtitle;
+            appearance.CompletionThankYouMessage = completionThankYouMessage;
             await dbContext.SaveChangesAsync();
         }
 
@@ -2564,13 +2910,29 @@ public sealed class PhotoBizManagementApiTests
             return (transaction.Status, session.Status, session.LumaboothSessionRef);
         }
 
-        public async Task<(string Status, string BoothState, string? FailureReason)> LoadTransactionRecordAsync(Guid transactionId)
+        public async Task<TransactionRecord> LoadTransactionRecordAsync(Guid transactionId)
         {
             await using var scope = Services.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
             var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
             var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId);
-            return (transaction.Status, booth.CurrentState, transaction.FailureReason);
+            return new TransactionRecord(
+                transaction.Status,
+                booth.CurrentState,
+                transaction.FailureReason,
+                transaction.CancelledByActorType,
+                transaction.CancelledByUserId,
+                transaction.CancellationSource,
+                transaction.CancellationPreviousStatus);
+        }
+
+        public async Task MarkTransactionExpiredDueAsync(Guid transactionId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId);
+            transaction.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(-1);
+            await dbContext.SaveChangesAsync();
         }
     }
 
@@ -2583,4 +2945,13 @@ public sealed class PhotoBizManagementApiTests
         string BoothCode,
         Guid OfferId,
         string ClientOwnerEmail);
+
+    private sealed record TransactionRecord(
+        string Status,
+        string BoothState,
+        string? FailureReason,
+        string? CancelledByActorType,
+        Guid? CancelledByUserId,
+        string? CancellationSource,
+        string? CancellationPreviousStatus);
 }

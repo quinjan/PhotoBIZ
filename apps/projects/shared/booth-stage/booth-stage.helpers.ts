@@ -1,4 +1,8 @@
-import { BoothStageConfig, BoothStageScreenState, BoothStageThemePreset } from './booth-stage.models';
+import {
+  BoothStageConfig,
+  BoothStageScreenState,
+  BoothStageThemePreset,
+} from './booth-stage.models';
 
 export function normalizeStagePreset(value: string | null | undefined): BoothStageThemePreset {
   switch ((value ?? '').toUpperCase()) {
@@ -23,7 +27,7 @@ export function stageTitle(config: BoothStageConfig | null, screen: BoothStageSc
     case 'unavailable':
       return 'Booth Unavailable';
     case 'payment':
-      return 'Choose Payment';
+      return 'Payment Options';
     case 'waiting':
       return 'Cashier Approval';
     case 'approved':
@@ -31,11 +35,11 @@ export function stageTitle(config: BoothStageConfig | null, screen: BoothStageSc
     case 'session':
       return 'Session In Progress';
     case 'completed':
-      return config?.activeOffer?.type === 'PER_SESSION' ? 'Extra Prints' : 'Session Complete';
+      return config?.session.completionThankYouMessage?.trim() || 'Thanks for sharing your smile.';
     case 'expired':
-      return 'Returning To Welcome';
+      return 'Request Expired';
     case 'cancelled':
-      return 'Payment Cancelled';
+      return 'Request Cancelled';
     case 'payment-failed':
       return 'Payment Failed';
     case 'error':
@@ -45,7 +49,10 @@ export function stageTitle(config: BoothStageConfig | null, screen: BoothStageSc
   }
 }
 
-export function stageMessage(config: BoothStageConfig | null, screen: BoothStageScreenState): string {
+export function stageMessage(
+  config: BoothStageConfig | null,
+  screen: BoothStageScreenState,
+): string {
   switch (screen) {
     case 'connect':
       return 'Start the Windows Agent to open this booth.';
@@ -57,9 +64,9 @@ export function stageMessage(config: BoothStageConfig | null, screen: BoothStage
       }
       return config?.session.welcomeSubtitle ?? 'Ask staff to configure this booth.';
     case 'payment':
-      return 'Pay cash at the counter after selecting the payment method.';
+      return 'Choose how to pay before the session starts.';
     case 'waiting':
-      return 'Please wait while the cashier confirms payment.';
+      return 'Please wait while the cashier confirms payment option. Please pay at the cashier after using the booth.';
     case 'approved':
       return 'Payment confirmed. The booth session is starting.';
     case 'session':
@@ -67,13 +74,13 @@ export function stageMessage(config: BoothStageConfig | null, screen: BoothStage
     case 'completed':
       return config?.activeOffer?.type === 'PER_SESSION'
         ? 'Need extra prints? Please go to the cashier.'
-        : 'Thank you. Tap the button below to return to the welcome screen.';
+        : 'Your session is complete.';
     case 'expired':
-      return 'This session state has ended.';
+      return 'Please start again.';
     case 'cancelled':
-      return config?.recentTransaction?.reason ?? 'This payment request was cancelled. Please ask the cashier to start again.';
+      return config?.recentTransaction?.reason ?? 'Please ask the cashier.';
     case 'payment-failed':
-      return config?.recentTransaction?.reason ?? 'Payment could not be completed. Please choose another method or ask the cashier.';
+      return config?.recentTransaction?.reason ?? 'Please ask the cashier.';
     case 'error':
       return 'Ask the cashier for booth recovery.';
     default:
@@ -82,20 +89,24 @@ export function stageMessage(config: BoothStageConfig | null, screen: BoothStage
 }
 
 export function stageEyebrow(config: BoothStageConfig | null): string {
-  return config?.session.label || 'Self photo booth';
+  return config?.session.label || 'Self Photo Booth';
 }
 
 export function stageBrandInitials(config: BoothStageConfig | null): string {
   return config?.client?.displayName?.slice(0, 2).toUpperCase() ?? 'PB';
 }
 
-export function stageCashOption(config: BoothStageConfig | null):
-  | { readonly method: string; readonly label: string; readonly runtimeEnabled: boolean }
-  | null {
+export function stageCashOption(
+  config: BoothStageConfig | null,
+): { readonly method: string; readonly label: string; readonly runtimeEnabled: boolean } | null {
   return (
     config?.paymentOptions.find((option) => option.method === 'CASH' && option.runtimeEnabled) ??
     null
   );
+}
+
+export function shouldShowStageOfferDetails(config: BoothStageConfig | null): boolean {
+  return config?.activeOffer?.type === 'PER_SESSION';
 }
 
 export function stageBackgroundImage(config: BoothStageConfig | null): string {

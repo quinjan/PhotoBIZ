@@ -1,5 +1,6 @@
 :host {
   display: block;
+  height: 100%;
   min-height: 100%;
   position: relative;
 }
@@ -23,4 +24,15 @@
 
 .stage-slot:empty {
   display: none;
+}
+
+.stage-slot ::ng-deep [booth-stage-token-controls],
+.stage-slot ::ng-deep [booth-stage-error] {
+  background: rgba(28, 20, 16, 0.84);
+  border: 1px solid rgba(255, 247, 232, 0.24);
+  border-radius: 8px;
+  color: #fff7e8;
+  display: block;
+  font-weight: 800;
+  padding: 14px 16px;
 }

@@ -29,8 +29,15 @@ export type BoothStageConfig = {
     readonly label: string;
     readonly welcomeHeadline: string;
     readonly welcomeSubtitle: string;
+    readonly completionThankYouMessage?: string;
   };
-  readonly booth: { readonly id: string; readonly state: string };
+  readonly booth: {
+    readonly id: string;
+    readonly state: string;
+    readonly name?: string;
+    readonly code?: string;
+    readonly locationName?: string;
+  };
   readonly activeOffer: {
     readonly id: string;
     readonly name: string;
@@ -51,13 +58,35 @@ export type BoothStageConfig = {
     readonly label: string;
     readonly runtimeEnabled: boolean;
   }[];
+  readonly activeTransaction?: {
+    readonly id: string;
+    readonly transactionNumber: string;
+    readonly transactionType: string;
+    readonly status: string;
+    readonly paymentMethod: string;
+    readonly amountCents: number;
+    readonly currency: string;
+    readonly createdAt?: string;
+    readonly expiresAt: string;
+  } | null;
   readonly recentTransaction?: {
     readonly id: string;
     readonly status: string;
     readonly transactionType: string;
     readonly occurredAt: string;
     readonly reason: string | null;
+    readonly cancelledByActorType?: string | null;
+    readonly cancelledByUserId?: string | null;
+    readonly cancellationSource?: string | null;
+    readonly cancellationPreviousStatus?: string | null;
   } | null;
 };
 
-export type BoothStageAction = 'connect' | 'confirm-offer' | 'cash' | 'refresh' | 'return-welcome';
+export type BoothStageAction =
+  | 'connect'
+  | 'confirm-offer'
+  | 'cash'
+  | 'refresh'
+  | 'return-welcome'
+  | 'cancel-transaction'
+  | 'acknowledge-recent';

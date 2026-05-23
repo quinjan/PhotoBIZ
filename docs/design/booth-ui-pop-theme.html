@@ -1,0 +1,1983 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PhotoBIZ Booth UI Pop Theme</title>
+  <style>
+    /*
+      PhotoBIZ Booth UI pop theme concept.
+      Target first: 15.6-inch 16:9 touch screen.
+
+      Porting notes:
+      - screenStates uses the current BoothStageScreenState names.
+      - Critical action labels stay plain and shared.
+      - This mockup is disposable design exploration before Angular porting.
+      - Background treatment simulates preset-owned overlay over an optional uploaded image.
+    */
+
+    :root {
+      --ink: #08080d;
+      --paper: #ffffff;
+      --paper-soft: #f8fbff;
+      --cyan: #00c8ff;
+      --cyan-dark: #0098c7;
+      --magenta: #ff168d;
+      --magenta-dark: #c00068;
+      --yellow: #ffe156;
+      --lime: #9cff3b;
+      --violet: #7b44ff;
+      --blue-soft: #dff8ff;
+      --pink-soft: #fff0f8;
+      --shadow: rgba(8, 8, 13, 0.26);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #111118;
+      color: var(--ink);
+      font-family: Arial, Helvetica, sans-serif;
+      margin: 0;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .mockup-shell {
+      display: grid;
+      grid-template-columns: 292px 1fr;
+      min-height: 100vh;
+    }
+
+    .controls {
+      background:
+        linear-gradient(135deg, rgba(0, 200, 255, 0.12), transparent 42%),
+        linear-gradient(315deg, rgba(255, 22, 141, 0.16), transparent 44%),
+        #ffffff;
+      border-right: 4px solid var(--ink);
+      color: var(--ink);
+      display: grid;
+      gap: 16px;
+      grid-template-rows: auto auto 1fr;
+      min-height: 100vh;
+      overflow: auto;
+      padding: 18px;
+    }
+
+    .controls h1 {
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0;
+      line-height: 0.95;
+      margin: 0 0 8px;
+      text-transform: uppercase;
+    }
+
+    .controls p {
+      color: #3b3b45;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    .current-state {
+      border-bottom: 2px solid var(--ink);
+      border-top: 2px solid var(--ink);
+      display: grid;
+      gap: 4px;
+      padding: 12px 0;
+    }
+
+    .current-state strong {
+      color: var(--magenta-dark);
+      font-size: 13px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .state-nav {
+      display: grid;
+      gap: 8px;
+    }
+
+    .state-nav button {
+      background: #ffffff;
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 4px 4px 0 var(--ink);
+      color: var(--ink);
+      cursor: pointer;
+      display: grid;
+      gap: 3px;
+      min-height: 48px;
+      padding: 9px 11px;
+      text-align: left;
+      transition:
+        transform 160ms ease,
+        box-shadow 160ms ease,
+        background 160ms ease;
+    }
+
+    .state-nav button strong {
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .state-nav button span {
+      color: #5c5c68;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+
+    .state-nav button:hover,
+    .state-nav button:focus-visible {
+      outline: 0;
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0 var(--ink);
+    }
+
+    .state-nav button.is-active {
+      background: var(--yellow);
+      transform: translate(4px, 4px);
+      box-shadow: 0 0 0 var(--ink);
+    }
+
+    .state-nav button.is-active span {
+      color: var(--magenta-dark);
+    }
+
+    .workbench {
+      display: grid;
+      min-height: 100vh;
+      padding: 20px;
+      place-items: center;
+    }
+
+    .screen {
+      --stage-image:
+        linear-gradient(135deg, rgba(0, 200, 255, 0.14), transparent 44%),
+        linear-gradient(315deg, rgba(255, 22, 141, 0.12), transparent 45%);
+      aspect-ratio: 16 / 9;
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.96) 0 46%, rgba(223, 248, 255, 0.9) 100%),
+        repeating-linear-gradient(135deg, rgba(8, 8, 13, 0.04) 0 2px, transparent 2px 18px),
+        var(--stage-image),
+        #f8fbff;
+      box-shadow: 0 28px 70px rgba(0, 0, 0, 0.5);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: min(calc(100vh - 40px), 768px);
+      overflow: hidden;
+      padding: 32px 42px;
+      position: relative;
+      width: min(calc(100vw - 332px), 1366px);
+    }
+
+    .screen::before {
+      animation: popGridDrift 18s linear infinite;
+      background-image:
+        linear-gradient(90deg, rgba(8, 8, 13, 0.08) 1px, transparent 1px),
+        linear-gradient(rgba(8, 8, 13, 0.08) 1px, transparent 1px);
+      background-size: 52px 52px;
+      content: "";
+      inset: 0;
+      opacity: 0.42;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .screen::after {
+      animation: frameSlide 12s linear infinite;
+      background:
+        linear-gradient(90deg, transparent 0 16px, rgba(255, 22, 141, 0.2) 16px 20px, transparent 20px 100%),
+        linear-gradient(0deg, transparent 0 16px, rgba(0, 200, 255, 0.18) 16px 20px, transparent 20px 100%);
+      background-size: 120px 88px;
+      content: "";
+      inset: 0;
+      opacity: 0.46;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .topbar,
+    .stage,
+    .bottombar,
+    .burst-stack,
+    .flash-layer {
+      position: relative;
+      z-index: 1;
+    }
+
+    .flash-layer {
+      animation: flashSweep 5.8s ease-in-out infinite;
+      background: linear-gradient(110deg, transparent 0 44%, rgba(255, 255, 255, 0.72) 49%, transparent 54%);
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      transform: translateX(-100%);
+      z-index: 3;
+    }
+
+    .burst-stack {
+      inset: 0;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .burst {
+      animation: stickerFloat 4.8s ease-in-out infinite;
+      border: 3px solid var(--ink);
+      box-shadow: 6px 6px 0 var(--ink);
+      position: absolute;
+      transform: rotate(var(--rotate));
+    }
+
+    .burst.one {
+      background: var(--yellow);
+      clip-path: polygon(50% 0, 61% 31%, 95% 18%, 74% 48%, 100% 69%, 64% 67%, 50% 100%, 36% 67%, 0 69%, 26% 48%, 5% 18%, 39% 31%);
+      height: 112px;
+      right: 78px;
+      top: 110px;
+      width: 112px;
+      --rotate: 11deg;
+    }
+
+    .burst.two {
+      animation-delay: 700ms;
+      background: var(--cyan);
+      border-radius: 22px;
+      bottom: 82px;
+      height: 72px;
+      left: 82px;
+      width: 148px;
+      --rotate: -7deg;
+    }
+
+    .burst.three {
+      animation-delay: 1.3s;
+      background: var(--magenta);
+      clip-path: polygon(12% 0, 100% 12%, 88% 100%, 0 88%);
+      height: 86px;
+      right: 210px;
+      bottom: 88px;
+      width: 120px;
+      --rotate: -13deg;
+    }
+
+    .topbar {
+      align-items: start;
+      animation: popIn 520ms ease-out both;
+      display: grid;
+      gap: 20px;
+      grid-template-columns: 1fr auto;
+    }
+
+    .topbar.has-back {
+      align-items: center;
+      grid-template-columns: auto 1fr auto;
+    }
+
+    .booth-name {
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .booth-name strong {
+      display: block;
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+      overflow-wrap: anywhere;
+      text-transform: uppercase;
+    }
+
+    .booth-name span,
+    .state-chip,
+    .label,
+    .hint,
+    .back-button {
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+    }
+
+    .booth-name span {
+      color: var(--magenta-dark);
+      letter-spacing: 0.7px;
+      text-transform: none;
+    }
+
+    .state-chip {
+      background: var(--paper);
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 6px 6px 0 var(--ink);
+      min-height: 42px;
+      padding: 12px 14px;
+    }
+
+    .back-button {
+      align-items: center;
+      background: var(--paper);
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 6px 6px 0 var(--ink);
+      color: var(--ink);
+      cursor: pointer;
+      display: inline-grid;
+      gap: 8px;
+      grid-template-columns: auto auto;
+      height: 44px;
+      min-width: 104px;
+      padding: 0 14px;
+      transition:
+        transform 150ms ease,
+        box-shadow 150ms ease;
+    }
+
+    .back-button::before {
+      border-bottom: 7px solid transparent;
+      border-right: 9px solid currentColor;
+      border-top: 7px solid transparent;
+      content: "";
+      height: 0;
+      width: 0;
+    }
+
+    .back-button:hover,
+    .back-button:focus-visible,
+    .primary-action:hover,
+    .primary-action:focus-visible,
+    .payment-choice:hover,
+    .payment-choice:focus-visible,
+    .modal-action:hover,
+    .modal-action:focus-visible {
+      outline: 0;
+      transform: translate(-2px, -2px);
+    }
+
+    .back-button:active,
+    .primary-action:active,
+    .payment-choice:active,
+    .modal-action:active {
+      box-shadow: 2px 2px 0 var(--ink);
+      transform: translate(4px, 4px);
+    }
+
+    .stage {
+      display: grid;
+      min-height: 0;
+      padding: 18px 0 12px;
+      place-items: center;
+    }
+
+    .photo-card {
+      animation: framePop 640ms cubic-bezier(0.16, 1.16, 0.28, 1) both;
+      background: var(--paper);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 14px 14px 0 var(--ink);
+      color: var(--ink);
+      display: grid;
+      gap: 20px;
+      grid-template-rows: auto 1fr auto;
+      max-width: 880px;
+      min-height: 464px;
+      overflow: hidden;
+      padding: 26px 32px 30px;
+      position: relative;
+      width: min(100%, 880px);
+    }
+
+    .photo-card::before {
+      background:
+        linear-gradient(90deg, var(--cyan) 0 28%, var(--yellow) 28% 56%, var(--magenta) 56% 100%);
+      border-bottom: 3px solid var(--ink);
+      content: "";
+      height: 16px;
+      left: 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+    }
+
+    .photo-card::after {
+      animation: cornerBlink 2.8s steps(2, end) infinite;
+      border-color: var(--cyan);
+      border-style: solid;
+      border-width: 7px 0 0 7px;
+      content: "";
+      height: 56px;
+      left: 22px;
+      opacity: 0.86;
+      pointer-events: none;
+      position: absolute;
+      top: 34px;
+      width: 56px;
+    }
+
+    .card-kicker {
+      align-items: center;
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      padding-top: 14px;
+    }
+
+    .label {
+      color: var(--magenta-dark);
+      margin: 0;
+    }
+
+    .frame-chip {
+      animation: chipWiggle 2.8s ease-in-out infinite;
+      background: var(--yellow);
+      border: 2px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 5px 5px 0 var(--ink);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      padding: 9px 12px;
+      text-transform: uppercase;
+      transform: rotate(2deg);
+    }
+
+    .hero-copy {
+      align-self: center;
+      display: grid;
+      gap: 18px;
+      justify-items: center;
+      text-align: center;
+    }
+
+    .hero-copy h2,
+    .payment-head h2,
+    .ticket h2 {
+      animation: textSnap 520ms ease-out 180ms both;
+      font-size: 64px;
+      font-weight: 900;
+      letter-spacing: 0;
+      line-height: 0.9;
+      margin: 0;
+      max-width: 720px;
+      overflow-wrap: anywhere;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .hero-copy p,
+    .ticket p,
+    .payment-copy {
+      animation: textSnap 520ms ease-out 260ms both;
+      color: #34343e;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.28;
+      margin: 0;
+      max-width: 620px;
+      text-align: center;
+    }
+
+    .offer-line {
+      align-items: center;
+      animation: textSnap 520ms ease-out 340ms both;
+      background: var(--pink-soft);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 8px 8px 0 var(--ink);
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1fr auto;
+      min-height: 84px;
+      padding: 14px 16px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .offer-line > div {
+      min-width: 0;
+    }
+
+    .offer-line strong {
+      color: var(--ink);
+      display: block;
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    .offer-line span {
+      color: #34343e;
+      display: block;
+      font-size: 14px;
+      font-weight: 900;
+      line-height: 1.3;
+      margin-top: 5px;
+    }
+
+    .price-pill,
+    .payment-due,
+    .auto-return-badge {
+      background: var(--cyan);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 6px 6px 0 var(--ink);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      text-align: center;
+    }
+
+    .price-pill {
+      font-size: 30px;
+      font-weight: 900;
+      min-width: 130px;
+      padding: 12px 14px;
+    }
+
+    .progress-track {
+      background: #e9edf5;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      height: 18px;
+      overflow: hidden;
+      width: 100%;
+    }
+
+    .progress-fill {
+      animation: progressLoad 850ms ease-out 360ms both;
+      background:
+        repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.42) 0 10px, transparent 10px 20px),
+        linear-gradient(90deg, var(--magenta), var(--cyan), var(--yellow));
+      height: 100%;
+      width: var(--progress);
+    }
+
+    .primary-action {
+      animation:
+        buttonSettle 520ms ease-out 420ms both,
+        buttonPulse 2.4s ease-in-out 1.1s infinite;
+      background: var(--cyan);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 8px 8px 0 var(--ink);
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 21px;
+      font-weight: 900;
+      letter-spacing: 0;
+      min-height: 68px;
+      min-width: 250px;
+      padding: 0 30px;
+      text-transform: uppercase;
+      transition:
+        transform 150ms ease,
+        box-shadow 150ms ease,
+        background 150ms ease;
+    }
+
+    .primary-action.is-yellow {
+      background: var(--yellow);
+    }
+
+    .primary-action.is-magenta {
+      background: var(--magenta);
+      color: #ffffff;
+    }
+
+    .primary-action:disabled,
+    .payment-choice:disabled,
+    .back-button:disabled,
+    .modal-action:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .bottombar {
+      align-items: center;
+      animation: popIn 520ms ease-out 420ms both;
+      display: grid;
+      gap: 18px;
+      grid-template-columns: 1fr auto 1fr;
+    }
+
+    .hint {
+      color: #24242d;
+      line-height: 1.3;
+    }
+
+    .hint.right {
+      text-align: right;
+    }
+
+    .payment-choice-card {
+      max-width: 930px;
+      min-height: 480px;
+      width: min(100%, 930px);
+    }
+
+    .payment-head {
+      border-bottom: 3px solid var(--ink);
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      padding: 18px min(138px, 18vw) 20px;
+      text-align: center;
+    }
+
+    .payment-due {
+      background: var(--yellow);
+      gap: 2px;
+      min-width: 190px;
+      padding: 10px 22px 12px;
+    }
+
+    .payment-due span,
+    .auto-return-badge span {
+      color: #393942;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 1.3px;
+      text-transform: uppercase;
+    }
+
+    .payment-due strong,
+    .auto-return-badge strong {
+      font-size: 31px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .payment-choice-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .payment-choice {
+      background:
+        linear-gradient(135deg, rgba(255, 225, 86, 0.55), transparent 46%),
+        #ffffff;
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 10px 10px 0 var(--ink);
+      color: var(--ink);
+      cursor: pointer;
+      display: grid;
+      min-height: 158px;
+      overflow: hidden;
+      padding: 20px;
+      place-items: center;
+      position: relative;
+      text-align: center;
+      transition:
+        transform 160ms ease,
+        box-shadow 160ms ease;
+    }
+
+    .payment-choice::before {
+      animation: focusRing 3.4s linear infinite;
+      border: 3px solid var(--magenta);
+      content: "";
+      inset: 16px;
+      opacity: 0.7;
+      pointer-events: none;
+      position: absolute;
+    }
+
+    .payment-choice h3 {
+      font-size: 56px;
+      font-weight: 900;
+      line-height: 1;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .ticket {
+      animation: framePop 560ms cubic-bezier(0.16, 1.16, 0.28, 1) both;
+      background: var(--paper);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 14px 14px 0 var(--ink);
+      display: grid;
+      gap: 20px;
+      justify-items: center;
+      max-width: 760px;
+      min-height: 370px;
+      overflow: hidden;
+      padding: 32px 34px 36px;
+      position: relative;
+      text-align: center;
+      width: min(100%, 760px);
+    }
+
+    .ticket::before {
+      background:
+        linear-gradient(90deg, var(--magenta) 0 33%, var(--yellow) 33% 66%, var(--cyan) 66% 100%);
+      border-bottom: 3px solid var(--ink);
+      content: "";
+      height: 18px;
+      left: 0;
+      position: absolute;
+      right: 0;
+      top: 0;
+    }
+
+    .ticket-topline {
+      align-items: start;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      padding-top: 10px;
+      width: 100%;
+    }
+
+    .ticket-topline .label {
+      justify-self: start;
+      padding-top: 9px;
+      text-align: left;
+    }
+
+    .auto-return-badge {
+      animation: chipWiggle 2.8s ease-in-out infinite;
+      background: var(--yellow);
+      gap: 4px;
+      min-width: 118px;
+      padding: 8px 12px 10px;
+      z-index: 2;
+    }
+
+    .photo-card > .auto-return-badge {
+      position: absolute;
+      right: 26px;
+      top: 40px;
+    }
+
+    .timeout-panel {
+      display: grid;
+      gap: 12px;
+      width: 100%;
+    }
+
+    .timeout-meta {
+      align-items: center;
+      color: #34343e;
+      display: flex;
+      font-size: 13px;
+      font-weight: 900;
+      justify-content: space-between;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+
+    .timeout-meta strong {
+      color: var(--magenta-dark);
+      font-size: 30px;
+      letter-spacing: 0;
+      line-height: 1;
+      text-transform: none;
+    }
+
+    .timeout-fill {
+      animation: none;
+      transition: width 350ms linear;
+    }
+
+    .qr-stage {
+      align-items: center;
+      display: grid;
+      gap: 28px;
+      grid-template-columns: 330px minmax(0, 1fr);
+      width: min(100%, 880px);
+    }
+
+    .photo-frame {
+      animation: framePop 620ms cubic-bezier(0.16, 1.16, 0.28, 1) both;
+      background: var(--paper);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 14px 14px 0 var(--ink);
+      min-height: 330px;
+      padding: 18px;
+      transform: rotate(-2deg);
+    }
+
+    .photo-frame-inner {
+      align-items: center;
+      background:
+        repeating-linear-gradient(45deg, rgba(255, 22, 141, 0.12) 0 12px, rgba(0, 200, 255, 0.12) 12px 24px),
+        #ecfbff;
+      border: 3px solid var(--ink);
+      display: grid;
+      height: 100%;
+      justify-items: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .camera-ring {
+      animation: ringSpin 5.2s linear infinite;
+      border: 13px solid var(--ink);
+      border-left-color: var(--cyan);
+      border-right-color: var(--magenta);
+      border-radius: 50%;
+      height: 178px;
+      width: 178px;
+    }
+
+    .frame-copy {
+      display: grid;
+      gap: 18px;
+    }
+
+    .frame-copy h2 {
+      font-size: 58px;
+      font-weight: 900;
+      line-height: 0.92;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .frame-copy p {
+      color: #34343e;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin: 0;
+      max-width: 500px;
+    }
+
+    .modal {
+      align-items: center;
+      background: rgba(8, 8, 13, 0.54);
+      display: flex;
+      inset: 0;
+      justify-content: center;
+      padding: 42px;
+      position: absolute;
+      z-index: 5;
+    }
+
+    .modal[hidden] {
+      display: none;
+    }
+
+    .modal-card {
+      animation: framePop 420ms cubic-bezier(0.16, 1.16, 0.28, 1) both;
+      background: var(--paper);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 14px 14px 0 var(--ink);
+      display: grid;
+      gap: 20px;
+      justify-items: center;
+      max-width: 540px;
+      padding: 34px;
+      text-align: center;
+      width: 100%;
+    }
+
+    .modal-card h2 {
+      font-size: 48px;
+      font-weight: 900;
+      line-height: 0.95;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .modal-card p:not(.label) {
+      color: #34343e;
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.25;
+      margin: 0;
+    }
+
+    .modal-actions {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 4px;
+      width: 100%;
+    }
+
+    .modal-action {
+      background: var(--cyan);
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 7px 7px 0 var(--ink);
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      min-height: 58px;
+      padding: 0 18px;
+      text-transform: uppercase;
+      transition:
+        transform 150ms ease,
+        box-shadow 150ms ease;
+    }
+
+    .modal-action.is-secondary {
+      background: #ffffff;
+    }
+
+    .tone-danger .screen {
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.96) 0 44%, rgba(255, 240, 248, 0.9) 100%),
+        repeating-linear-gradient(135deg, rgba(192, 0, 104, 0.08) 0 2px, transparent 2px 18px),
+        var(--stage-image),
+        #fff7fb;
+    }
+
+    .tone-ok .photo-card,
+    .tone-ok .ticket {
+      box-shadow:
+        14px 14px 0 var(--ink),
+        0 0 0 8px rgba(156, 255, 59, 0.34);
+    }
+
+    .state-offer .photo-card {
+      transform-origin: center;
+    }
+
+    .state-approved .screen {
+      animation: cameraFlash 860ms ease-out both;
+    }
+
+    .state-completed .burst.one,
+    .state-completed .burst.two,
+    .state-completed .burst.three {
+      animation:
+        stickerFloat 3.8s ease-in-out infinite,
+        confettiPop 900ms ease-out both;
+    }
+
+    .state-completed .hero-copy h2 {
+      font-size: 48px;
+      line-height: 1;
+      max-width: 620px;
+    }
+
+    .state-completed .extra-print-note {
+      color: var(--magenta-dark);
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .state-waiting .ticket {
+      align-content: start;
+      gap: 22px;
+      min-height: 340px;
+    }
+
+    .state-offline .state-chip,
+    .state-error .state-chip,
+    .state-expired .state-chip,
+    .state-cancelled .state-chip,
+    .state-payment-failed .state-chip {
+      animation: warningPulse 1.8s ease-in-out infinite;
+      background: var(--yellow);
+    }
+
+    @keyframes popIn {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes framePop {
+      0% {
+        opacity: 0;
+        transform: translateY(30px) rotate(-1.8deg) scale(0.94);
+      }
+
+      70% {
+        opacity: 1;
+        transform: translateY(-5px) rotate(0.65deg) scale(1.015);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0) rotate(0deg) scale(1);
+      }
+    }
+
+    @keyframes textSnap {
+      from {
+        opacity: 0;
+        transform: translateY(16px) scale(0.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes buttonSettle {
+      from {
+        opacity: 0;
+        transform: translateY(14px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes buttonPulse {
+      0%,
+      100% {
+        filter: saturate(1);
+      }
+
+      50% {
+        filter: saturate(1.28) brightness(1.04);
+      }
+    }
+
+    @keyframes progressLoad {
+      from {
+        width: 0;
+      }
+
+      to {
+        width: var(--progress);
+      }
+    }
+
+    @keyframes stickerFloat {
+      0%,
+      100% {
+        transform: translateY(0) rotate(var(--rotate));
+      }
+
+      50% {
+        transform: translateY(-10px) rotate(calc(var(--rotate) * -1));
+      }
+    }
+
+    @keyframes flashSweep {
+      0%,
+      62%,
+      100% {
+        opacity: 0;
+        transform: translateX(-100%);
+      }
+
+      70% {
+        opacity: 0.9;
+      }
+
+      86% {
+        opacity: 0;
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes frameSlide {
+      from {
+        background-position: 0 0, 0 0;
+      }
+
+      to {
+        background-position: 120px 88px, 120px 88px;
+      }
+    }
+
+    @keyframes popGridDrift {
+      from {
+        background-position: 0 0, 0 0;
+      }
+
+      to {
+        background-position: 52px 52px, 52px 52px;
+      }
+    }
+
+    @keyframes cornerBlink {
+      0%,
+      100% {
+        border-color: var(--cyan);
+      }
+
+      50% {
+        border-color: var(--magenta);
+      }
+    }
+
+    @keyframes chipWiggle {
+      0%,
+      100% {
+        transform: rotate(2deg);
+      }
+
+      50% {
+        transform: rotate(-2deg) translateY(-2px);
+      }
+    }
+
+    @keyframes focusRing {
+      from {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.04);
+      }
+
+      to {
+        transform: scale(1);
+      }
+    }
+
+    @keyframes ringSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes cameraFlash {
+      0% {
+        filter: brightness(1);
+      }
+
+      16% {
+        filter: brightness(1.65);
+      }
+
+      100% {
+        filter: brightness(1);
+      }
+    }
+
+    @keyframes confettiPop {
+      from {
+        opacity: 0;
+        transform: scale(0.7) rotate(var(--rotate));
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes warningPulse {
+      0%,
+      100% {
+        box-shadow: 6px 6px 0 var(--ink), 0 0 0 rgba(255, 22, 141, 0);
+      }
+
+      50% {
+        box-shadow: 6px 6px 0 var(--ink), 0 0 30px rgba(255, 22, 141, 0.42);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .mockup-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        border-bottom: 4px solid var(--ink);
+        border-right: 0;
+        min-height: 0;
+      }
+
+      .state-nav {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .workbench {
+        padding: 12px;
+      }
+
+      .screen {
+        height: auto;
+        min-height: 720px;
+        padding: 24px;
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .topbar,
+      .topbar.has-back,
+      .bottombar,
+      .offer-line,
+      .ticket-topline,
+      .modal-actions,
+      .qr-stage {
+        grid-template-columns: 1fr;
+      }
+
+      .state-chip,
+      .hint.right,
+      .ticket-topline .label {
+        justify-self: start;
+        text-align: left;
+      }
+
+      .photo-card,
+      .ticket {
+        min-height: 0;
+        padding: 24px;
+      }
+
+      .hero-copy h2,
+      .payment-head h2,
+      .ticket h2,
+      .frame-copy h2 {
+        font-size: 42px;
+      }
+
+      .primary-action,
+      .ticket .primary-action {
+        min-width: 0;
+        width: 100%;
+      }
+
+      .payment-head {
+        padding-inline: 0;
+      }
+
+      .photo-card > .auto-return-badge {
+        position: static;
+        justify-self: end;
+      }
+
+      .burst {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="mockup-shell">
+    <aside class="controls" aria-label="Mockup controls">
+      <div>
+        <h1>Pop Theme</h1>
+        <p>Neon photo-frame concept with full Booth UI state clickthrough.</p>
+      </div>
+
+      <div class="current-state" id="currentState"></div>
+
+      <nav class="state-nav" id="stateNav" aria-label="Screen states"></nav>
+    </aside>
+
+    <main class="workbench">
+      <div id="screenMount"></div>
+    </main>
+  </div>
+
+  <script>
+    const boothConfig = {
+      clientName: "Pixel Pop Studio",
+      boothLine: "Ayala Center | POP-002",
+      sessionLabel: "Neon Weekend",
+      offerName: "Pop Session",
+      offerType: "PER_SESSION",
+      offerPrice: "PHP 250",
+      printEntitlement: "2 pcs 6x2 or 1 pc 6x4",
+      extraPrintPrice: "PHP 50",
+      transactionNumber: "PBZ-20260524-0042"
+    };
+
+    const screenStates = [
+      {
+        id: "connect",
+        label: "Connect",
+        boothState: "NO_KIOSK_TOKEN",
+        tone: "normal",
+        layout: "card",
+        eyebrow: "Setup",
+        title: "Waiting For Booth Launch",
+        message: "Start the Windows Agent to open this booth.",
+        action: "Connect Booth",
+        actionTarget: "offer",
+        footerLeft: "Setup only",
+        footerRight: "Agent opens kiosk mode",
+        progress: "15%"
+      },
+      {
+        id: "offline",
+        label: "Offline",
+        boothState: "OFFLINE",
+        tone: "danger",
+        layout: "card",
+        eyebrow: "Offline",
+        title: "Agent Offline",
+        message: "Start the Windows Agent on the booth laptop.",
+        action: "Retry",
+        actionTarget: "offer",
+        footerLeft: "No fresh heartbeat",
+        footerRight: "Sessions are blocked",
+        progress: "0%"
+      },
+      {
+        id: "unavailable",
+        label: "Unavailable",
+        boothState: "WELCOME",
+        tone: "danger",
+        layout: "card",
+        eyebrow: "Package Setup",
+        title: "Booth Unavailable",
+        message: "This package is awaiting cashier activation. Please go to the cashier.",
+        action: "",
+        footerLeft: "Awaiting activation",
+        footerRight: "No checkout shown",
+        progress: "20%"
+      },
+      {
+        id: "offer",
+        label: "Offer",
+        boothState: "WELCOME",
+        tone: "normal",
+        layout: "card",
+        eyebrow: "Self Photo Booth",
+        title: "Pop In. Pose Big.",
+        message: "Tap start when you are ready.",
+        action: "Start Booth",
+        actionTarget: "payment",
+        showOffer: true,
+        footerLeft: "Cash payment available",
+        footerRight: "Extra prints after session",
+        progress: "100%"
+      },
+      {
+        id: "payment",
+        label: "Payment",
+        boothState: "OFFER_CONFIRMED",
+        tone: "normal",
+        layout: "payment-options",
+        eyebrow: "Payment",
+        title: "Payment Options",
+        message: "Choose how to pay before the session starts.",
+        paymentOptions: [
+          { title: "Cash", target: "waiting" }
+        ],
+        backTarget: "offer",
+        backConfirmMessage: "Cancel this payment request and return to the start screen?",
+        footerLeft: boothConfig.offerName + " | " + boothConfig.printEntitlement,
+        footerRight: "Auto returns if idle",
+        progress: "35%",
+        autoReturnSeconds: 30
+      },
+      {
+        id: "waiting",
+        label: "Cash Waiting",
+        boothState: "PAYMENT_PENDING",
+        tone: "normal",
+        layout: "ticket",
+        eyebrow: "Cashier Approval",
+        title: "Cashier Approval",
+        message: "Please wait while the cashier confirms payment. Keep this screen open.",
+        action: "",
+        backTarget: "payment",
+        backConfirmMessage: "Cancel this cash request and return to payment choices?",
+        footerLeft: boothConfig.transactionNumber,
+        footerRight: "Cashier POS approval",
+        progress: "55%",
+        timeoutSeconds: 60
+      },
+      {
+        id: "approved",
+        label: "Approved",
+        boothState: "STARTING_LUMABOOTH",
+        tone: "ok",
+        layout: "frame",
+        eyebrow: "Get Ready",
+        title: "Starting Session",
+        message: "Payment confirmed. Follow the booth screen.",
+        action: "",
+        footerLeft: "",
+        footerRight: "",
+        progress: "75%"
+      },
+      {
+        id: "session",
+        label: "Session",
+        boothState: "IN_LUMABOOTH_SESSION",
+        tone: "normal",
+        layout: "frame",
+        eyebrow: "In Progress",
+        title: "Session Active",
+        message: "Follow LumaBooth.",
+        action: "",
+        footerLeft: "",
+        footerRight: "",
+        progress: "88%"
+      },
+      {
+        id: "completed",
+        label: "Completed",
+        boothState: "COMPLETED",
+        tone: "ok",
+        layout: "card",
+        eyebrow: "Thank You",
+        title: "Thanks for sharing your smile.",
+        message: "Fresh shots, big energy.",
+        extraMessage: "Need extra prints? Please go to the cashier.",
+        action: "Back To Start",
+        actionTarget: "offer",
+        autoReturnSeconds: 15,
+        footerLeft: "",
+        footerRight: "Auto return",
+        progress: "100%"
+      },
+      {
+        id: "expired",
+        label: "Expired",
+        boothState: "RECENT EXPIRED",
+        tone: "danger",
+        layout: "ticket",
+        eyebrow: "Expired",
+        title: "Request Expired",
+        message: "Please start again.",
+        action: "Back To Start",
+        actionTarget: "offer",
+        autoReturnSeconds: 15,
+        footerLeft: "",
+        footerRight: "Recent transaction",
+        progress: "0%"
+      },
+      {
+        id: "cancelled",
+        label: "Cancelled",
+        boothState: "RECENT CANCELLED",
+        tone: "danger",
+        layout: "ticket",
+        eyebrow: "Cancelled",
+        title: "Request Cancelled",
+        message: "Please ask the cashier.",
+        action: "Back To Start",
+        actionTarget: "offer",
+        autoReturnSeconds: 15,
+        footerLeft: "",
+        footerRight: "Recent transaction",
+        progress: "0%"
+      },
+      {
+        id: "payment-failed",
+        label: "Payment Failed",
+        boothState: "RECENT PAYMENT_FAILED",
+        tone: "danger",
+        layout: "ticket",
+        eyebrow: "Payment Failed",
+        title: "Payment Failed",
+        message: "Please ask the cashier.",
+        action: "Back To Start",
+        actionTarget: "offer",
+        autoReturnSeconds: 15,
+        footerLeft: "",
+        footerRight: "Recent transaction",
+        progress: "0%"
+      },
+      {
+        id: "error",
+        label: "Error",
+        boothState: "ERROR",
+        tone: "danger",
+        layout: "card",
+        eyebrow: "Recovery Needed",
+        title: "Call Cashier",
+        message: "Staff can recover this booth.",
+        action: "Check Status",
+        actionTarget: "offline",
+        footerLeft: "Backend recovery",
+        footerRight: "Do not restart",
+        progress: "25%"
+      }
+    ];
+
+    const defaultStateId = "offer";
+    let countdownTimer = null;
+    let pendingBackTarget = null;
+    let pendingPaymentTarget = null;
+
+    function getState(id) {
+      return screenStates.find((state) => state.id === id) || screenStates.find((state) => state.id === defaultStateId);
+    }
+
+    function humanize(value) {
+      return value.replaceAll("_", " ");
+    }
+
+    function renderProgress(state) {
+      return `
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-fill" style="--progress: ${state.progress};"></div>
+        </div>
+      `;
+    }
+
+    function renderTimeout(state) {
+      return `
+        <div class="timeout-panel" data-timeout-total="${state.timeoutSeconds}">
+          <div class="timeout-meta">
+            <span>Time Left</span>
+            <strong data-countdown>${state.timeoutSeconds}s</strong>
+          </div>
+          <div class="progress-track" aria-hidden="true">
+            <div class="progress-fill timeout-fill" data-timeout-fill style="width: 100%;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAutoReturnBadge(state) {
+      if (!state.autoReturnSeconds) {
+        return "";
+      }
+
+      return `
+        <div class="auto-return-badge" aria-label="Auto return countdown">
+          <span>Auto Return</span>
+          <strong data-auto-return-countdown>${state.autoReturnSeconds}s</strong>
+        </div>
+      `;
+    }
+
+    function renderOfferLine() {
+      return `
+        <div class="offer-line">
+          <div>
+            <strong>${boothConfig.offerName}</strong>
+            <span>${boothConfig.printEntitlement}</span>
+          </div>
+          <div class="price-pill">${boothConfig.offerPrice}</div>
+        </div>
+      `;
+    }
+
+    function renderAction(state, className = "primary-action") {
+      if (!state.action) {
+        return "";
+      }
+
+      const toneClass = state.tone === "danger"
+        ? " is-yellow"
+        : state.tone === "ok"
+          ? " is-magenta"
+          : "";
+
+      return `<button type="button" class="${className}${toneClass}" data-action-target="${state.actionTarget || defaultStateId}">${state.action}</button>`;
+    }
+
+    function renderCardLayout(state) {
+      return `
+        <article class="photo-card">
+          ${renderAutoReturnBadge(state)}
+          <div class="card-kicker">
+            <p class="label">${state.eyebrow}</p>
+            <span class="frame-chip">Photo Ready</span>
+          </div>
+
+          <div class="hero-copy">
+            <h2>${state.title}</h2>
+            <p>${state.message}</p>
+            ${state.extraMessage ? `<p class="extra-print-note">${state.extraMessage}</p>` : ""}
+            ${state.showOffer ? renderOfferLine() : renderProgress(state)}
+          </div>
+
+          ${renderAction(state)}
+        </article>
+      `;
+    }
+
+    function renderPaymentOptionsLayout(state) {
+      const options = state.paymentOptions.map((option) => `
+        <button type="button" class="payment-choice" data-payment-choice data-payment-title="${option.title}" data-payment-target="${option.target}">
+          <h3>${option.title}</h3>
+        </button>
+      `).join("");
+
+      return `
+        <article class="photo-card payment-choice-card">
+          ${renderAutoReturnBadge(state)}
+          <header class="payment-head">
+            <p class="label">${state.eyebrow}</p>
+            <h2>${state.title}</h2>
+            <div class="payment-due">
+              <span>Amount Due</span>
+              <strong>${boothConfig.offerPrice}</strong>
+            </div>
+          </header>
+          <div class="payment-choice-grid">
+            ${options}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderTicketLayout(state) {
+      const ticketHeader = state.autoReturnSeconds
+        ? `
+          <div class="ticket-topline">
+            <p class="label">${state.eyebrow}</p>
+            ${renderAutoReturnBadge(state)}
+          </div>
+        `
+        : `<p class="label">${state.eyebrow}</p>`;
+
+      return `
+        <article class="ticket">
+          ${ticketHeader}
+          <h2>${state.title}</h2>
+          <p>${state.message}</p>
+          ${state.timeoutSeconds ? renderTimeout(state) : renderProgress(state)}
+          ${renderAction(state)}
+        </article>
+      `;
+    }
+
+    function renderFrameLayout(state) {
+      return `
+        <div class="qr-stage">
+          <div class="photo-frame" aria-hidden="true">
+            <div class="photo-frame-inner">
+              <div class="camera-ring"></div>
+            </div>
+          </div>
+          <article class="frame-copy">
+            <p class="label">${state.eyebrow}</p>
+            <h2>${state.title}</h2>
+            <p>${state.message}</p>
+            ${renderProgress(state)}
+          </article>
+        </div>
+      `;
+    }
+
+    function renderBackConfirmModal(state) {
+      if (!state.backTarget) {
+        return "";
+      }
+
+      return `
+        <div class="modal" data-back-modal role="dialog" aria-modal="true" aria-labelledby="backModalTitle" hidden>
+          <article class="modal-card">
+            <p class="label">Confirm</p>
+            <h2 id="backModalTitle">Go Back?</h2>
+            <p>${state.backConfirmMessage || "Return to the previous screen?"}</p>
+            <div class="modal-actions">
+              <button type="button" class="modal-action is-secondary" data-back-cancel>Stay</button>
+              <button type="button" class="modal-action" data-back-confirm>Go Back</button>
+            </div>
+          </article>
+        </div>
+      `;
+    }
+
+    function renderPaymentConfirmModal(state) {
+      if (state.layout !== "payment-options") {
+        return "";
+      }
+
+      return `
+        <div class="modal" data-payment-modal role="dialog" aria-modal="true" aria-labelledby="paymentModalTitle" hidden>
+          <article class="modal-card">
+            <p class="label">Confirm Payment</p>
+            <h2 id="paymentModalTitle">Use Payment?</h2>
+            <p data-payment-modal-message>Continue with this payment option?</p>
+            <div class="modal-actions">
+              <button type="button" class="modal-action is-secondary" data-payment-cancel>Change</button>
+              <button type="button" class="modal-action" data-payment-confirm>Confirm</button>
+            </div>
+          </article>
+        </div>
+      `;
+    }
+
+    function renderScreen(state) {
+      const toneClass = state.tone ? `tone-${state.tone}` : "";
+      const stateClass = `state-${state.id}`;
+      const backButton = state.backTarget
+        ? `<button type="button" class="back-button" data-back-target="${state.backTarget}">Back</button>`
+        : "";
+      const topbarClass = state.backTarget ? "topbar has-back" : "topbar";
+      const content =
+        state.layout === "payment-options"
+          ? renderPaymentOptionsLayout(state)
+          : state.layout === "ticket"
+            ? renderTicketLayout(state)
+            : state.layout === "frame"
+              ? renderFrameLayout(state)
+              : renderCardLayout(state);
+
+      return `
+        <section class="${toneClass} ${stateClass}">
+          <div class="screen">
+            <div class="flash-layer" aria-hidden="true"></div>
+            <div class="burst-stack" aria-hidden="true">
+              <div class="burst one"></div>
+              <div class="burst two"></div>
+              <div class="burst three"></div>
+            </div>
+
+            <header class="${topbarClass}">
+              ${backButton}
+              <div class="booth-name">
+                <strong>${boothConfig.clientName}</strong>
+                <span>${boothConfig.boothLine} | ${boothConfig.sessionLabel}</span>
+              </div>
+              <div class="state-chip">${humanize(state.boothState)}</div>
+            </header>
+
+            <main class="stage">
+              ${content}
+            </main>
+
+            <footer class="bottombar">
+              <div class="hint">${state.footerLeft}</div>
+              <div></div>
+              <div class="hint right">${state.footerRight}</div>
+            </footer>
+
+            ${renderBackConfirmModal(state)}
+            ${renderPaymentConfirmModal(state)}
+          </div>
+        </section>
+      `;
+    }
+
+    function stopCountdown() {
+      if (countdownTimer !== null) {
+        window.clearInterval(countdownTimer);
+        countdownTimer = null;
+      }
+    }
+
+    function startCountdown(state) {
+      stopCountdown();
+
+      const totalSeconds = state.timeoutSeconds || state.autoReturnSeconds;
+
+      if (!totalSeconds) {
+        return;
+      }
+
+      const countdown = document.querySelector("[data-countdown], [data-auto-return-countdown]");
+      const fill = document.querySelector("[data-timeout-fill]");
+
+      if (!countdown) {
+        return;
+      }
+
+      const startedAt = Date.now();
+
+      const update = () => {
+        const elapsedSeconds = Math.floor((Date.now() - startedAt) / 1000);
+        const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+        const remainingPercent = Math.max(0, (remainingSeconds / totalSeconds) * 100);
+
+        countdown.textContent = `${remainingSeconds}s`;
+        if (fill) {
+          fill.style.width = `${remainingPercent}%`;
+        }
+
+        if (remainingSeconds === 0) {
+          stopCountdown();
+          if (state.autoReturnSeconds) {
+            setState(state.actionTarget || defaultStateId);
+          }
+        }
+      };
+
+      update();
+      countdownTimer = window.setInterval(update, 1000);
+    }
+
+    function showModal(modal) {
+      if (!modal) {
+        return;
+      }
+
+      modal.hidden = false;
+    }
+
+    function hideModal(modal) {
+      if (!modal) {
+        return;
+      }
+
+      modal.hidden = true;
+    }
+
+    function openBackConfirm(target) {
+      const modal = document.querySelector("[data-back-modal]");
+      pendingBackTarget = target;
+
+      if (!modal) {
+        setState(target);
+        return;
+      }
+
+      showModal(modal);
+      const stayButton = modal.querySelector("[data-back-cancel]");
+      if (stayButton) {
+        stayButton.focus();
+      }
+    }
+
+    function closeBackConfirm() {
+      hideModal(document.querySelector("[data-back-modal]"));
+      pendingBackTarget = null;
+    }
+
+    function openPaymentConfirm(title, target) {
+      const modal = document.querySelector("[data-payment-modal]");
+      const modalTitle = document.getElementById("paymentModalTitle");
+      const modalMessage = document.querySelector("[data-payment-modal-message]");
+      pendingPaymentTarget = target;
+
+      if (!modal) {
+        setState(target);
+        return;
+      }
+
+      if (modalTitle) {
+        modalTitle.textContent = `Use ${title}?`;
+      }
+
+      if (modalMessage) {
+        modalMessage.textContent = `${boothConfig.offerPrice} will continue with ${title}.`;
+      }
+
+      showModal(modal);
+      const confirmButton = modal.querySelector("[data-payment-confirm]");
+      if (confirmButton) {
+        confirmButton.focus();
+      }
+    }
+
+    function closePaymentConfirm() {
+      hideModal(document.querySelector("[data-payment-modal]"));
+      pendingPaymentTarget = null;
+    }
+
+    function attachActionHandlers() {
+      document.querySelectorAll("[data-action-target]").forEach((button) => {
+        button.addEventListener("click", () => setState(button.dataset.actionTarget));
+      });
+    }
+
+    function attachPaymentChoiceHandlers() {
+      document.querySelectorAll("[data-payment-choice]").forEach((choice) => {
+        choice.addEventListener("click", () => {
+          openPaymentConfirm(choice.dataset.paymentTitle, choice.dataset.paymentTarget);
+        });
+      });
+
+      const cancelButton = document.querySelector("[data-payment-cancel]");
+      const confirmButton = document.querySelector("[data-payment-confirm]");
+
+      if (cancelButton) {
+        cancelButton.addEventListener("click", closePaymentConfirm);
+      }
+
+      if (confirmButton) {
+        confirmButton.addEventListener("click", () => {
+          if (pendingPaymentTarget) {
+            setState(pendingPaymentTarget);
+          }
+        });
+      }
+    }
+
+    function attachBackConfirmHandlers() {
+      const backButton = document.querySelector("[data-back-target]");
+      const cancelButton = document.querySelector("[data-back-cancel]");
+      const confirmButton = document.querySelector("[data-back-confirm]");
+
+      if (backButton) {
+        backButton.addEventListener("click", () => openBackConfirm(backButton.dataset.backTarget));
+      }
+
+      if (cancelButton) {
+        cancelButton.addEventListener("click", closeBackConfirm);
+      }
+
+      if (confirmButton) {
+        confirmButton.addEventListener("click", () => {
+          if (pendingBackTarget) {
+            setState(pendingBackTarget);
+          }
+        });
+      }
+    }
+
+    function setState(id) {
+      const state = getState(id);
+      pendingBackTarget = null;
+      pendingPaymentTarget = null;
+      document.getElementById("screenMount").innerHTML = renderScreen(state);
+      startCountdown(state);
+      attachActionHandlers();
+      attachBackConfirmHandlers();
+      attachPaymentChoiceHandlers();
+      document.getElementById("currentState").innerHTML = `
+        <strong>${state.label}</strong>
+        <p>${state.id} | ${humanize(state.boothState)}</p>
+      `;
+
+      document.querySelectorAll(".state-nav button").forEach((button) => {
+        button.classList.toggle("is-active", button.dataset.state === state.id);
+      });
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("screen", state.id);
+      window.history.replaceState({}, "", url);
+    }
+
+    function renderNavigation(activeId) {
+      const nav = document.getElementById("stateNav");
+      nav.innerHTML = screenStates.map((state) => `
+        <button type="button" data-state="${state.id}" class="${state.id === activeId ? "is-active" : ""}">
+          <strong>${state.label}</strong>
+          <span>${state.id}</span>
+        </button>
+      `).join("");
+
+      nav.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => setState(button.dataset.state));
+      });
+    }
+
+    const requestedState = new URLSearchParams(window.location.search).get("screen") || defaultStateId;
+    renderNavigation(requestedState);
+    setState(requestedState);
+  </script>
+</body>
+</html>

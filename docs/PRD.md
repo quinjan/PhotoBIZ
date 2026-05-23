@@ -211,7 +211,7 @@ In the client tenant UI, Packages is the user-facing label for booth offers. The
 
 The Booths section is an inventory-first workflow. The list shows every booth with location, booth code, effective agent state, active package, runtime payment status, assigned cashier, lifecycle status, and a Manage action. Registration captures only MVP booth record fields: booth name, booth code, location, and optional assigned cashier. After creation, PhotoBIZ shows the one-time kiosk token and Windows Agent credential; Manage Booth can re-issue booth credentials when staff need to configure or recover the Windows Agent. Re-issuing credentials rotates both the Agent credential and kiosk token, and the old Agent credential stops working. Hardware inventory fields such as camera, printer, and notes are intentionally out of MVP scope.
 
-The Manage Booth page owns booth record edits, cashier assignment, active package selection, cash payment assignment, and Booth UI appearance. It uses two tabs: Details for the booth record, package, and payment assignment; Session Setup for session label, welcome copy, theme, background image upload, and preview. The management preview must render through the same Booth UI stage presentation contract as the kiosk app, using current unsaved form values for preview and persisting appearance changes through the booth appearance endpoint.
+The Manage Booth page owns booth record edits, cashier assignment, active package selection, cash payment assignment, and Booth UI appearance. It uses two tabs: Details for the booth record, package, and payment assignment; Session Setup for session label, welcome copy, completion thank-you message, theme, background image upload, and preview. The management preview must render through the same Booth UI stage presentation contract as the kiosk app, using current unsaved form values for preview and persisting appearance changes through the booth appearance endpoint.
 
 ### 2. Booth UI
 
@@ -236,7 +236,9 @@ Rules:
 
 - Booth UI is accessible only through a booth-scoped kiosk token.
 - Booth UI accepts the kiosk token from the first URL path segment, such as `http://localhost:4201/{token}`. The customer-facing Booth UI does not expose a manual kiosk token input.
-- Booth UI may receive a short-lived `recentTransaction` from config for customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED`, and must show a clear status screen instead of silently returning to welcome.
+- Booth UI config includes the client display name plus booth name, booth code, and location name so the customer-facing header can render tenant and booth context without hard-coded theme copy.
+- Booth UI receives `activeTransaction` from config for refresh-safe payment selection, cash waiting, paid handoff, and in-session states.
+- Booth UI may receive an unacknowledged `recentTransaction` from config for customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED`, and must show a clear full-screen status instead of silently returning to welcome.
 - Booth UI does not require cashier login or daily unlock.
 - Booth UI remains accessible with a valid kiosk token when the Windows Agent is closed, but it must show an agent-offline unavailable state and block transaction start.
 - Booth UI displays the booth's single active offer.
@@ -244,6 +246,9 @@ Rules:
 - Booth UI reflects client-level branding and active session overrides.
 - Booth UI displays only booth-assigned payment methods that are enabled for runtime use.
 - Booth UI cannot directly approve payment or start LumaBooth.
+- Payment Back and payment idle auto-return cancel backend `CREATED` transactions and return directly to Welcome without showing a cancelled outcome screen. The payment idle countdown is based on the backend transaction creation timestamp. Cash waiting Back can cancel backend `PENDING_CASH` transactions and may show the cancelled outcome screen. These kiosk actions are booth-scoped by kiosk token.
+- `EXPIRED`, `CANCELLED`, and `PAYMENT_FAILED` screens clear only after Booth UI acknowledges the backend `recentTransaction` and config no longer returns it.
+- Booth UI must not show customer-visible payment outcome toasts or an app-level busy overlay; duplicate-tap guards are allowed, but status and errors belong inside the stage.
 - Admin Web Booth preview and Booth UI kiosk rendering share the same presentation component and `/api/booth-ui/config` data shape. Admin preview may omit kiosk-only controls, but stage layout, typography, preset colors, offer display, button styling, and state visuals must match the customer-facing Booth UI.
 
 ### 3. Windows Booth Agent
@@ -275,12 +280,13 @@ Client-level customization:
 - Logo.
 - Default welcome headline.
 - Default welcome subtitle.
+- Default completion thank-you message.
 
 Booth-level customization:
 
 - PhotoBIZ-managed theme preset: `VINTAGE`, `CLEAN_MODERN`, or `POP`.
 - Active booth offer.
-- Booth-specific session label, welcome headline, and welcome subtitle overrides.
+- Booth-specific session label, welcome headline, welcome subtitle, and completion thank-you message overrides.
 - Optional background image upload, stored as a constrained PNG/JPEG/WebP data URL and rendered by the selected theme.
 - Theme colors, typography, and button styling are owned by PhotoBIZ presets. Tenants do not choose arbitrary primary/accent colors in MVP.
 
@@ -289,6 +295,7 @@ Active session overrides:
 - Session label.
 - Welcome headline.
 - Welcome subtitle.
+- Completion thank-you message.
 - Active booth offer.
 - Booth-level payment option assignments.
 
@@ -346,8 +353,8 @@ Guardrails:
 
 1. Booth UI shows the active booth offer.
 2. Customer confirms the active offer.
-3. Customer chooses cash payment when the offer requires payment for a per-session purchase.
-4. Backend creates one transaction with status `PENDING_CASH`, moves the booth to `PAYMENT_PENDING`, and rejects any additional kiosk session purchase attempts for the same booth until the current transaction reaches a terminal state.
+3. Backend creates one same-booth transaction with status `CREATED`, returns it as `activeTransaction`, and rejects any additional kiosk session purchase attempts for the same booth until the current transaction reaches a terminal state.
+4. Customer chooses cash payment when the offer requires payment for a per-session purchase. Backend moves the transaction to `PENDING_CASH`, moves the booth to `PAYMENT_PENDING`, and keeps returning the transaction as `activeTransaction` with its transaction number and expiration time.
 5. Cashier sees the pending cash request in the Central Web App.
 6. Cashier collects cash.
 7. Cashier clicks `Approve Cash`.
@@ -357,8 +364,9 @@ Guardrails:
 11. LumaBooth handles capture, printing, and Fotoshare sharing.
 12. LumaBooth sends URL trigger events to the Agent's local listener; `session_start` reports backend session started and `session_end` reports backend session completed.
 13. Backend marks transaction as `COMPLETED`.
-14. For `PER_SESSION`, Booth UI shows a 15-second completed prompt telling the customer to go to the cashier for extra prints if needed, with a `No Extra Prints` action that immediately returns the booth to welcome.
-15. Whichever happens first, the `No Extra Prints` click or the 15-second Booth UI timer, commands the backend to return the booth to welcome. Timer retries stay quiet; a failed customer click shows a clear error and keeps the completed screen until the backend accepts the return. The backend worker remains a fallback reset.
+14. Booth UI shows the configurable completion thank-you message, defaulting to `Thanks for sharing your smile.`
+15. For `PER_SESSION`, Booth UI shows a 15-second completed prompt telling the customer to go to the cashier for extra prints if needed. Covered package sessions omit the extra-print copy.
+16. Whichever happens first, the `Back To Start` click or the 15-second Booth UI timer, commands the backend to return the booth to welcome. Timer retries stay quiet; a failed customer click shows a clear error and keeps the completed screen until backend config reports the booth is no longer completed. The backend worker remains a fallback reset.
 
 For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the package. The selected package is saved as `PENDING_PAYMENT` and is not usable until the assigned cashier clicks `Activate Package` in POS, creating one cash `PLAN_ACTIVATION` transaction for the package price. Cash approval completes that payment transaction, starts the timed window or session allowance, and marks the activation `ACTIVE`. Once a timed or session-count offer is active and paid, Booth UI creates zero-amount `COVERED_PLAN_SESSION` transactions, skips payment selection, and follows welcome, LumaBooth handoff, and return-to-welcome states. Completed covered sessions must not show the extra-print prompt because extra print add-ons are not available for those package types. `PLAN_ACTIVATION` transactions never command the Windows Agent.
 
@@ -376,13 +384,13 @@ For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the p
 1. Customer confirms the active booth offer and chooses a payment method when payment is required.
 2. Transaction enters a pending payment status.
 3. If payment is not approved before the configured expiration window, backend marks it `EXPIRED`.
-4. Booth UI displays expiration message briefly.
-5. Booth UI returns to welcome screen.
+4. Booth UI displays a full-screen expiration message from backend `recentTransaction`.
+5. The `Back To Start` action or 15-second terminal outcome timer acknowledges the recent transaction through the backend.
 6. Booth becomes available for the next customer.
 
 Default MVP expiration:
 
-- Pending cash: 5 minutes.
+- Pending cash: 1 minute.
 
 ### Workflow H: Session Recovery
 
@@ -520,6 +528,8 @@ Each transaction must store:
 - Expiration timestamp.
 - Paid timestamp.
 - Completed timestamp.
+- Cancelled timestamp.
+- Cancellation actor type, source screen/action, previous status, and cashier user ID when a cashier performed the cancellation.
 - Cancelled or failed reason.
 
 One booth may have only one non-terminal session purchase transaction at a time. In MVP, terminal transaction statuses are `COMPLETED`, `EXPIRED`, and `CANCELLED`.

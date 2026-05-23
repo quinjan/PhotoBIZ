@@ -202,6 +202,7 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(config => config.SessionLabel).HasMaxLength(200);
             entity.Property(config => config.DefaultWelcomeHeadline).HasMaxLength(200);
             entity.Property(config => config.DefaultWelcomeSubtitle).HasMaxLength(500);
+            entity.Property(config => config.CompletionThankYouMessage).HasMaxLength(500);
             entity.HasOne(config => config.Booth)
                 .WithOne(booth => booth.AppearanceConfig)
                 .HasForeignKey<BoothAppearanceConfig>(config => config.BoothId)
@@ -312,6 +313,9 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(transaction => transaction.Status).HasMaxLength(60);
             entity.Property(transaction => transaction.Currency).HasMaxLength(3);
             entity.Property(transaction => transaction.OfferSnapshot).HasColumnType("jsonb");
+            entity.Property(transaction => transaction.CancelledByActorType).HasMaxLength(40);
+            entity.Property(transaction => transaction.CancellationSource).HasMaxLength(80);
+            entity.Property(transaction => transaction.CancellationPreviousStatus).HasMaxLength(60);
             entity.Property(transaction => transaction.FailureReason).HasMaxLength(1000);
             entity.Property(transaction => transaction.CreatedAt).HasDefaultValueSql("now()");
             entity.HasOne(transaction => transaction.ClientAccount)
@@ -342,11 +346,16 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
                 .WithMany(user => user.ApprovedTransactions)
                 .HasForeignKey(transaction => transaction.ApprovedByUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(transaction => transaction.CancelledByUser)
+                .WithMany(user => user.CancelledTransactions)
+                .HasForeignKey(transaction => transaction.CancelledByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(transaction => transaction.TransactionNumber).IsUnique();
             entity.HasIndex(transaction => new { transaction.ClientAccountId, transaction.Status });
             entity.HasIndex(transaction => new { transaction.BoothId, transaction.Status });
             entity.HasIndex(transaction => new { transaction.BoothOfferId, transaction.TransactionType });
             entity.HasIndex(transaction => transaction.ParentTransactionId);
+            entity.HasIndex(transaction => transaction.CancelledByUserId);
             entity.HasIndex(transaction => transaction.ExpiresAt);
         });
 

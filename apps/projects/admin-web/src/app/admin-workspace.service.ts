@@ -128,6 +128,7 @@ export type BoothAppearanceSummary = {
   readonly sessionLabel: string;
   readonly defaultWelcomeHeadline: string;
   readonly defaultWelcomeSubtitle: string;
+  readonly completionThankYouMessage: string;
 };
 export type TransactionSummary = {
   readonly id: string;
@@ -150,6 +151,12 @@ export type TransactionSummary = {
   readonly createdAt: string;
   readonly paidAt: string | null;
   readonly completedAt: string | null;
+  readonly cancelledAt: string | null;
+  readonly failureReason: string | null;
+  readonly cancelledByActorType: string | null;
+  readonly cancelledByUserId: string | null;
+  readonly cancellationSource: string | null;
+  readonly cancellationPreviousStatus: string | null;
 };
 export type ActivityFilter = 'ALL' | 'SALES' | 'SESSIONS';
 export type TransactionActivityDisplay = {
@@ -235,6 +242,7 @@ export type BoothPreviewScreen = {
   readonly boothState: string;
   readonly description: string;
   readonly activeOfferStatus?: string;
+  readonly activeTransaction?: BoothStageConfig['activeTransaction'];
   readonly recentTransaction?: BoothPreviewTransaction;
   readonly withoutActiveOffer?: boolean;
   readonly withoutPaymentOptions?: boolean;
@@ -310,6 +318,26 @@ export type ViewKey =
 @Injectable({ providedIn: 'root' })
 export class AdminWorkspace {
   private static readonly apiBaseUrl = 'http://localhost:5082';
+  private static readonly boothThemeDefaults = {
+    VINTAGE: {
+      sessionLabel: 'Self Photo Booth',
+      welcomeHeadline: 'Ready To Pose?',
+      welcomeSubtitle: 'Tap start when you are ready.',
+      completionThankYouMessage: 'Thanks for sharing your smile.',
+    },
+    CLEAN_MODERN: {
+      sessionLabel: 'Self Photo Booth',
+      welcomeHeadline: 'Ready when you are.',
+      welcomeSubtitle: 'Review the active package, pay, then begin your session.',
+      completionThankYouMessage: 'Thanks for sharing your smile.',
+    },
+    POP: {
+      sessionLabel: 'Self Photo Booth',
+      welcomeHeadline: 'Ready To Pop?',
+      welcomeSubtitle: 'Tap start when you are ready.',
+      completionThankYouMessage: 'Thanks for sharing your smile.',
+    },
+  } as const;
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
@@ -452,12 +480,17 @@ export class AdminWorkspace {
   readonly boothDetailStatus = signal('ACTIVE');
   readonly boothDetailOfferId = signal<string | null>(null);
   readonly boothDetailTab = signal<BoothDetailTab>('details');
-  readonly boothAppearanceSessionLabel = signal('Self photo booth');
-  readonly boothAppearanceHeadline = signal('Step Into The Memory Box');
-  readonly boothAppearanceSubtitle = signal(
-    "Review today's booth offer, pay at the counter, then strike your best pose.",
+  readonly boothAppearanceSessionLabel = signal<string>(
+    AdminWorkspace.boothThemeDefaults.VINTAGE.sessionLabel,
   );
-  readonly boothAppearanceThemePreset = signal('VINTAGE');
+  readonly boothAppearanceHeadline = signal<string>(
+    AdminWorkspace.boothThemeDefaults.VINTAGE.welcomeHeadline,
+  );
+  readonly boothAppearanceSubtitle = signal<string>(
+    AdminWorkspace.boothThemeDefaults.VINTAGE.welcomeSubtitle,
+  );
+  readonly boothAppearanceCompletionMessage = signal<string>('Thanks for sharing your smile.');
+  readonly boothAppearanceThemePreset = signal<string>('VINTAGE');
   readonly boothAppearanceBackgroundImageDataUrl = signal('');
   readonly boothPreviewScreenKey = signal<BoothPreviewScreenKey>('welcome');
   readonly boothThemePresets: readonly {
@@ -483,6 +516,17 @@ export class AdminWorkspace {
       screen: 'payment',
       boothState: 'OFFER_CONFIRMED',
       description: 'Cash selection screen',
+      activeTransaction: {
+        id: 'preview-created',
+        transactionNumber: 'TXN-PREVIEW-001',
+        transactionType: 'SESSION_PURCHASE',
+        status: 'CREATED',
+        paymentMethod: 'PENDING',
+        amountCents: 25000,
+        currency: 'PHP',
+        createdAt: '2026-01-01T00:00:00Z',
+        expiresAt: '2026-01-01T00:05:00Z',
+      },
     },
     {
       key: 'cash-waiting',
@@ -490,6 +534,17 @@ export class AdminWorkspace {
       screen: 'waiting',
       boothState: 'PAYMENT_PENDING',
       description: 'Waiting for cashier approval',
+      activeTransaction: {
+        id: 'preview-pending-cash',
+        transactionNumber: 'TXN-PREVIEW-002',
+        transactionType: 'SESSION_PURCHASE',
+        status: 'PENDING_CASH',
+        paymentMethod: 'CASH',
+        amountCents: 25000,
+        currency: 'PHP',
+        createdAt: '2099-01-01T00:00:00Z',
+        expiresAt: '2099-01-01T00:05:00Z',
+      },
     },
     {
       key: 'approved',
@@ -636,9 +691,7 @@ export class AdminWorkspace {
     return (
       this.overview()?.transactions.find(
         (transaction) =>
-          boothId &&
-          transaction.boothId === boothId &&
-          transaction.status === 'PENDING_CASH',
+          boothId && transaction.boothId === boothId && transaction.status === 'PENDING_CASH',
       ) ?? null
     );
   });
@@ -813,6 +866,7 @@ export class AdminWorkspace {
       return null;
     }
 
+    const location = this.overview()?.locations.find((item) => item.id === booth.locationId);
     const offer = this.activeOffers().find((item) => item.id === this.boothDetailOfferId()) ?? null;
     const cashAssignment = this.cashAssignmentFor(booth.id);
 
@@ -830,8 +884,15 @@ export class AdminWorkspace {
         label: this.boothAppearanceSessionLabel(),
         welcomeHeadline: this.boothAppearanceHeadline(),
         welcomeSubtitle: this.boothAppearanceSubtitle(),
+        completionThankYouMessage: this.boothAppearanceCompletionMessage(),
       },
-      booth: { id: booth.id, state: booth.currentState },
+      booth: {
+        id: booth.id,
+        state: booth.currentState,
+        name: booth.name,
+        code: booth.code,
+        locationName: location?.name,
+      },
       activeOffer: offer
         ? {
             id: offer.id,
@@ -859,6 +920,8 @@ export class AdminWorkspace {
               },
             ]
           : [],
+      activeTransaction: null,
+      recentTransaction: null,
     };
   });
   readonly selectedBoothPreviewScreen = computed<BoothPreviewScreen>(
@@ -884,6 +947,16 @@ export class AdminWorkspace {
       ...config,
       booth: { ...config.booth, state: preview.boothState },
       activeOffer,
+      activeTransaction: preview.activeTransaction
+        ? {
+            ...preview.activeTransaction,
+            createdAt:
+              preview.activeTransaction.status === 'CREATED'
+                ? new Date(Date.now()).toISOString()
+                : preview.activeTransaction.createdAt,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          }
+        : null,
       paymentOptions: preview.withoutPaymentOptions ? [] : config.paymentOptions,
       recentTransaction: preview.recentTransaction ?? null,
     };
@@ -1918,6 +1991,7 @@ export class AdminWorkspace {
               sessionLabel: this.boothAppearanceSessionLabel(),
               defaultWelcomeHeadline: this.boothAppearanceHeadline(),
               defaultWelcomeSubtitle: this.boothAppearanceSubtitle(),
+              completionThankYouMessage: this.boothAppearanceCompletionMessage(),
               backgroundImageDataUrl: this.boothAppearanceBackgroundImageDataUrl() || null,
             },
             { withCredentials: true },
@@ -2450,15 +2524,20 @@ export class AdminWorkspace {
     this.boothDetailCashierUserId.set(assignedPosStaff?.id ?? null);
     this.boothDetailStatus.set(booth.status);
     this.boothDetailOfferId.set(selectedOffer?.id ?? this.activeOffers()[0]?.id ?? null);
-    this.boothAppearanceSessionLabel.set(appearance?.sessionLabel || 'Self photo booth');
+    const themePreset = this.normalizeBoothThemePreset(appearance?.themePreset);
+    const themeDefaults = this.boothDefaultsFor(themePreset);
+
+    this.boothAppearanceSessionLabel.set(appearance?.sessionLabel || themeDefaults.sessionLabel);
     this.boothAppearanceHeadline.set(
-      appearance?.defaultWelcomeHeadline || 'Step Into The Memory Box',
+      appearance?.defaultWelcomeHeadline || themeDefaults.welcomeHeadline,
     );
     this.boothAppearanceSubtitle.set(
-      appearance?.defaultWelcomeSubtitle ||
-        "Review today's booth offer, pay at the counter, then strike your best pose.",
+      appearance?.defaultWelcomeSubtitle || themeDefaults.welcomeSubtitle,
     );
-    this.boothAppearanceThemePreset.set(this.normalizeBoothThemePreset(appearance?.themePreset));
+    this.boothAppearanceCompletionMessage.set(
+      appearance?.completionThankYouMessage || themeDefaults.completionThankYouMessage,
+    );
+    this.boothAppearanceThemePreset.set(themePreset);
     this.boothAppearanceBackgroundImageDataUrl.set(appearance?.backgroundImageDataUrl ?? '');
   }
 
@@ -2502,6 +2581,14 @@ export class AdminWorkspace {
     this.boothAppearanceBackgroundImageDataUrl.set('');
   }
 
+  resetBoothSessionToThemeDefaults(): void {
+    const defaults = this.boothDefaultsFor(this.boothAppearanceThemePreset());
+    this.boothAppearanceSessionLabel.set(defaults.sessionLabel);
+    this.boothAppearanceHeadline.set(defaults.welcomeHeadline);
+    this.boothAppearanceSubtitle.set(defaults.welcomeSubtitle);
+    this.boothAppearanceCompletionMessage.set(defaults.completionThankYouMessage);
+  }
+
   private normalizeBoothThemePreset(value: string | null | undefined): string {
     switch ((value ?? '').toUpperCase()) {
       case 'POP':
@@ -2530,6 +2617,17 @@ export class AdminWorkspace {
     }
   }
 
+  private boothDefaultsFor(value: string): {
+    readonly sessionLabel: string;
+    readonly welcomeHeadline: string;
+    readonly welcomeSubtitle: string;
+    readonly completionThankYouMessage: string;
+  } {
+    return AdminWorkspace.boothThemeDefaults[
+      this.normalizeBoothThemePreset(value) as keyof typeof AdminWorkspace.boothThemeDefaults
+    ];
+  }
+
   locationNameFor(locationId: string): string {
     return (
       this.overview()?.locations.find((location) => location.id === locationId)?.name ??
@@ -2539,6 +2637,10 @@ export class AdminWorkspace {
 
   boothNameFor(boothId: string | null): string {
     return this.overview()?.booths.find((booth) => booth.id === boothId)?.name ?? 'Unassigned';
+  }
+
+  userNameFor(userId: string | null | undefined): string {
+    return this.overview()?.users.find((user) => user.id === userId)?.name ?? 'Unknown user';
   }
 
   assignedPosStaffFor(boothId: string): UserSummary | null {
@@ -2700,23 +2802,32 @@ export class AdminWorkspace {
       case 'PLAN_ACTIVATION':
         return {
           title: 'Package activation',
-          detail: `${boothName} / ${offerName} / ${offerType}`,
+          detail: this.withCancellationDetail(
+            `${boothName} / ${offerName} / ${offerType}`,
+            transaction,
+          ),
           auditText,
           value: this.formatMoney(transaction.amountCents),
         };
       case 'COVERED_PLAN_SESSION':
         return {
           title: 'Covered session',
-          detail: `${boothName} / ${offerName} / ${this.coveredSessionDetail(transaction)}`,
+          detail: this.withCancellationDetail(
+            `${boothName} / ${offerName} / ${this.coveredSessionDetail(transaction)}`,
+            transaction,
+          ),
           auditText,
           value: 'Included',
         };
       case 'EXTRA_PRINT_ADD_ON':
         return {
           title: 'Extra print add-on',
-          detail: `${boothName} / ${transaction.extraPrintCount} ${
-            transaction.extraPrintCount === 1 ? 'copy' : 'copies'
-          }${entitlement}`,
+          detail: this.withCancellationDetail(
+            `${boothName} / ${transaction.extraPrintCount} ${
+              transaction.extraPrintCount === 1 ? 'copy' : 'copies'
+            }${entitlement}`,
+            transaction,
+          ),
           auditText,
           value: this.formatMoney(transaction.amountCents),
         };
@@ -2724,11 +2835,54 @@ export class AdminWorkspace {
       default:
         return {
           title: 'Per-session sale',
-          detail: `${boothName} / ${offerName}${entitlement}`,
+          detail: this.withCancellationDetail(
+            `${boothName} / ${offerName}${entitlement}`,
+            transaction,
+          ),
           auditText,
           value: this.formatMoney(transaction.amountCents),
         };
     }
+  }
+
+  cancellationDetailFor(transaction: TransactionSummary): string {
+    if (transaction.status !== 'CANCELLED') {
+      return '';
+    }
+
+    const actor = this.cancellationActorLabel(
+      transaction.cancelledByActorType,
+      transaction.cancelledByUserId,
+    );
+    const source = this.cancellationSourceLabel(transaction.cancellationSource);
+
+    return `${actor} / ${source}`;
+  }
+
+  auditDetailFor(audit: AuditLogSummary): string {
+    const metadata = this.parseAuditMetadata(audit.metadata);
+
+    if (
+      audit.action === 'transaction.cancelled' ||
+      audit.action === 'transaction.kiosk_cancelled'
+    ) {
+      const transactionNumber = this.metadataText(metadata, 'TransactionNumber');
+      const actor = this.cancellationActorLabel(
+        this.metadataText(metadata, 'CancelledByActorType') ??
+          (audit.action === 'transaction.kiosk_cancelled' ? 'BOOTH_USER' : null),
+        this.metadataText(metadata, 'CancelledByUserId') ?? audit.userId,
+      );
+      const source = this.cancellationSourceLabel(
+        this.metadataText(metadata, 'CancellationSource'),
+      );
+      const previousStatus = this.metadataText(metadata, 'PreviousStatus');
+      const previous = previousStatus ? `from ${this.readableType(previousStatus)}` : null;
+      const reason = this.metadataText(metadata, 'Reason');
+
+      return [transactionNumber, actor, source, previous, reason].filter(Boolean).join(' / ');
+    }
+
+    return this.compactAuditMetadata(metadata);
   }
 
   isTerminalTransaction(status: string): boolean {
@@ -2929,6 +3083,77 @@ export class AdminWorkspace {
     }
 
     return this.readableType(transaction.offerType ?? transaction.transactionType);
+  }
+
+  private withCancellationDetail(detail: string, transaction: TransactionSummary): string {
+    const cancellationDetail = this.cancellationDetailFor(transaction);
+    return cancellationDetail ? `${detail} / ${cancellationDetail}` : detail;
+  }
+
+  private cancellationActorLabel(
+    actorType: string | null | undefined,
+    cancelledByUserId: string | null | undefined,
+  ): string {
+    switch (actorType) {
+      case 'BOOTH_USER':
+        return 'Cancelled by booth user';
+      case 'CASHIER': {
+        if (!cancelledByUserId) {
+          return 'Cancelled by cashier';
+        }
+
+        const userName = this.userNameFor(cancelledByUserId);
+        return userName === 'Unknown user'
+          ? 'Cancelled by cashier'
+          : `Cancelled by cashier ${userName}`;
+      }
+      case 'SYSTEM':
+        return 'Cancelled by system';
+      default:
+        return 'Cancelled / Actor not tracked';
+    }
+  }
+
+  private cancellationSourceLabel(source: string | null | undefined): string {
+    switch (source) {
+      case 'BOOTH_UI_PAYMENT_OPTIONS_BACK':
+        return 'Payment options';
+      case 'BOOTH_UI_PAYMENT_OPTIONS_IDLE_TIMEOUT':
+        return 'Payment options idle timeout';
+      case 'BOOTH_UI_WAITING_FOR_PAYMENT_BACK':
+        return 'Waiting for payment';
+      case 'CASHIER_POS_CANCEL_TRANSACTION':
+        return 'Cashier POS';
+      case 'CASHIER_POS_RETURN_TO_WELCOME':
+        return 'Return to welcome';
+      case 'SYSTEM_EXTRA_PRINT_TIMEOUT':
+        return 'Extra print timeout';
+      default:
+        return 'Source not tracked';
+    }
+  }
+
+  private parseAuditMetadata(metadata: string): Record<string, unknown> {
+    try {
+      const parsed = JSON.parse(metadata) as unknown;
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    } catch {
+      return {};
+    }
+  }
+
+  private metadataText(metadata: Record<string, unknown>, key: string): string | null {
+    const value = metadata[key] ?? metadata[key.charAt(0).toLowerCase() + key.slice(1)];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
+  }
+
+  private compactAuditMetadata(metadata: Record<string, unknown>): string {
+    return Object.entries(metadata)
+      .filter(([, value]) => value !== null && value !== undefined && value !== '')
+      .map(([key, value]) => `${this.readableType(key)}: ${String(value)}`)
+      .join(' / ');
   }
 
   private readableType(value: string): string {

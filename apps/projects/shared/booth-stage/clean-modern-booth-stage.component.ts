@@ -9,6 +9,7 @@ import {
   stageEyebrow,
   stageMessage,
   stageTitle,
+  shouldShowStageOfferDetails,
 } from './booth-stage.helpers';
 import { BoothStageAction, BoothStageConfig, BoothStageScreenState } from './booth-stage.models';
 
@@ -30,6 +31,7 @@ export class CleanModernBoothStageComponent {
   protected readonly initials = computed(() => stageBrandInitials(this.config()));
   protected readonly cashOption = computed(() => stageCashOption(this.config()));
   protected readonly backgroundImage = computed(() => stageBackgroundImage(this.config()));
+  protected readonly showOfferDetails = computed(() => shouldShowStageOfferDetails(this.config()));
 
   protected readonly formatMoney = formatStageMoney;
 }

@@ -99,6 +99,23 @@ describe('App', () => {
     expect(compiled.querySelector('.admin-shell')).toBeNull();
   });
 
+  it('resets booth session copy to the selected theme defaults', () => {
+    const workspace = createWorkspaceWithRejectedSession();
+
+    workspace.boothAppearanceThemePreset.set('VINTAGE');
+    workspace.boothAppearanceSessionLabel.set('Custom label');
+    workspace.boothAppearanceHeadline.set('Custom headline');
+    workspace.boothAppearanceSubtitle.set('Custom subtitle');
+    workspace.boothAppearanceCompletionMessage.set('Custom thanks');
+
+    workspace.resetBoothSessionToThemeDefaults();
+
+    expect(workspace.boothAppearanceSessionLabel()).toBe('Self Photo Booth');
+    expect(workspace.boothAppearanceHeadline()).toBe('Ready To Pose?');
+    expect(workspace.boothAppearanceSubtitle()).toBe('Tap start when you are ready.');
+    expect(workspace.boothAppearanceCompletionMessage()).toBe('Thanks for sharing your smile.');
+  });
+
   it('limits application owner navigation to platform management pages', async () => {
     const fixture = TestBed.createComponent(App);
     rejectSessionRestore();
@@ -252,6 +269,56 @@ describe('App', () => {
       'Amount',
       'Created',
     ]);
+  });
+
+  it('formats cancellation actor and source in activity and audit details', () => {
+    const workspace = TestBed.inject(AdminWorkspace);
+    rejectSessionRestore();
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const cashier = makeUser({ id: 'cashier-1', name: 'Maria Santos' });
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [makeBooth({ id: 'booth-1', name: 'Booth A' })],
+        users: [cashier],
+      }),
+    );
+
+    const cancelled = makeTransaction({
+      cancelledAt: '2026-05-23T00:05:00Z',
+      cancelledByActorType: 'CASHIER',
+      cancelledByUserId: cashier.id,
+      cancellationPreviousStatus: 'STARTING_SESSION',
+      cancellationSource: 'CASHIER_POS_RETURN_TO_WELCOME',
+      status: 'CANCELLED',
+    });
+
+    const activity = workspace.transactionActivityFor(cancelled);
+    const auditDetail = workspace.auditDetailFor({
+      action: 'transaction.cancelled',
+      clientAccountId: 'client-1',
+      createdAt: '2026-05-23T00:05:00Z',
+      entityId: cancelled.id,
+      entityType: 'Transaction',
+      id: 'audit-1',
+      metadata: JSON.stringify({
+        TransactionNumber: cancelled.transactionNumber,
+        PreviousStatus: 'STARTING_SESSION',
+        CancelledByActorType: 'CASHIER',
+        CancelledByUserId: cashier.id,
+        CancellationSource: 'CASHIER_POS_RETURN_TO_WELCOME',
+      }),
+      userId: cashier.id,
+    });
+
+    expect(workspace.cancellationDetailFor(cancelled)).toBe(
+      'Cancelled by cashier Maria Santos / Return to welcome',
+    );
+    expect(activity.detail).toContain('Cancelled by cashier Maria Santos / Return to welcome');
+    expect(auditDetail).toContain('TXN-001');
+    expect(auditDetail).toContain('Cancelled by cashier Maria Santos');
+    expect(auditDetail).toContain('Return to welcome');
+    expect(auditDetail).toContain('from Starting Session');
   });
 
   it('opens subscription assignment from the client detail page', async () => {
@@ -1318,10 +1385,16 @@ function makeTransaction(overrides: Partial<TransactionSummary> = {}): Transacti
     boothOfferActivationId: null,
     canCreateExtraPrintAddOn: false,
     completedAt: null,
+    cancelledAt: null,
+    cancelledByActorType: null,
+    cancelledByUserId: null,
+    cancellationPreviousStatus: null,
+    cancellationSource: null,
     coveredSessionSequence: null,
     createdAt: '2026-05-23T00:00:00Z',
     extraPrintCount: 0,
     extraPrintUnitPriceCents: null,
+    failureReason: null,
     id: 'transaction-1',
     includedPrintEntitlement: null,
     offerName: 'Per Session',

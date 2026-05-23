@@ -133,6 +133,29 @@ public static class StatusValues
         public const string SessionFailed = "SESSION_FAILED";
     }
 
+    public static class CancellationActor
+    {
+        public const string BoothUser = "BOOTH_USER";
+        public const string Cashier = "CASHIER";
+        public const string System = "SYSTEM";
+    }
+
+    public static class CancellationSource
+    {
+        public const string BoothUiPaymentOptionsBack = "BOOTH_UI_PAYMENT_OPTIONS_BACK";
+        public const string BoothUiPaymentOptionsIdleTimeout = "BOOTH_UI_PAYMENT_OPTIONS_IDLE_TIMEOUT";
+        public const string BoothUiWaitingForPaymentBack = "BOOTH_UI_WAITING_FOR_PAYMENT_BACK";
+        public const string CashierPosCancelTransaction = "CASHIER_POS_CANCEL_TRANSACTION";
+        public const string CashierPosReturnToWelcome = "CASHIER_POS_RETURN_TO_WELCOME";
+        public const string SystemExtraPrintTimeout = "SYSTEM_EXTRA_PRINT_TIMEOUT";
+    }
+
+    public static class BoothUiCancelTrigger
+    {
+        public const string BackButton = "BACK_BUTTON";
+        public const string IdleTimeout = "IDLE_TIMEOUT";
+    }
+
     public static class Session
     {
         public const string Starting = "STARTING";

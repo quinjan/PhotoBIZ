@@ -12,7 +12,10 @@ namespace PhotoBIZ.Api;
 
 public static class PhotoBizApiEndpoints
 {
-    private static readonly TimeSpan RecentBoothTerminalTransactionVisibility = TimeSpan.FromMinutes(5);
+    private const string DefaultSessionLabel = "Self Photo Booth";
+    private const string DefaultWelcomeHeadline = "Ready To Pose?";
+    private const string DefaultWelcomeSubtitle = "Tap start when you are ready.";
+    private const string DefaultCompletionThankYouMessage = "Thanks for sharing your smile.";
     private const string DefaultInitialPassword = "PhotoBIZ!123";
     private const int MinimumPasswordLength = 8;
 
@@ -58,6 +61,8 @@ public static class PhotoBizApiEndpoints
         boothUi.MapGet("/config", GetBoothConfigAsync);
         boothUi.MapPost("/transactions", CreateBoothTransactionAsync);
         boothUi.MapPost("/transactions/{transactionId:guid}/payment-method", SelectPaymentMethodAsync);
+        boothUi.MapPost("/transactions/{transactionId:guid}/cancel", CancelBoothUiTransactionAsync);
+        boothUi.MapPost("/recent-transactions/{transactionId:guid}/acknowledge", AcknowledgeRecentBoothUiTransactionAsync);
         boothUi.MapPost("/return-to-welcome", ReturnBoothUiToWelcomeAsync);
 
         var cashier = app.MapGroup("/api/cashier").RequireAuthorization();
@@ -337,7 +342,18 @@ public static class PhotoBizApiEndpoints
             {
                 var normalizedTheme = NormalizeThemePreset(config.ThemePreset);
                 var scheme = GetThemeScheme(normalizedTheme);
-                return new BoothAppearanceSummary(config.Id, config.BoothId, normalizedTheme, scheme.PrimaryColor, scheme.AccentColor, config.BackgroundImageUrl, config.BackgroundImageDataUrl, config.SessionLabel, config.DefaultWelcomeHeadline, config.DefaultWelcomeSubtitle);
+                return new BoothAppearanceSummary(
+                    config.Id,
+                    config.BoothId,
+                    normalizedTheme,
+                    scheme.PrimaryColor,
+                    scheme.AccentColor,
+                    config.BackgroundImageUrl,
+                    config.BackgroundImageDataUrl,
+                    config.SessionLabel,
+                    config.DefaultWelcomeHeadline,
+                    config.DefaultWelcomeSubtitle,
+                    config.CompletionThankYouMessage);
             }).ToArray(),
             transactions,
             BuildReportSummary(clients, subscriptions, subscriptionPlans, boothSummaries, offers, locations, reportTransactions, now),
@@ -1205,8 +1221,10 @@ public static class PhotoBizApiEndpoints
             ThemePreset = StatusValues.Theme.Vintage,
             PrimaryColor = GetThemeScheme(StatusValues.Theme.Vintage).PrimaryColor,
             AccentColor = GetThemeScheme(StatusValues.Theme.Vintage).AccentColor,
-            DefaultWelcomeHeadline = "Step Into The Memory Box",
-            DefaultWelcomeSubtitle = "Review today's booth offer, pay at the counter, then strike your best pose."
+            SessionLabel = DefaultSessionLabel,
+            DefaultWelcomeHeadline = DefaultWelcomeHeadline,
+            DefaultWelcomeSubtitle = DefaultWelcomeSubtitle,
+            CompletionThankYouMessage = DefaultCompletionThankYouMessage
         });
 
         dbContext.BoothPaymentOptionAssignments.Add(new BoothPaymentOptionAssignment
@@ -1863,6 +1881,7 @@ public static class PhotoBizApiEndpoints
         appearance.SessionLabel = request.SessionLabel;
         appearance.DefaultWelcomeHeadline = request.DefaultWelcomeHeadline;
         appearance.DefaultWelcomeSubtitle = request.DefaultWelcomeSubtitle;
+        appearance.CompletionThankYouMessage = request.CompletionThankYouMessage;
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -2103,6 +2122,7 @@ public static class PhotoBizApiEndpoints
     private static async Task<Results<Ok<BoothConfigResponse>, UnauthorizedHttpResult, ValidationProblem>> GetBoothConfigAsync(
         HttpContext httpContext,
         PhotoBizDbContext dbContext,
+        PhotoBizTransactionWorkflow workflow,
         PhotoBizTokenHasher tokenHasher,
         CancellationToken cancellationToken)
     {
@@ -2113,14 +2133,20 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
+        await workflow.ExpirePendingTransactionsAsync(cancellationToken, booth.Id);
+
         var now = DateTimeOffset.UtcNow;
         var effectiveBoothState = PhotoBizBoothAvailability.GetEffectiveState(booth, now);
         var client = await dbContext.ClientAccounts.SingleAsync(item => item.Id == booth.ClientAccountId, cancellationToken);
+        var location = await dbContext.Locations.SingleAsync(item => item.Id == booth.LocationId && item.ClientAccountId == booth.ClientAccountId, cancellationToken);
         var appearance = await dbContext.BoothAppearanceConfigs.SingleOrDefaultAsync(item => item.BoothId == booth.Id, cancellationToken);
+        var activeTransaction = await GetActiveBoothTransactionAsync(
+            dbContext,
+            booth.Id,
+            cancellationToken);
         var recentTransaction = await GetRecentBoothTerminalTransactionAsync(
             dbContext,
             booth.Id,
-            now,
             cancellationToken);
         var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
             dbContext,
@@ -2131,7 +2157,7 @@ public static class PhotoBizApiEndpoints
 
         if (!runtimeGate.Succeeded)
         {
-            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, runtimeGate.Message, recentTransaction));
+            return TypedResults.Ok(ToUnavailableConfig(booth, client, location, appearance, effectiveBoothState, runtimeGate.Message, activeTransaction, recentTransaction));
         }
 
         var selectedActivation = await dbContext.BoothOfferActivations
@@ -2146,7 +2172,7 @@ public static class PhotoBizApiEndpoints
 
         if (selectedActivation?.BoothOffer is null)
         {
-            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, "No active booth offer configured", recentTransaction));
+            return TypedResults.Ok(ToUnavailableConfig(booth, client, location, appearance, effectiveBoothState, "No active booth offer configured", activeTransaction, recentTransaction));
         }
 
         var paymentOptions = await dbContext.BoothPaymentOptionAssignments
@@ -2158,7 +2184,7 @@ public static class PhotoBizApiEndpoints
             new BoothClientResponse(client.DisplayNameOrName(), null),
             ToThemeResponse(appearance),
             ToSessionResponse(appearance),
-            new BoothStateResponse(booth.Id, effectiveBoothState),
+            ToBoothStateResponse(booth, location, effectiveBoothState),
             ToBoothOfferResponse(selectedActivation),
             paymentOptions
                 .Where(item =>
@@ -2169,6 +2195,7 @@ public static class PhotoBizApiEndpoints
                     item.PaymentMethod == StatusValues.PaymentMethod.Cash)
                 .Select(item => new BoothPaymentOptionResponse(item.PaymentMethod, ToPaymentLabel(item.PaymentMethod), item.RuntimeEnabled))
                 .ToArray(),
+            activeTransaction,
             recentTransaction));
     }
 
@@ -2372,6 +2399,96 @@ public static class PhotoBizApiEndpoints
         }
 
         return TypedResults.Ok(ToTransactionSummary(transaction));
+    }
+
+    private static async Task<Results<Ok<TransactionSummary>, UnauthorizedHttpResult, ValidationProblem>> CancelBoothUiTransactionAsync(
+        Guid transactionId,
+        CancelBoothUiTransactionRequest request,
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTokenHasher tokenHasher,
+        PhotoBizTransactionWorkflow workflow,
+        CancellationToken cancellationToken)
+    {
+        var booth = await ResolveBoothFromKioskTokenAsync(httpContext, dbContext, tokenHasher, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var transaction = await dbContext.Transactions
+            .SingleOrDefaultAsync(item => item.Id == transactionId && item.BoothId == booth.Id, cancellationToken);
+
+        if (transaction is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction"] = ["Transaction was not found for this booth."]
+            });
+        }
+
+        var trigger = request.Trigger?.Trim().ToUpperInvariant();
+        if (trigger is not (StatusValues.BoothUiCancelTrigger.BackButton or StatusValues.BoothUiCancelTrigger.IdleTimeout))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["trigger"] = ["Cancellation trigger must be BACK_BUTTON or IDLE_TIMEOUT."]
+            });
+        }
+
+        try
+        {
+            transaction = await workflow.CancelFromKioskAsync(transaction, booth, trigger, cancellationToken);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction"] = [exception.Message]
+            });
+        }
+
+        return TypedResults.Ok(ToTransactionSummary(transaction));
+    }
+
+    private static async Task<Results<Ok, UnauthorizedHttpResult, ValidationProblem>> AcknowledgeRecentBoothUiTransactionAsync(
+        Guid transactionId,
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTokenHasher tokenHasher,
+        CancellationToken cancellationToken)
+    {
+        var booth = await ResolveBoothFromKioskTokenAsync(httpContext, dbContext, tokenHasher, cancellationToken);
+
+        if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var transaction = await dbContext.Transactions
+            .SingleOrDefaultAsync(item => item.Id == transactionId && item.BoothId == booth.Id, cancellationToken);
+
+        if (transaction is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction"] = ["Transaction was not found for this booth."]
+            });
+        }
+
+        if (!IsKioskAcknowledgeableTerminalStatus(transaction.Status))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction"] = ["Only expired, cancelled, or failed payment notices can be acknowledged from the booth UI."]
+            });
+        }
+
+        transaction.TerminalNoticeAcknowledgedAt ??= DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return TypedResults.Ok();
     }
 
     private static async Task<Results<Ok, UnauthorizedHttpResult, ValidationProblem>> ReturnBoothUiToWelcomeAsync(
@@ -3201,7 +3318,27 @@ public static class PhotoBizApiEndpoints
             (int?)null,
             transaction.CreatedAt,
             transaction.PaidAt,
-            transaction.CompletedAt);
+            transaction.CompletedAt,
+            transaction.CancelledAt,
+            transaction.FailureReason,
+            transaction.CancelledByActorType,
+            transaction.CancelledByUserId,
+            transaction.CancellationSource,
+            transaction.CancellationPreviousStatus);
+    }
+
+    private static BoothActiveTransactionResponse ToBoothActiveTransactionResponse(Transaction transaction)
+    {
+        return new BoothActiveTransactionResponse(
+            transaction.Id,
+            transaction.TransactionNumber,
+            transaction.TransactionType,
+            transaction.Status,
+            transaction.PaymentMethod,
+            transaction.AmountCents,
+            transaction.Currency,
+            transaction.CreatedAt,
+            transaction.ExpiresAt);
     }
 
     private static IEnumerable<TransactionSummary> ToTransactionSummaries(IReadOnlyCollection<Transaction> transactions)
@@ -3257,7 +3394,13 @@ public static class PhotoBizApiEndpoints
                     : null,
                 transaction.CreatedAt,
                 transaction.PaidAt,
-                transaction.CompletedAt);
+                transaction.CompletedAt,
+                transaction.CancelledAt,
+                transaction.FailureReason,
+                transaction.CancelledByActorType,
+                transaction.CancelledByUserId,
+                transaction.CancellationSource,
+                transaction.CancellationPreviousStatus);
         }
     }
 
@@ -3660,55 +3803,83 @@ public static class PhotoBizApiEndpoints
     private static BoothConfigResponse ToUnavailableConfig(
         Booth booth,
         ClientAccount client,
+        Location location,
         BoothAppearanceConfig? appearance,
         string boothState,
         string message,
+        BoothActiveTransactionResponse? activeTransaction,
         BoothRecentTransactionResponse? recentTransaction)
     {
         return new BoothConfigResponse(
             new BoothClientResponse(client.DisplayNameOrName(), null),
             ToThemeResponse(appearance),
-            new BoothSessionResponse(appearance?.SessionLabel ?? string.Empty, "Booth unavailable", message),
-            new BoothStateResponse(booth.Id, boothState),
+            new BoothSessionResponse(
+                appearance?.SessionLabel ?? DefaultSessionLabel,
+                "Booth unavailable",
+                message,
+                appearance?.CompletionThankYouMessage ?? DefaultCompletionThankYouMessage),
+            ToBoothStateResponse(booth, location, boothState),
             null,
             [],
+            activeTransaction,
             recentTransaction);
+    }
+
+    private static BoothStateResponse ToBoothStateResponse(Booth booth, Location location, string state)
+    {
+        return new BoothStateResponse(booth.Id, state, booth.Name, booth.Code, location.Name);
+    }
+
+    private static async Task<BoothActiveTransactionResponse?> GetActiveBoothTransactionAsync(
+        PhotoBizDbContext dbContext,
+        Guid boothId,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await dbContext.Transactions
+            .AsNoTracking()
+            .Where(item =>
+                item.BoothId == boothId &&
+                (item.Status == StatusValues.Transaction.Created ||
+                 item.Status == StatusValues.Transaction.PendingCash ||
+                 item.Status == StatusValues.Transaction.Paid ||
+                 item.Status == StatusValues.Transaction.StartingSession ||
+                 item.Status == StatusValues.Transaction.InSession ||
+                 item.Status == StatusValues.Transaction.SessionFailed))
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return transaction is null ? null : ToBoothActiveTransactionResponse(transaction);
     }
 
     private static async Task<BoothRecentTransactionResponse?> GetRecentBoothTerminalTransactionAsync(
         PhotoBizDbContext dbContext,
         Guid boothId,
-        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var cutoff = now.Subtract(RecentBoothTerminalTransactionVisibility);
-        var transactions = await dbContext.Transactions
+        var recent = await dbContext.Transactions
             .AsNoTracking()
             .Where(item =>
                 item.BoothId == boothId &&
-                item.Status != StatusValues.Transaction.Completed &&
+                item.TerminalNoticeAcknowledgedAt == null &&
                 (item.Status == StatusValues.Transaction.Cancelled ||
                  item.Status == StatusValues.Transaction.Expired ||
-                 item.Status == StatusValues.Transaction.PaymentFailed ||
-                 item.Status == StatusValues.Transaction.SessionFailed))
-            .OrderByDescending(item => item.CreatedAt)
-            .Take(10)
-            .ToListAsync(cancellationToken);
-
-        var recent = transactions
-            .Select(item => new { Transaction = item, OccurredAt = GetTransactionEventTime(item) })
-            .Where(item => item.OccurredAt >= cutoff)
-            .OrderByDescending(item => item.OccurredAt)
-            .FirstOrDefault();
+                 item.Status == StatusValues.Transaction.PaymentFailed))
+            .OrderByDescending(item => item.CancelledAt ?? item.CompletedAt ?? (item.Status == StatusValues.Transaction.Expired ? item.ExpiresAt : item.CreatedAt))
+            .ThenByDescending(item => item.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
 
         return recent is null
             ? null
             : new BoothRecentTransactionResponse(
-                recent.Transaction.Id,
-                recent.Transaction.Status,
-                recent.Transaction.TransactionType,
-                recent.OccurredAt,
-                recent.Transaction.FailureReason);
+                recent.Id,
+                recent.Status,
+                recent.TransactionType,
+                GetTransactionEventTime(recent),
+                recent.FailureReason,
+                recent.CancelledByActorType,
+                recent.CancelledByUserId,
+                recent.CancellationSource,
+                recent.CancellationPreviousStatus);
     }
 
     private static DateTimeOffset GetTransactionEventTime(Transaction transaction)
@@ -3721,6 +3892,13 @@ public static class PhotoBizApiEndpoints
     private static bool IsValidHexColor(string value)
     {
         return value.Length == 7 && value[0] == '#' && value.Skip(1).All(Uri.IsHexDigit);
+    }
+
+    private static bool IsKioskAcknowledgeableTerminalStatus(string status)
+    {
+        return status is StatusValues.Transaction.Expired
+            or StatusValues.Transaction.Cancelled
+            or StatusValues.Transaction.PaymentFailed;
     }
 
     private static BoothThemeResponse ToThemeResponse(BoothAppearanceConfig? appearance)
@@ -3739,9 +3917,10 @@ public static class PhotoBizApiEndpoints
     private static BoothSessionResponse ToSessionResponse(BoothAppearanceConfig? appearance)
     {
         return new BoothSessionResponse(
-            appearance?.SessionLabel ?? string.Empty,
-            appearance?.DefaultWelcomeHeadline ?? "Welcome",
-            appearance?.DefaultWelcomeSubtitle ?? "Review the active offer.");
+            appearance?.SessionLabel ?? DefaultSessionLabel,
+            appearance?.DefaultWelcomeHeadline ?? DefaultWelcomeHeadline,
+            appearance?.DefaultWelcomeSubtitle ?? DefaultWelcomeSubtitle,
+            appearance?.CompletionThankYouMessage ?? DefaultCompletionThankYouMessage);
     }
 
     private static bool IsKnownThemePreset(string? value)
@@ -4167,7 +4346,8 @@ public sealed record BoothAppearanceSummary(
     string? BackgroundImageDataUrl,
     string SessionLabel,
     string DefaultWelcomeHeadline,
-    string DefaultWelcomeSubtitle);
+    string DefaultWelcomeSubtitle,
+    string CompletionThankYouMessage);
 public sealed record TransactionSummary(
     Guid Id,
     Guid BoothId,
@@ -4188,7 +4368,13 @@ public sealed record TransactionSummary(
     int? CoveredSessionSequence,
     DateTimeOffset CreatedAt,
     DateTimeOffset? PaidAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? CancelledAt,
+    string? FailureReason,
+    string? CancelledByActorType,
+    Guid? CancelledByUserId,
+    string? CancellationSource,
+    string? CancellationPreviousStatus);
 public sealed record TransactionOfferSnapshot(
     string? OfferName,
     string? OfferType,
@@ -4313,6 +4499,7 @@ public sealed record UpdateAppearanceRequest(
     string SessionLabel,
     string DefaultWelcomeHeadline,
     string DefaultWelcomeSubtitle,
+    string CompletionThankYouMessage,
     string? BackgroundImageDataUrl,
     string? PrimaryColor = null,
     string? AccentColor = null,
@@ -4322,8 +4509,8 @@ public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool Runti
 public sealed record BoothClientResponse(string DisplayName, string? LogoUrl);
 public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string? BackgroundImageDataUrl, string FontMode);
 public sealed record BoothThemeScheme(string PrimaryColor, string AccentColor, string FontMode);
-public sealed record BoothSessionResponse(string Label, string WelcomeHeadline, string WelcomeSubtitle);
-public sealed record BoothStateResponse(Guid Id, string State);
+public sealed record BoothSessionResponse(string Label, string WelcomeHeadline, string WelcomeSubtitle, string CompletionThankYouMessage);
+public sealed record BoothStateResponse(Guid Id, string State, string Name, string Code, string LocationName);
 public sealed record BoothOfferResponse(
     Guid Id,
     string Name,
@@ -4339,7 +4526,26 @@ public sealed record BoothOfferResponse(
     int? SessionAllowance,
     int SessionsUsed);
 public sealed record BoothPaymentOptionResponse(string Method, string Label, bool RuntimeEnabled);
-public sealed record BoothRecentTransactionResponse(Guid Id, string Status, string TransactionType, DateTimeOffset OccurredAt, string? Reason);
+public sealed record BoothRecentTransactionResponse(
+    Guid Id,
+    string Status,
+    string TransactionType,
+    DateTimeOffset OccurredAt,
+    string? Reason,
+    string? CancelledByActorType,
+    Guid? CancelledByUserId,
+    string? CancellationSource,
+    string? CancellationPreviousStatus);
+public sealed record BoothActiveTransactionResponse(
+    Guid Id,
+    string TransactionNumber,
+    string TransactionType,
+    string Status,
+    string PaymentMethod,
+    int AmountCents,
+    string Currency,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt);
 public sealed record BoothConfigResponse(
     BoothClientResponse Client,
     BoothThemeResponse Theme,
@@ -4347,8 +4553,10 @@ public sealed record BoothConfigResponse(
     BoothStateResponse Booth,
     BoothOfferResponse? ActiveOffer,
     IReadOnlyCollection<BoothPaymentOptionResponse> PaymentOptions,
+    BoothActiveTransactionResponse? ActiveTransaction,
     BoothRecentTransactionResponse? RecentTransaction);
 public sealed record SelectPaymentMethodRequest(string Method);
+public sealed record CancelBoothUiTransactionRequest(string? Trigger);
 public sealed record CreateExtraPrintAddOnRequest(int CopyCount);
 public sealed record AgentBoothRequest(string BoothCode, string? LumaboothSessionRef = null, string? LumaboothEventType = null);
 public sealed record AgentPairResponse(Guid BoothId, string BoothName, string BoothCode);

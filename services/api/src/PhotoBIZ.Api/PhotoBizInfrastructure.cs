@@ -63,6 +63,29 @@ public sealed class PhotoBizAuditService(PhotoBizDbContext dbContext)
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task WriteSystemAsync(
+        Guid? clientAccountId,
+        string action,
+        string entityType,
+        Guid? entityId,
+        object metadata,
+        CancellationToken cancellationToken)
+    {
+        dbContext.AuditLogs.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            ClientAccountId = clientAccountId,
+            UserId = null,
+            Action = action,
+            EntityType = entityType,
+            EntityId = entityId,
+            Metadata = JsonSerializer.Serialize(metadata),
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 }
 
 public sealed record PhotoBizCurrentUser(

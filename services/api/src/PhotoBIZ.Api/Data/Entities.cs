@@ -107,6 +107,7 @@ public sealed class ApplicationUser
     public ClientAccount? ClientAccount { get; set; }
     public Booth? AssignedBooth { get; set; }
     public ICollection<Transaction> ApprovedTransactions { get; } = [];
+    public ICollection<Transaction> CancelledTransactions { get; } = [];
     public ICollection<AuditLog> AuditLogs { get; } = [];
 }
 
@@ -145,6 +146,7 @@ public sealed class BoothAppearanceConfig
     public string SessionLabel { get; set; } = string.Empty;
     public string DefaultWelcomeHeadline { get; set; } = string.Empty;
     public string DefaultWelcomeSubtitle { get; set; } = string.Empty;
+    public string CompletionThankYouMessage { get; set; } = string.Empty;
 
     public Booth? Booth { get; set; }
 }
@@ -239,6 +241,11 @@ public sealed class Transaction
     public DateTimeOffset? PaidAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
+    public string? CancelledByActorType { get; set; }
+    public Guid? CancelledByUserId { get; set; }
+    public string? CancellationSource { get; set; }
+    public string? CancellationPreviousStatus { get; set; }
+    public DateTimeOffset? TerminalNoticeAcknowledgedAt { get; set; }
     public string? FailureReason { get; set; }
 
     public ClientAccount? ClientAccount { get; set; }
@@ -248,6 +255,7 @@ public sealed class Transaction
     public BoothOfferActivation? BoothOfferActivation { get; set; }
     public Transaction? ParentTransaction { get; set; }
     public ApplicationUser? ApprovedByUser { get; set; }
+    public ApplicationUser? CancelledByUser { get; set; }
     public ICollection<Transaction> AddOnTransactions { get; } = [];
     public ICollection<PaymentAttempt> PaymentAttempts { get; } = [];
     public ICollection<BoothSession> BoothSessions { get; } = [];

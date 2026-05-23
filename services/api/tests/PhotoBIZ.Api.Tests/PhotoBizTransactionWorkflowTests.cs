@@ -102,6 +102,10 @@ public sealed class PhotoBizTransactionWorkflowTests
         Assert.Equal(1, resetCount);
         Assert.Equal(StatusValues.Transaction.Cancelled, addOn.Status);
         Assert.Equal("Extra print workflow timed out before completion.", addOn.FailureReason);
+        Assert.Equal(StatusValues.CancellationActor.System, addOn.CancelledByActorType);
+        Assert.Null(addOn.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.SystemExtraPrintTimeout, addOn.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.StartingSession, addOn.CancellationPreviousStatus);
         Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
     }
 
@@ -352,6 +356,10 @@ public sealed class PhotoBizTransactionWorkflowTests
         Assert.Equal(StatusValues.Transaction.Cancelled, transaction.Status);
         Assert.NotNull(transaction.CancelledAt);
         Assert.Equal("Manual booth recovery returned the booth to welcome.", transaction.FailureReason);
+        Assert.Equal(StatusValues.CancellationActor.Cashier, transaction.CancelledByActorType);
+        Assert.Equal(cashier.UserId, transaction.CancelledByUserId);
+        Assert.Equal(StatusValues.CancellationSource.CashierPosReturnToWelcome, transaction.CancellationSource);
+        Assert.Equal(StatusValues.Transaction.StartingSession, transaction.CancellationPreviousStatus);
         Assert.Equal(StatusValues.Session.Failed, session.Status);
         Assert.NotNull(session.EndedAt);
         Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);

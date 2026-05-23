@@ -3,43 +3,12 @@
   [screen]="screen()"
   [loading]="loading()"
   (action)="handleStageAction($event)"
-></photobiz-booth-stage>
-
-@if (paymentNotice(); as notice) {
-  <aside class="payment-notice" role="status" aria-live="polite">
-    <div>
-      <strong>{{ notice.title }}</strong>
-      <p>{{ notice.message }}</p>
-    </div>
-    <button type="button" (click)="dismissPaymentNotice(notice.transactionId)">Dismiss</button>
-  </aside>
-}
-
-@if (loading()) {
-  <div class="busy-overlay" role="status" aria-live="polite" aria-label="Request in progress">
-    <div class="busy-card">
-      <span class="busy-spinner" aria-hidden="true"></span>
-      <span>Working...</span>
-    </div>
-  </div>
-}
-
-@if (toasts().length) {
-  <section class="toast-region" aria-label="Notifications">
-    @for (toast of toasts(); track toast.id) {
-      <article
-        class="toast"
-        [class.success]="toast.kind === 'success'"
-        [class.error-toast]="toast.kind === 'error'"
-        [class.info]="toast.kind === 'info'"
-        [attr.role]="toast.kind === 'error' ? 'alert' : 'status'"
-        aria-live="polite"
-      >
-        <p>{{ toast.message }}</p>
-        <button type="button" class="toast-close" (click)="dismissToast(toast.id)">Dismiss</button>
-      </article>
-    }
-  </section>
-}
+>
+  @if (error()) {
+    <aside booth-stage-error role="alert" aria-live="assertive">
+      {{ error() }}
+    </aside>
+  }
+</photobiz-booth-stage>
 
 <router-outlet />

@@ -157,6 +157,22 @@ select,
   grid-template-columns: minmax(0, 1fr);
 }
 
+.session-setup-actions,
+.session-primary-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.session-setup-actions {
+  justify-content: space-between;
+}
+
+.mat-mdc-card-actions.session-setup-actions > button:first-child {
+  margin-right: auto;
+}
+
 .form-page {
   max-width: 920px;
 }
@@ -851,14 +867,16 @@ select,
 }
 
 .booth-preview-frame {
+  aspect-ratio: 16 / 9;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .booth-preview-frame photobiz-booth-stage {
   display: block;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 100%;
 }
 
 .booth-preview-shell.booth-preview-shell-fullscreen,
@@ -873,6 +891,14 @@ select,
   inset: 0;
   position: fixed;
   z-index: 2500;
+}
+
+.booth-preview-shell.booth-preview-shell-fullscreen .booth-preview-frame,
+.booth-preview-shell:fullscreen .booth-preview-frame {
+  aspect-ratio: 16 / 9;
+  height: min(calc(100vh - 128px), calc((100vw - 36px) * 9 / 16));
+  margin-inline: auto;
+  width: min(calc(100vw - 36px), calc((100vh - 128px) * 16 / 9));
 }
 
 body.booth-preview-fullscreen-active .admin-side {

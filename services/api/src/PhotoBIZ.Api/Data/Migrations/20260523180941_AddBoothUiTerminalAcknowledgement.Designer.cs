@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PhotoBIZ.Api.Data;
@@ -11,9 +12,11 @@ using PhotoBIZ.Api.Data;
 namespace PhotoBIZ.Api.Data.Migrations
 {
     [DbContext(typeof(PhotoBizDbContext))]
-    partial class PhotoBizDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260523180941_AddBoothUiTerminalAcknowledgement")]
+    partial class AddBoothUiTerminalAcknowledgement
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1005,28 +1008,9 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("booth_offer_id");
 
-                    b.Property<string>("CancellationPreviousStatus")
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("cancellation_previous_status");
-
-                    b.Property<string>("CancellationSource")
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("cancellation_source");
-
                     b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("cancelled_at");
-
-                    b.Property<string>("CancelledByActorType")
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("cancelled_by_actor_type");
-
-                    b.Property<Guid?>("CancelledByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("cancelled_by_user_id");
 
                     b.Property<Guid>("ClientAccountId")
                         .HasColumnType("uuid")
@@ -1114,9 +1098,6 @@ namespace PhotoBIZ.Api.Data.Migrations
 
                     b.HasIndex("BoothOfferActivationId")
                         .HasDatabaseName("ix_transactions_booth_offer_activation_id");
-
-                    b.HasIndex("CancelledByUserId")
-                        .HasDatabaseName("ix_transactions_cancelled_by_user_id");
 
                     b.HasIndex("ExpiresAt")
                         .HasDatabaseName("ix_transactions_expires_at");
@@ -1405,12 +1386,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_transactions_booth_offers_booth_offer_id");
 
-                    b.HasOne("PhotoBIZ.Api.Data.ApplicationUser", "CancelledByUser")
-                        .WithMany("CancelledTransactions")
-                        .HasForeignKey("CancelledByUserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .HasConstraintName("fk_transactions_users_cancelled_by_user_id");
-
                     b.HasOne("PhotoBIZ.Api.Data.ClientAccount", "ClientAccount")
                         .WithMany()
                         .HasForeignKey("ClientAccountId")
@@ -1439,8 +1414,6 @@ namespace PhotoBIZ.Api.Data.Migrations
 
                     b.Navigation("BoothOfferActivation");
 
-                    b.Navigation("CancelledByUser");
-
                     b.Navigation("ClientAccount");
 
                     b.Navigation("Location");
@@ -1453,8 +1426,6 @@ namespace PhotoBIZ.Api.Data.Migrations
                     b.Navigation("ApprovedTransactions");
 
                     b.Navigation("AuditLogs");
-
-                    b.Navigation("CancelledTransactions");
                 });
 
             modelBuilder.Entity("PhotoBIZ.Api.Data.Booth", b =>

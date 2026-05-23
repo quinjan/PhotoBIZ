@@ -109,7 +109,7 @@ sequenceDiagram
   B->>API: GET /booth-ui/config with kiosk token
   API->>DB: Resolve booth, client account, subscription, active session, agent heartbeat
   API->>API: Validate booth token, subscription session permission, and effective booth state
-  API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state, recent terminal transaction
+  API-->>B: Client branding, booth theme, session text, active offer, assigned runtime payment options, booth state, active transaction, recent terminal transaction
   B->>B: Select the configured theme renderer and render current state
 ```
 
@@ -136,13 +136,17 @@ Minimum `GET /booth-ui/config` response shape:
     "fontMode": "serif"
   },
   "session": {
-    "label": "SM Manila - Vintage Summer",
-    "welcomeHeadline": "Step Into The Memory Box",
-    "welcomeSubtitle": "Review today's booth offer, pay at the counter, then strike your best pose."
+    "label": "Self Photo Booth",
+    "welcomeHeadline": "Ready To Pose?",
+    "welcomeSubtitle": "Tap start when you are ready.",
+    "completionThankYouMessage": "Thanks for sharing your smile."
   },
   "booth": {
     "id": "booth-id",
-    "state": "WELCOME"
+    "state": "WELCOME",
+    "name": "Booth A",
+    "code": "SM-001",
+    "locationName": "SM Manila"
   },
   "activeOffer": {
     "id": "offer-id",
@@ -166,6 +170,17 @@ Minimum `GET /booth-ui/config` response shape:
       "runtimeEnabled": true
     }
   ],
+  "activeTransaction": {
+    "id": "transaction-id",
+    "transactionNumber": "TXN-20260523-0001",
+    "transactionType": "SESSION_PURCHASE",
+    "status": "PENDING_CASH",
+    "paymentMethod": "CASH",
+    "amountCents": 25000,
+    "currency": "PHP",
+    "createdAt": "2026-05-23T08:00:00Z",
+    "expiresAt": "2026-05-23T08:01:00Z"
+  },
   "recentTransaction": null
 }
 ```
@@ -174,9 +189,11 @@ If no active offer is configured for the booth, `activeOffer` is `null`, `paymen
 
 For non-per-session packages, Manage Booth selection and paid activation are separate. Selecting a `TIME_UNLIMITED` or `SESSION_COUNT` package creates a booth offer activation with `PENDING_PAYMENT`; Booth UI returns that package in `activeOffer` with `activationStatus: "PENDING_PAYMENT"`, empty `paymentOptions`, and customer-facing cashier messaging. Cashier POS creates a cash-only `PLAN_ACTIVATION` transaction through `POST /api/cashier/booths/{boothId}/plan-activation`. Cash approval marks the activation `ACTIVE`, starts `startsAt`/`endsAt` for timed plans or resets the session allowance counter for session-count plans, and does not emit an Agent command. Active paid timed/session-count packages create zero-amount `COVERED_PLAN_SESSION` transactions from the existing Booth UI transaction route; those transactions are the ones that command the Agent to start LumaBooth.
 
-The Booth UI completed prompt is package-aware. `PER_SESSION` completed sessions may show the extra-print cashier prompt and a `No Extra Prints` action that posts to `/api/booth-ui/return-to-welcome`. Booth UI also starts its own 15-second completed-prompt timer and calls the same return path when the timer wins. The return path is de-duplicated. Timer-triggered return failures retry quietly; customer button-triggered failures must show a clear error while staying on the completed screen and retrying. Booth UI must not locally fake `WELCOME` while the API still reports `COMPLETED`; it stays on the completed screen until the backend command succeeds or config reports `WELCOME`. The endpoint is kiosk-token scoped and idempotently returns the booth to `WELCOME` for the latest completed session when no newer active booth transaction exists, so old failed history does not block it and it remains safe if the worker has already auto-reset the booth. `TIME_UNLIMITED` and `SESSION_COUNT` completed sessions must show normal completion copy only, because extra print add-ons are not valid for covered-plan sessions.
+The Booth UI completed prompt is package-aware. The completed title uses the booth appearance `completionThankYouMessage`, defaulting to `Thanks for sharing your smile.` `PER_SESSION` completed sessions may show the extra-print cashier prompt and a `Back To Start` action that posts to `/api/booth-ui/return-to-welcome`; `TIME_UNLIMITED` and `SESSION_COUNT` use the same button label but omit extra-print copy. Booth UI also starts its own 15-second completed-prompt timer and calls the same return path when the timer wins. The return path is de-duplicated. Timer-triggered return failures retry quietly; customer button-triggered failures must show a clear error while staying on the completed screen and retrying. Booth UI must not locally fake `WELCOME` while the API still reports `COMPLETED`; it stays on the completed screen until the backend command succeeds or config reports `WELCOME`. The endpoint is kiosk-token scoped and idempotently returns the booth to `WELCOME` for the latest completed session when no newer active booth transaction exists, so old failed history does not block it and it remains safe if the worker has already auto-reset the booth.
 
-`recentTransaction` is populated only for short-lived customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED`. Booth UI uses it to show a clear recovery screen after cashier cancellation, payment failure, or payment expiration even when the booth has already reset to `WELCOME`.
+`activeTransaction` exposes the latest same-booth non-terminal session transaction so Booth UI can survive refreshes during payment selection, cash waiting, paid handoff, and in-session states. Payment selection uses the backend `activeTransaction.createdAt` timestamp for its 30-second idle countdown. Payment Back and the payment idle timer cancel `CREATED` transactions through `POST /api/booth-ui/transactions/{transactionId}/cancel`; `CREATED` kiosk cancellations return directly to `WELCOME` and do not surface a customer-facing cancelled notice. Waiting Back can cancel `PENDING_CASH` through the same kiosk-token-scoped endpoint and may surface the cancelled outcome screen. The backend validates the kiosk token, booth scope, and cancellable transaction state.
+
+`recentTransaction` is populated only for customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED` whose terminal notice has not been acknowledged. Booth UI uses it to show a full-screen recovery status after cashier cancellation, payment failure, or payment expiration even when the booth has already reset to `WELCOME`. The backend worker expires overdue pending cash transactions, and the Booth UI config endpoint also performs the same backend expiration check before returning state so a kiosk refresh at `expiresAt` can immediately show the expired screen even if the worker has not ticked yet. The `Back To Start` action and 15-second terminal outcome timer call `POST /api/booth-ui/recent-transactions/{transactionId}/acknowledge`, then reload config. Booth UI must stay on the current terminal screen until backend config stops returning that `recentTransaction`; it must not use local-only dismissal memory for these states. Booth UI must not render customer-visible payment outcome toasts or an app-level busy overlay.
 
 Booth themes are PhotoBIZ-owned presets: `VINTAGE`, `CLEAN_MODERN`, and `POP`. The shared Booth UI stage selects a preset-specific Angular presentation component instead of accepting arbitrary tenant CSS or ad hoc color inputs. Theme colors, typography, and button styling come from the selected preset. Booth-level background images are optional uploads stored as constrained PNG/JPEG/WebP data URLs, with backend size/type validation.
 
@@ -349,7 +366,7 @@ Responsibilities:
 The Admin Web consumes `/api/admin/overview` as the MVP operations read model. The response is scoped by role and includes setup lists, recent transactions, report summaries, and recent audit events. Recent dashboard and Cashier POS history surfaces present these records as booth activity, grouping paid sales separately from session usage so zero-amount `COVERED_PLAN_SESSION` rows display as included covered sessions rather than PHP 0 sales. Session-count covered-session activity rows use a historical sequence number for that transaction, so older rows do not repeat the activation's current `sessionsUsed` total. The dashboard Booth Status list also shows package context: session-count packages display the latest completed covered-session sequence and timed packages display minutes remaining plus the exact expiration time in Philippine time. The full Transactions page remains the ledger-style transaction view. Application Owner navigation is limited to Dashboard, Subscriptions, Clients, Account, and subscription-focused Audit Log views. The Application Owner Subscriptions page is the reusable subscription catalog (`SubscriptionPlan`) with per-booth monthly pricing; client subscription assignment/status/allowance changes stay on client account workflows. Client Owner and Client Admin navigation is scoped to their tenant operations: Dashboard, Users, Locations, Booths, Packages, Cashier POS, Transactions, Reports, Settings, Account, and Audit Log. Packages are the client-facing UI label for booth offers and include the tenant-scoped print entitlement modal used by package creation/editing. Print entitlement deletion is tenant-scoped and allowed only when no package in that client account references the entitlement name. Cashiers receive only their assigned booth, assigned-booth transactions, assigned-booth report rows, Account, and their own audit events.
 Each client account has exactly one Client Owner. The onboarding flow creates the initial owner, and Application Owner owner transfer is the only workflow that may promote a different user to Client Owner; transfer demotes the previous owner to Client Admin. Client Owner/Admin user management must not create another owner, change the current user's own role, or deactivate the current user's own account.
 Client owners, client admins, and cashiers may be assigned to one booth as POS staff. An unassigned Client Owner/Admin can manage tenant setup but cannot use Cashier POS actions until assigned. Cashier operational permissions are stored on the user record and returned through the session and overview APIs. Admin Web user detail management edits the cashier permission flags for approving cash, cancelling transactions, and returning the assigned booth to welcome. Backend cashier endpoints enforce those flags for cashier users; Client Owner/Admin roles receive those cashier actions by role after assigned-booth validation.
-The Admin Web Booths page is an inventory table, not an inline operations panel. Manage Booth is the only setup surface for booth record edits, POS staff reassignment, active package selection, cash payment assignment, and Booth UI appearance. The detail surface uses two tabs: Details for booth record, assigned POS staff, active package, and payment setup; Session Setup for session copy, theme preset, background image upload, and preview. `/api/admin/overview` includes tenant-scoped booth appearance summaries so the detail page can load current appearance without calling the kiosk-token endpoint. Booth updates may change the assigned POS staff, but the backend must enforce same-tenant users, `CLIENT_OWNER`/`CLIENT_ADMIN`/`CASHIER` role, and one booth per assigned POS staff user.
+The Admin Web Booths page is an inventory table, not an inline operations panel. Manage Booth is the only setup surface for booth record edits, POS staff reassignment, active package selection, cash payment assignment, and Booth UI appearance. The detail surface uses two tabs: Details for booth record, assigned POS staff, active package, and payment setup; Session Setup for session label, welcome copy, completion thank-you message, theme preset, background image upload, and preview. `/api/admin/overview` includes tenant-scoped booth appearance summaries so the detail page can load current appearance without calling the kiosk-token endpoint. Booth updates may change the assigned POS staff, but the backend must enforce same-tenant users, `CLIENT_OWNER`/`CLIENT_ADMIN`/`CASHIER` role, and one booth per assigned POS staff user.
 
 ### Booth UI
 
@@ -639,6 +656,12 @@ erDiagram
     datetime expires_at
     datetime paid_at
     datetime completed_at
+    datetime cancelled_at
+    string cancelled_by_actor_type
+    uuid cancelled_by_user_id
+    string cancellation_source
+    string cancellation_previous_status
+    string failure_reason
   }
 
   PAYMENT_ATTEMPT {
@@ -702,7 +725,9 @@ Rules:
 
 - Booth UI cannot mark transactions as paid.
 - A booth may have at most one non-terminal session transaction at a time.
+- Booth UI kiosk cancel can cancel only same-booth `CREATED` and `PENDING_CASH` transactions.
 - Cashier `return-to-welcome` recovery cancels the booth's active non-terminal transaction so the booth can accept a new session purchase.
+- Cancelled transactions record structured cancellation context: actor type (`BOOTH_USER`, `CASHIER`, or `SYSTEM`), source screen/action, previous status, and cashier user ID when an authenticated cashier performed the action.
 - Payment method selection must be validated against booth-level payment option assignments, client-level provider resource status when provider-backed, and runtime provider availability.
 - Tenant-level payment resource setup alone cannot expose a payment method to Booth UI or Cashier POS.
 - `CASH` is the only runtime-enabled payment method in MVP.

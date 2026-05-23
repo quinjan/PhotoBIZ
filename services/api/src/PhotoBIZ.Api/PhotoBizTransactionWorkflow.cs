@@ -8,7 +8,7 @@ public sealed class PhotoBizTransactionWorkflow(
     PhotoBizDbContext dbContext,
     PhotoBizAuditService auditService)
 {
-    private static readonly TimeSpan PendingCashWindow = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan PendingCashWindow = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan PostSessionPromptDuration = TimeSpan.FromSeconds(15);
     public static readonly TimeSpan PrintingOrSharingTimeout = TimeSpan.FromSeconds(15);
     private const int MaximumExtraPrintCopies = 5;
@@ -16,7 +16,8 @@ public sealed class PhotoBizTransactionWorkflow(
     [
         StatusValues.Transaction.Completed,
         StatusValues.Transaction.Expired,
-        StatusValues.Transaction.Cancelled
+        StatusValues.Transaction.Cancelled,
+        StatusValues.Transaction.PaymentFailed
     ];
     private static readonly string[] ActiveTransactionStatusesDuringCompletedPrompt =
     [
@@ -343,8 +344,15 @@ public sealed class PhotoBizTransactionWorkflow(
             throw new InvalidOperationException("Only pending cash or failed sessions can be cancelled.");
         }
 
+        var previousStatus = transaction.Status;
         transaction.Status = StatusValues.Transaction.Cancelled;
         transaction.CancelledAt = DateTimeOffset.UtcNow;
+        ApplyCancellationContext(
+            transaction,
+            StatusValues.CancellationActor.Cashier,
+            currentUser.UserId,
+            StatusValues.CancellationSource.CashierPosCancelTransaction,
+            previousStatus);
         transaction.FailureReason ??= "Payment request was cancelled by the cashier.";
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
@@ -357,7 +365,71 @@ public sealed class PhotoBizTransactionWorkflow(
             "transaction.cancelled",
             nameof(Transaction),
             transaction.Id,
-            new { transaction.TransactionNumber },
+            new
+            {
+                transaction.TransactionNumber,
+                PreviousStatus = previousStatus,
+                transaction.CancelledByActorType,
+                transaction.CancelledByUserId,
+                transaction.CancellationSource
+            },
+            cancellationToken);
+
+        return transaction;
+    }
+
+    public async Task<Transaction> CancelFromKioskAsync(
+        Transaction transaction,
+        Booth booth,
+        string trigger,
+        CancellationToken cancellationToken)
+    {
+        if (transaction.Status != StatusValues.Transaction.Created &&
+            transaction.Status != StatusValues.Transaction.PendingCash)
+        {
+            throw new InvalidOperationException("Only created or pending cash transactions can be cancelled from the booth UI.");
+        }
+
+        if (transaction.BoothId != booth.Id)
+        {
+            throw new InvalidOperationException("Transaction was not found for this booth.");
+        }
+
+        var previousStatus = transaction.Status;
+        var source = ResolveKioskCancellationSource(previousStatus, trigger);
+        var wasCreated = transaction.Status == StatusValues.Transaction.Created;
+
+        transaction.Status = StatusValues.Transaction.Cancelled;
+        transaction.CancelledAt = DateTimeOffset.UtcNow;
+        ApplyCancellationContext(
+            transaction,
+            StatusValues.CancellationActor.BoothUser,
+            cancelledByUserId: null,
+            source,
+            previousStatus);
+        transaction.FailureReason ??= "Customer cancelled at the booth.";
+        if (wasCreated)
+        {
+            transaction.TerminalNoticeAcknowledgedAt ??= transaction.CancelledAt;
+        }
+        booth.CurrentState = StatusValues.Booth.Welcome;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteSystemAsync(
+            transaction.ClientAccountId,
+            "transaction.kiosk_cancelled",
+            nameof(Transaction),
+            transaction.Id,
+            new
+            {
+                transaction.TransactionNumber,
+                transaction.Status,
+                PreviousStatus = previousStatus,
+                Trigger = trigger,
+                transaction.CancelledByActorType,
+                transaction.CancellationSource
+            },
             cancellationToken);
 
         return transaction;
@@ -478,9 +550,16 @@ public sealed class PhotoBizTransactionWorkflow(
 
         foreach (var transaction in activeTransactions)
         {
-            recoveredTransactions.Add((transaction, transaction.Status));
+            var previousStatus = transaction.Status;
+            recoveredTransactions.Add((transaction, previousStatus));
             transaction.Status = StatusValues.Transaction.Cancelled;
             transaction.CancelledAt ??= now;
+            ApplyCancellationContext(
+                transaction,
+                StatusValues.CancellationActor.Cashier,
+                currentUser.UserId,
+                StatusValues.CancellationSource.CashierPosReturnToWelcome,
+                previousStatus);
             transaction.FailureReason = "Manual booth recovery returned the booth to welcome.";
 
             var session = await dbContext.BoothSessions
@@ -508,19 +587,23 @@ public sealed class PhotoBizTransactionWorkflow(
                 {
                     recovered.Transaction.TransactionNumber,
                     recovered.PreviousStatus,
+                    recovered.Transaction.CancelledByActorType,
+                    recovered.Transaction.CancelledByUserId,
+                    recovered.Transaction.CancellationSource,
                     Reason = "Manual booth recovery returned the booth to welcome."
                 },
                 cancellationToken);
         }
     }
 
-    public async Task<int> ExpirePendingTransactionsAsync(CancellationToken cancellationToken)
+    public async Task<int> ExpirePendingTransactionsAsync(CancellationToken cancellationToken, Guid? boothId = null)
     {
         var now = DateTimeOffset.UtcNow;
         var expiredTransactions = await dbContext.Transactions
             .Where(transaction =>
                 transaction.Status == StatusValues.Transaction.PendingCash &&
-                transaction.ExpiresAt <= now)
+                transaction.ExpiresAt <= now &&
+                (boothId == null || transaction.BoothId == boothId))
             .ToListAsync(cancellationToken);
 
         if (expiredTransactions.Count == 0)
@@ -817,8 +900,15 @@ public sealed class PhotoBizTransactionWorkflow(
 
         foreach (var transaction in timedOutTransactions)
         {
+            var previousStatus = transaction.Status;
             transaction.Status = StatusValues.Transaction.Cancelled;
             transaction.CancelledAt ??= now;
+            ApplyCancellationContext(
+                transaction,
+                StatusValues.CancellationActor.System,
+                cancelledByUserId: null,
+                StatusValues.CancellationSource.SystemExtraPrintTimeout,
+                previousStatus);
             transaction.FailureReason ??= "Extra print workflow timed out before completion.";
 
             if (booths.TryGetValue(transaction.BoothId, out var booth) &&
@@ -932,6 +1022,33 @@ public sealed class PhotoBizTransactionWorkflow(
         session.EndedAt = DateTimeOffset.UtcNow;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static void ApplyCancellationContext(
+        Transaction transaction,
+        string actorType,
+        Guid? cancelledByUserId,
+        string source,
+        string previousStatus)
+    {
+        transaction.CancelledByActorType = actorType;
+        transaction.CancelledByUserId = cancelledByUserId;
+        transaction.CancellationSource = source;
+        transaction.CancellationPreviousStatus = previousStatus;
+    }
+
+    private static string ResolveKioskCancellationSource(string previousStatus, string trigger)
+    {
+        return (previousStatus, trigger) switch
+        {
+            (StatusValues.Transaction.Created, StatusValues.BoothUiCancelTrigger.BackButton) =>
+                StatusValues.CancellationSource.BoothUiPaymentOptionsBack,
+            (StatusValues.Transaction.Created, StatusValues.BoothUiCancelTrigger.IdleTimeout) =>
+                StatusValues.CancellationSource.BoothUiPaymentOptionsIdleTimeout,
+            (StatusValues.Transaction.PendingCash, StatusValues.BoothUiCancelTrigger.BackButton) =>
+                StatusValues.CancellationSource.BoothUiWaitingForPaymentBack,
+            _ => throw new InvalidOperationException("Cancellation trigger is not valid for this transaction state.")
+        };
     }
 
     private Task<bool> HasAnotherActiveTransactionAsync(

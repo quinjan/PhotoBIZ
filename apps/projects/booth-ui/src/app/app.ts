@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import {
   BoothStageAction,
@@ -8,36 +9,20 @@ import {
   BoothStageConfig,
   BoothStageScreenState,
 } from '@photobiz/booth-stage';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom, interval } from 'rxjs';
 
 type BoothTransaction = {
   readonly id: string;
   readonly status: string;
+  readonly createdAt?: string;
 };
 
-type PaymentNotice = {
-  readonly transactionId: string;
-  readonly title: string;
-  readonly message: string;
-  readonly expiresAt: number;
-};
+type BoothUiCancelTrigger = 'BACK_BUTTON' | 'IDLE_TIMEOUT';
 
-type DismissedPaymentNotice = {
-  readonly transactionId: string;
-  readonly expiresAt: number;
-};
-
-type ToastKind = 'success' | 'error' | 'info';
-type ToastNotification = {
-  readonly id: number;
-  readonly kind: ToastKind;
-  readonly message: string;
-};
 type RunOptions = {
   readonly errorMessage?: string;
-  readonly notifyError?: boolean;
   readonly showBusy?: boolean;
+  readonly showError?: boolean;
 };
 
 @Component({
@@ -48,16 +33,19 @@ type RunOptions = {
 })
 export class App {
   private static readonly apiBaseUrl = 'http://localhost:5082';
-  private static readonly paymentNoticeStoragePrefix = 'photobiz.paymentNotice.';
-  private static readonly dismissedPaymentNoticeStoragePrefix = 'photobiz.dismissedPaymentNotice.';
-  private static readonly paymentNoticeDurationMs = 5_000;
-  private static readonly dismissedPaymentNoticeDurationMs = 5 * 60_000;
   private static readonly completedPromptDurationMs = 15_000;
   private static readonly completedPromptRetryMs = 1_000;
+  private static readonly paymentIdleCancelMs = 30_000;
+  private static readonly terminalAcknowledgeMs = 15_000;
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
-  private paymentNoticeDismissTimer: number | null = null;
   private completedReturnTimer: number | null = null;
+  private paymentCancelTimer: number | null = null;
+  private paymentCancelTransactionId: string | null = null;
+  private pendingCashExpiryRefreshTimer: number | null = null;
+  private pendingCashExpiryTransactionId: string | null = null;
+  private terminalAcknowledgeTimer: number | null = null;
+  private terminalAcknowledgeTransactionId: string | null = null;
   private returnToWelcomeInFlight = false;
   private showReturnToWelcomeErrorOnFailure = false;
   private returnToWelcomeErrorShown = false;
@@ -67,34 +55,60 @@ export class App {
   );
   protected readonly config = signal<BoothStageConfig | null>(null);
   protected readonly transaction = signal<BoothTransaction | null>(null);
-  protected readonly dismissedRecentTransactionId = signal<string | null>(
-    App.readDismissedPaymentNoticeId(this.kioskToken()),
-  );
-  protected readonly storedPaymentNotice = signal<PaymentNotice | null>(
-    App.readStoredPaymentNotice(this.kioskToken()),
-  );
   protected readonly error = signal('');
   private readonly busyRequests = signal(0);
   protected readonly loading = computed(() => this.busyRequests() > 0);
-  protected readonly toasts = signal<readonly ToastNotification[]>([]);
-  private readonly toastTimers = new Map<number, number>();
-  private nextToastId = 0;
   protected readonly screen = computed<BoothStageScreenState>(() => {
     const config = this.config();
-    const recentTransaction = config?.recentTransaction;
-    const hasVisibleRecentTransaction =
-      recentTransaction && recentTransaction.id !== this.dismissedRecentTransactionId();
 
     if (!config) {
       return this.kioskToken() ? 'error' : 'connect';
+    }
+
+    const recentTransaction = config.recentTransaction;
+    if (recentTransaction?.status === 'EXPIRED') {
+      return 'expired';
+    }
+
+    if (recentTransaction?.status === 'CANCELLED') {
+      return 'cancelled';
+    }
+
+    if (recentTransaction?.status === 'PAYMENT_FAILED') {
+      return 'payment-failed';
     }
 
     if (config.booth.state === 'OFFLINE') {
       return 'offline';
     }
 
-    if (hasVisibleRecentTransaction && recentTransaction.status === 'EXPIRED') {
-      return 'expired';
+    const activeTransaction = config.activeTransaction ?? this.transaction();
+    if (activeTransaction?.status === 'SESSION_FAILED') {
+      return 'error';
+    }
+
+    if (activeTransaction?.status === 'CREATED') {
+      return 'payment';
+    }
+
+    if (activeTransaction?.status === 'PENDING_CASH') {
+      return 'waiting';
+    }
+
+    if (activeTransaction?.status === 'PAID' || activeTransaction?.status === 'STARTING_SESSION') {
+      return 'approved';
+    }
+
+    if (activeTransaction?.status === 'IN_SESSION') {
+      return 'session';
+    }
+
+    if (config.booth.state === 'ERROR') {
+      return 'error';
+    }
+
+    if (config.booth.state === 'COMPLETED') {
+      return 'completed';
     }
 
     if (!config.activeOffer || config.activeOffer.activationStatus === 'PENDING_PAYMENT') {
@@ -105,7 +119,7 @@ export class App {
       return 'unavailable';
     }
 
-    if (config.booth.state === 'OFFER_CONFIRMED' || this.transaction()?.status === 'CREATED') {
+    if (config.booth.state === 'OFFER_CONFIRMED') {
       return 'payment';
     }
 
@@ -124,25 +138,10 @@ export class App {
       return 'session';
     }
 
-    if (config.booth.state === 'ERROR') {
-      return 'error';
-    }
-
-    if (config.booth.state === 'COMPLETED') {
-      return 'completed';
-    }
-
     return 'offer';
   });
-  protected readonly paymentNotice = computed<PaymentNotice | null>(() => {
-    return this.storedPaymentNotice();
-  });
-  constructor() {
-    const storedNotice = this.storedPaymentNotice();
-    if (storedNotice) {
-      this.schedulePaymentNoticeDismiss(storedNotice);
-    }
 
+  constructor() {
     if (this.kioskToken()) {
       localStorage.setItem('photobiz.kioskToken', this.kioskToken());
       void this.loadConfig();
@@ -154,22 +153,17 @@ export class App {
         if (this.kioskToken()) {
           void this.loadConfig({
             errorMessage: 'Could not refresh booth config.',
-            notifyError: false,
             showBusy: false,
+            showError: false,
           });
         }
       });
 
     this.destroyRef.onDestroy(() => {
-      if (this.paymentNoticeDismissTimer !== null) {
-        window.clearTimeout(this.paymentNoticeDismissTimer);
-      }
-
       this.clearCompletedReturnTimer();
-      for (const timer of this.toastTimers.values()) {
-        window.clearTimeout(timer);
-      }
-      this.toastTimers.clear();
+      this.clearPaymentCancelTimer();
+      this.clearPendingCashExpiryRefreshTimer();
+      this.clearTerminalAcknowledgeTimer();
     });
   }
 
@@ -189,18 +183,18 @@ export class App {
           ),
         );
 
-        this.clearPaymentNotice();
         this.transaction.set(transaction);
-        await this.loadConfig();
+        await this.loadConfig({ showBusy: false });
       },
       { errorMessage: 'Could not confirm this offer.' },
     );
   }
 
   protected async chooseCash(): Promise<void> {
-    const transaction = this.transaction();
+    const transaction = this.currentTransaction();
 
     if (!transaction) {
+      this.error.set('Could not select cash payment. Please start again.');
       return;
     }
 
@@ -215,8 +209,7 @@ export class App {
         );
 
         this.transaction.set(updated);
-        await this.loadConfig();
-        this.succeed('Cash payment request sent.');
+        await this.loadConfig({ showBusy: false });
       },
       { errorMessage: 'Could not select cash payment.' },
     );
@@ -241,14 +234,17 @@ export class App {
         case 'cash':
           await this.chooseCash();
           break;
-        case 'refresh':
-          if (this.config()?.recentTransaction) {
-            this.rememberDismissedPaymentNotice(this.config()?.recentTransaction?.id ?? '');
-          }
-          await this.loadConfig();
+        case 'cancel-transaction':
+          await this.cancelActiveTransaction(true, 'BACK_BUTTON');
+          break;
+        case 'acknowledge-recent':
+          await this.acknowledgeRecentTransaction(true);
           break;
         case 'return-welcome':
           await this.returnToWelcome(true);
+          break;
+        case 'refresh':
+          await this.loadConfig();
           break;
       }
     })();
@@ -282,8 +278,6 @@ export class App {
       );
       commandSucceeded = true;
     } catch {
-      // Keep the customer-facing completed screen calm and retry. The screen should
-      // not move to welcome until the backend accepts the return command.
       if (this.showReturnToWelcomeErrorOnFailure && !this.returnToWelcomeErrorShown) {
         this.fail(
           'Could not return to welcome. Please wait or ask the cashier to return the booth to welcome.',
@@ -295,10 +289,7 @@ export class App {
         this.showReturnToWelcomeErrorOnFailure = false;
         this.returnToWelcomeErrorShown = false;
         this.error.set('');
-        this.clearToasts('error');
-        this.transaction.set(null);
-        this.applyBackendConfirmedWelcome();
-        await this.loadConfig({ notifyError: false, showBusy: false });
+        await this.loadConfig({ showBusy: false, showError: false });
       } else if (this.config()?.booth.state === 'COMPLETED') {
         this.completedReturnTimer = window.setTimeout(() => {
           this.completedReturnTimer = null;
@@ -311,6 +302,68 @@ export class App {
     }
   }
 
+  private async cancelActiveTransaction(
+    showErrorOnFailure: boolean,
+    trigger: BoothUiCancelTrigger,
+  ): Promise<void> {
+    const transaction = this.currentTransaction();
+
+    if (!transaction) {
+      if (showErrorOnFailure) {
+        await this.loadConfig();
+      }
+      return;
+    }
+
+    await this.run(
+      async () => {
+        await firstValueFrom(
+          this.http.post(
+            `${App.apiBaseUrl}/api/booth-ui/transactions/${transaction.id}/cancel`,
+            { trigger },
+            { headers: this.headers() },
+          ),
+        );
+        this.transaction.set(null);
+        await this.loadConfig({ showBusy: false, showError: false });
+      },
+      {
+        errorMessage: 'Could not cancel this request.',
+        showBusy: showErrorOnFailure,
+        showError: showErrorOnFailure,
+      },
+    );
+  }
+
+  private async acknowledgeRecentTransaction(showErrorOnFailure: boolean): Promise<void> {
+    const recentTransaction = this.config()?.recentTransaction;
+
+    if (!recentTransaction) {
+      if (showErrorOnFailure) {
+        await this.loadConfig();
+      }
+      return;
+    }
+
+    await this.run(
+      async () => {
+        await firstValueFrom(
+          this.http.post(
+            `${App.apiBaseUrl}/api/booth-ui/recent-transactions/${recentTransaction.id}/acknowledge`,
+            {},
+            { headers: this.headers() },
+          ),
+        );
+        await this.loadConfig({ showBusy: false, showError: false });
+      },
+      {
+        errorMessage: 'Could not clear this status.',
+        showBusy: showErrorOnFailure,
+        showError: showErrorOnFailure,
+      },
+    );
+  }
+
   private async loadConfigCore(): Promise<void> {
     const config = await firstValueFrom(
       this.http.get<BoothStageConfig>(`${App.apiBaseUrl}/api/booth-ui/config`, {
@@ -319,23 +372,15 @@ export class App {
     );
 
     this.config.set(config);
-    this.capturePaymentNotice(config);
+    this.transaction.set(
+      config.activeTransaction
+        ? { id: config.activeTransaction.id, status: config.activeTransaction.status }
+        : null,
+    );
     this.updateCompletedReturnTimer(config);
-
-    if (config.booth.state === 'WELCOME') {
-      this.transaction.set(null);
-    }
-  }
-
-  private applyBackendConfirmedWelcome(): void {
-    const currentConfig = this.config();
-
-    if (currentConfig?.booth.state === 'COMPLETED') {
-      this.config.set({
-        ...currentConfig,
-        booth: { ...currentConfig.booth, state: 'WELCOME' },
-      });
-    }
+    this.updatePaymentCancelTimer(config);
+    this.updatePendingCashExpiryRefreshTimer(config);
+    this.updateTerminalAcknowledgeTimer(config);
   }
 
   private updateCompletedReturnTimer(config: BoothStageConfig): void {
@@ -361,175 +406,155 @@ export class App {
     }
   }
 
-  protected dismissPaymentNotice(transactionId: string): void {
-    this.rememberDismissedPaymentNotice(transactionId);
-    this.clearPaymentNotice();
+  private updatePaymentCancelTimer(config: BoothStageConfig): void {
+    const activeTransaction = config.activeTransaction;
+
+    if (!activeTransaction || activeTransaction.status !== 'CREATED') {
+      this.clearPaymentCancelTimer();
+      return;
+    }
+
+    if (
+      this.paymentCancelTimer !== null &&
+      this.paymentCancelTransactionId === activeTransaction.id
+    ) {
+      return;
+    }
+
+    this.clearPaymentCancelTimer();
+    this.paymentCancelTransactionId = activeTransaction.id;
+    const remainingMs = App.getPaymentIdleRemainingMs(activeTransaction);
+    this.paymentCancelTimer = window.setTimeout(() => {
+      this.paymentCancelTimer = null;
+      this.paymentCancelTransactionId = null;
+      void this.cancelActiveTransaction(false, 'IDLE_TIMEOUT');
+    }, remainingMs);
+  }
+
+  private clearPaymentCancelTimer(): void {
+    if (this.paymentCancelTimer !== null) {
+      window.clearTimeout(this.paymentCancelTimer);
+      this.paymentCancelTimer = null;
+    }
+
+    this.paymentCancelTransactionId = null;
+  }
+
+  private updatePendingCashExpiryRefreshTimer(config: BoothStageConfig): void {
+    const activeTransaction = config.activeTransaction;
+
+    if (!activeTransaction || activeTransaction.status !== 'PENDING_CASH') {
+      this.clearPendingCashExpiryRefreshTimer();
+      return;
+    }
+
+    if (
+      this.pendingCashExpiryRefreshTimer !== null &&
+      this.pendingCashExpiryTransactionId === activeTransaction.id
+    ) {
+      return;
+    }
+
+    this.clearPendingCashExpiryRefreshTimer();
+    this.pendingCashExpiryTransactionId = activeTransaction.id;
+    const expiresAtMs = Date.parse(activeTransaction.expiresAt);
+    const remainingMs = Number.isNaN(expiresAtMs) ? 0 : Math.max(0, expiresAtMs - Date.now());
+    this.pendingCashExpiryRefreshTimer = window.setTimeout(() => {
+      this.pendingCashExpiryRefreshTimer = null;
+      this.pendingCashExpiryTransactionId = null;
+      void this.loadConfig({
+        errorMessage: 'Could not refresh booth config.',
+        showBusy: false,
+        showError: false,
+      });
+    }, remainingMs);
+  }
+
+  private clearPendingCashExpiryRefreshTimer(): void {
+    if (this.pendingCashExpiryRefreshTimer !== null) {
+      window.clearTimeout(this.pendingCashExpiryRefreshTimer);
+      this.pendingCashExpiryRefreshTimer = null;
+    }
+
+    this.pendingCashExpiryTransactionId = null;
+  }
+
+  private updateTerminalAcknowledgeTimer(config: BoothStageConfig): void {
+    const recentTransaction = config.recentTransaction;
+
+    if (!App.isAcknowledgeableRecentTransaction(recentTransaction)) {
+      this.clearTerminalAcknowledgeTimer();
+      return;
+    }
+
+    if (
+      this.terminalAcknowledgeTimer !== null &&
+      this.terminalAcknowledgeTransactionId === recentTransaction.id
+    ) {
+      return;
+    }
+
+    this.clearTerminalAcknowledgeTimer();
+    this.terminalAcknowledgeTransactionId = recentTransaction.id;
+    this.terminalAcknowledgeTimer = window.setTimeout(() => {
+      this.terminalAcknowledgeTimer = null;
+      this.terminalAcknowledgeTransactionId = null;
+      void this.acknowledgeRecentTransaction(false);
+    }, App.terminalAcknowledgeMs);
+  }
+
+  private clearTerminalAcknowledgeTimer(): void {
+    if (this.terminalAcknowledgeTimer !== null) {
+      window.clearTimeout(this.terminalAcknowledgeTimer);
+      this.terminalAcknowledgeTimer = null;
+    }
+
+    this.terminalAcknowledgeTransactionId = null;
   }
 
   private headers(): HttpHeaders {
     return new HttpHeaders({ 'X-Kiosk-Token': this.kioskToken() });
   }
 
-  private capturePaymentNotice(config: BoothStageConfig): void {
-    const recentTransaction = config.recentTransaction;
-
-    if (!recentTransaction || this.isPaymentNoticeDismissed(recentTransaction.id)) {
-      return;
-    }
-
-    if (this.storedPaymentNotice()?.transactionId === recentTransaction.id) {
-      return;
-    }
-
-    const notice = App.toPaymentNotice(recentTransaction);
-    if (!notice) {
-      return;
-    }
-
-    this.storedPaymentNotice.set(notice);
-    localStorage.setItem(App.paymentNoticeStorageKey(this.kioskToken()), JSON.stringify(notice));
-    this.schedulePaymentNoticeDismiss(notice);
+  private currentTransaction():
+    | BoothTransaction
+    | NonNullable<BoothStageConfig['activeTransaction']>
+    | null {
+    return this.config()?.activeTransaction ?? this.transaction();
   }
 
-  private clearPaymentNotice(): void {
-    if (this.paymentNoticeDismissTimer !== null) {
-      window.clearTimeout(this.paymentNoticeDismissTimer);
-      this.paymentNoticeDismissTimer = null;
-    }
-
-    this.storedPaymentNotice.set(null);
-    localStorage.removeItem(App.paymentNoticeStorageKey(this.kioskToken()));
-  }
-
-  private schedulePaymentNoticeDismiss(notice: PaymentNotice): void {
-    if (this.paymentNoticeDismissTimer !== null) {
-      window.clearTimeout(this.paymentNoticeDismissTimer);
-    }
-
-    const remainingMs = Math.max(0, notice.expiresAt - Date.now());
-    this.paymentNoticeDismissTimer = window.setTimeout(() => {
-      this.rememberDismissedPaymentNotice(notice.transactionId);
-      this.clearPaymentNotice();
-    }, remainingMs);
-  }
-
-  private isPaymentNoticeDismissed(transactionId: string): boolean {
+  private static isAcknowledgeableRecentTransaction(
+    transaction: BoothStageConfig['recentTransaction'] | null | undefined,
+  ): transaction is NonNullable<BoothStageConfig['recentTransaction']> {
     return (
-      this.dismissedRecentTransactionId() === transactionId ||
-      App.readDismissedPaymentNoticeId(this.kioskToken()) === transactionId
+      transaction?.status === 'EXPIRED' ||
+      transaction?.status === 'CANCELLED' ||
+      transaction?.status === 'PAYMENT_FAILED'
     );
   }
 
-  private rememberDismissedPaymentNotice(transactionId: string): void {
-    this.dismissedRecentTransactionId.set(transactionId);
-    localStorage.setItem(
-      App.dismissedPaymentNoticeStorageKey(this.kioskToken()),
-      JSON.stringify({
-        transactionId,
-        expiresAt: Date.now() + App.dismissedPaymentNoticeDurationMs,
-      } satisfies DismissedPaymentNotice),
-    );
-  }
-
-  private static toPaymentNotice(
-    recentTransaction: NonNullable<BoothStageConfig['recentTransaction']>,
-  ): PaymentNotice | null {
-    switch (recentTransaction.status) {
-      case 'CANCELLED':
-        return {
-          transactionId: recentTransaction.id,
-          title: 'Payment request cancelled',
-          message:
-            recentTransaction.reason ??
-            'The cashier cancelled or rejected this payment request. Please start again when ready.',
-          expiresAt: Date.now() + App.paymentNoticeDurationMs,
-        };
-      case 'PAYMENT_FAILED':
-        return {
-          transactionId: recentTransaction.id,
-          title: 'Payment failed',
-          message:
-            recentTransaction.reason ??
-            'Payment could not be completed. Please choose another method or ask the cashier.',
-          expiresAt: Date.now() + App.paymentNoticeDurationMs,
-        };
-      default:
-        return null;
-    }
-  }
-
-  private static readStoredPaymentNotice(kioskToken: string): PaymentNotice | null {
-    const rawNotice = localStorage.getItem(App.paymentNoticeStorageKey(kioskToken));
-
-    if (!rawNotice) {
-      return null;
+  private static getPaymentIdleRemainingMs(
+    transaction: NonNullable<BoothStageConfig['activeTransaction']>,
+  ): number {
+    if (!transaction.createdAt) {
+      return App.paymentIdleCancelMs;
     }
 
-    try {
-      const notice = JSON.parse(rawNotice) as PaymentNotice;
-      if (
-        !notice.transactionId ||
-        !notice.title ||
-        !notice.message ||
-        notice.expiresAt <= Date.now()
-      ) {
-        localStorage.removeItem(App.paymentNoticeStorageKey(kioskToken));
-        return null;
-      }
+    const createdAtMs = Date.parse(transaction.createdAt);
 
-      return notice;
-    } catch {
-      return null;
-    }
-  }
-
-  private static paymentNoticeStorageKey(kioskToken: string): string {
-    return `${App.paymentNoticeStoragePrefix}${kioskToken || 'unpaired'}`;
-  }
-
-  private static readDismissedPaymentNoticeId(kioskToken: string): string | null {
-    const rawNotice = localStorage.getItem(App.dismissedPaymentNoticeStorageKey(kioskToken));
-
-    if (!rawNotice) {
-      return null;
+    if (Number.isNaN(createdAtMs)) {
+      return App.paymentIdleCancelMs;
     }
 
-    try {
-      const notice = JSON.parse(rawNotice) as DismissedPaymentNotice;
-      if (!notice.transactionId || notice.expiresAt <= Date.now()) {
-        localStorage.removeItem(App.dismissedPaymentNoticeStorageKey(kioskToken));
-        return null;
-      }
-
-      return notice.transactionId;
-    } catch {
-      return null;
-    }
-  }
-
-  private static dismissedPaymentNoticeStorageKey(kioskToken: string): string {
-    return `${App.dismissedPaymentNoticeStoragePrefix}${kioskToken || 'unpaired'}`;
-  }
-
-  private static readTokenFromUrl(): string | null {
-    const params = new URLSearchParams(window.location.search);
-    const queryToken = params.get('token');
-
-    if (queryToken) {
-      return queryToken;
-    }
-
-    const firstPathSegment = window.location.pathname.split('/').filter(Boolean)[0];
-
-    return firstPathSegment ? decodeURIComponent(firstPathSegment) : null;
-  }
-
-  protected dismissToast(id: number): void {
-    this.removeToast(id);
+    return Math.max(0, createdAtMs + App.paymentIdleCancelMs - Date.now());
   }
 
   private async run(operation: () => Promise<void>, options: RunOptions = {}): Promise<boolean> {
     const showBusy = options.showBusy ?? true;
+    if (showBusy && this.loading()) {
+      return false;
+    }
+
     if (showBusy) {
       this.beginBusy();
     }
@@ -539,10 +564,10 @@ export class App {
       await operation();
       return true;
     } catch (error) {
-      const message = this.getRequestErrorMessage(error, options.errorMessage ?? 'Request failed.');
-      this.error.set(message);
-      if (options.notifyError !== false) {
-        this.showToast('error', message);
+      if (options.showError !== false) {
+        this.error.set(
+          this.getRequestErrorMessage(error, options.errorMessage ?? 'Request failed.'),
+        );
       }
       return false;
     } finally {
@@ -554,13 +579,6 @@ export class App {
 
   private fail(message: string): void {
     this.error.set(message);
-    this.showToast('error', message);
-  }
-
-  private succeed(message: string): void {
-    this.error.set('');
-    this.clearToasts('error');
-    this.showToast('success', message);
   }
 
   private beginBusy(): void {
@@ -569,37 +587,6 @@ export class App {
 
   private endBusy(): void {
     this.busyRequests.update((count) => Math.max(0, count - 1));
-  }
-
-  private showToast(kind: ToastKind, message: string): void {
-    const normalizedMessage = message.trim();
-    if (!normalizedMessage) {
-      return;
-    }
-
-    const id = ++this.nextToastId;
-    this.toasts.update((toasts) => [...toasts, { id, kind, message: normalizedMessage }]);
-    const timeout = kind === 'error' ? 7000 : 4500;
-    const timer = window.setTimeout(() => this.removeToast(id), timeout);
-    this.toastTimers.set(id, timer);
-  }
-
-  private removeToast(id: number): void {
-    const timer = this.toastTimers.get(id);
-    if (timer !== undefined) {
-      window.clearTimeout(timer);
-      this.toastTimers.delete(id);
-    }
-
-    this.toasts.update((toasts) => toasts.filter((toast) => toast.id !== id));
-  }
-
-  private clearToasts(kind: ToastKind): void {
-    for (const toast of this.toasts()) {
-      if (toast.kind === kind) {
-        this.removeToast(toast.id);
-      }
-    }
   }
 
   private getRequestErrorMessage(error: unknown, fallback: string): string {
@@ -650,5 +637,18 @@ export class App {
     }
 
     return typeof body.title === 'string' ? body.title : '';
+  }
+
+  private static readTokenFromUrl(): string | null {
+    const params = new URLSearchParams(window.location.search);
+    const queryToken = params.get('token');
+
+    if (queryToken) {
+      return queryToken;
+    }
+
+    const firstPathSegment = window.location.pathname.split('/').filter(Boolean)[0];
+
+    return firstPathSegment ? decodeURIComponent(firstPathSegment) : null;
   }
 }

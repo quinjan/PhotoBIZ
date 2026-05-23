@@ -6,8 +6,7 @@
 .stage {
   align-content: center;
   background:
-    linear-gradient(rgba(248, 250, 252, 0.82), rgba(248, 250, 252, 0.9)),
-    var(--stage-image),
+    linear-gradient(rgba(248, 250, 252, 0.82), rgba(248, 250, 252, 0.9)), var(--stage-image),
     linear-gradient(135deg, #f8fafc 0%, #eaf0f7 100%);
   background-position: center;
   background-size: cover;
@@ -127,6 +126,13 @@ header small,
 .offer-panel p {
   font-size: 22px;
   font-weight: 900;
+}
+
+.offer-panel-spacer {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  min-height: 88px;
 }
 
 .status-panel {

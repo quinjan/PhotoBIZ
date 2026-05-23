@@ -86,6 +86,17 @@ public sealed class PhotoBizModelTests
     }
 
     [Fact]
+    public void TransactionCancellationContextUsesConstrainedNullableColumns()
+    {
+        using var dbContext = CreateDbContext();
+
+        AssertMaxLength<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.CancelledByActorType), 40);
+        AssertMaxLength<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.CancellationSource), 80);
+        AssertMaxLength<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.CancellationPreviousStatus), 60);
+        AssertHasIndex<PhotoBizTransaction>(dbContext.Model, nameof(PhotoBizTransaction.CancelledByUserId));
+    }
+
+    [Fact]
     public void UserMustChangePasswordDefaultsToFalse()
     {
         using var dbContext = CreateDbContext();
@@ -150,5 +161,16 @@ public sealed class PhotoBizModelTests
 
         Assert.NotNull(property);
         Assert.Equal(expectedColumnType, property.GetColumnType());
+    }
+
+    private static void AssertMaxLength<TEntity>(IModel model, string propertyName, int expectedMaxLength)
+    {
+        var entityType = model.FindEntityType(typeof(TEntity));
+        Assert.NotNull(entityType);
+
+        var property = entityType.FindProperty(propertyName);
+
+        Assert.NotNull(property);
+        Assert.Equal(expectedMaxLength, property.GetMaxLength());
     }
 }

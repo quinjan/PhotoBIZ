@@ -1,105 +1,318 @@
 <main
   class="stage vintage-stage"
-  [class.state-offline]="screen() === 'offline'"
-  [class.state-waiting]="screen() === 'waiting'"
-  [class.state-error]="screen() === 'error' || screen() === 'payment-failed' || screen() === 'cancelled'"
+  [ngClass]="stateClass()"
   [style.--stage-image]="backgroundImage()"
 >
   <ng-content select="[booth-stage-token-controls]"></ng-content>
 
-  <section class="stage-canvas">
-    <header class="stage-top">
-      <div class="brand">
-        @if (config()?.client?.logoUrl; as logoUrl) {
-          <img [src]="logoUrl" alt="" />
-        } @else {
-          <span>{{ initials() }}</span>
-        }
-        <strong>{{ config()?.client?.displayName ?? 'PhotoBIZ' }}</strong>
+  <section class="screen">
+    <header class="topbar" [class.has-back]="screen() === 'payment' || screen() === 'waiting'">
+      @if (screen() === 'payment' || screen() === 'waiting') {
+        <button
+          type="button"
+          class="back-button"
+          (click)="openBackConfirm()"
+          [disabled]="loading()"
+        >
+          Back
+        </button>
+      }
+
+      <div class="booth-name">
+        <div>
+          <strong>{{ clientName() }}</strong>
+          <span>{{ boothLocationLine() }}</span>
+        </div>
       </div>
-      <p>{{ config()?.booth?.state ?? 'OFFLINE' }} · {{ eyebrow() }}</p>
+
+      <div class="state-chip">{{ friendlyBoothState() }}</div>
     </header>
 
-    <div class="copy">
-      <p class="label">SELF PHOTO BOOTH</p>
-      <h1>{{ title() }}</h1>
-      <p>{{ message() }}</p>
-    </div>
-
-    <footer class="stage-bottom">
-      @switch (screen()) {
-        @case ('connect') {
-          <button type="button" class="primary-action" (click)="action.emit('connect')" [disabled]="loading()">
-            Connect Booth
-          </button>
-        }
-        @case ('offer') {
-          <button type="button" class="primary-action" (click)="action.emit('confirm-offer')" [disabled]="loading()">
-            Touch To Start
-          </button>
-        }
-        @case ('payment') {
-          @if (cashOption(); as option) {
-            <button type="button" class="primary-action" (click)="action.emit('cash')" [disabled]="loading()">
-              {{ option.label }}
-            </button>
-          }
-        }
-        @case ('offline') {
-          <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
-            Retry
-          </button>
-        }
-        @case ('expired') {
-          <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
-            Refresh
-          </button>
-        }
-        @case ('cancelled') {
-          <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
-            Back To Welcome
-          </button>
-        }
-        @case ('payment-failed') {
-          <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
-            Try Again
-          </button>
-        }
-        @case ('completed') {
-          <div class="status-panel">
-            <strong>{{ title() }}</strong>
-            <span>{{ message() }}</span>
-          </div>
-          <button type="button" class="primary-action" (click)="action.emit('return-welcome')" [disabled]="loading()">
-            @if (config()?.activeOffer?.type === 'PER_SESSION') {
-              No Extra Prints
-            } @else {
-              Back To Welcome
+    <section class="stage-canvas">
+      @if (screen() === 'payment') {
+        <article class="film-card payment-choice-card">
+          <div class="film-edge left" aria-hidden="true">
+            @for (hole of [1, 2, 3, 4, 5, 6, 7]; track hole) {
+              <span class="film-hole"></span>
             }
-          </button>
-        }
-        @case ('error') {
-          <button type="button" class="primary-action" (click)="action.emit('refresh')" [disabled]="loading()">
-            Check Status
-          </button>
-        }
-        @default {
-          <div class="status-panel">
-            <strong>{{ title() }}</strong>
-            <span>{{ message() }}</span>
           </div>
-        }
-      }
 
-      @if (config()?.activeOffer; as offer) {
-        <aside class="offer-note">
-          {{ offer.includedPrintEntitlement }} · {{ formatMoney(offer.priceCents) }}
-          @if (offer.allowsExtraPrintAddOn && offer.extraPrintPriceCents !== null) {
-            · Extra prints {{ formatMoney(offer.extraPrintPriceCents) }} each
-          }
-        </aside>
+          <div class="film-body">
+            @if (autoReturnSeconds(); as seconds) {
+              <div class="auto-return-badge" aria-label="Auto return countdown">
+                <span>Auto Return</span>
+                <strong>{{ seconds }}s</strong>
+              </div>
+            }
+            <header class="payment-options-head">
+              <h1>{{ title() }}</h1>
+              @if (config()?.activeOffer; as offer) {
+                <div class="payment-due">
+                  <span>Amount Due</span>
+                  <strong>{{ formatMoney(offer.priceCents) }}</strong>
+                </div>
+              }
+            </header>
+
+            <div class="payment-choice-grid">
+              @if (cashOption(); as option) {
+                <button
+                  type="button"
+                  class="payment-choice"
+                  (click)="openPaymentConfirm()"
+                  [disabled]="loading()"
+                >
+                  <h3>{{ option.label }}</h3>
+                </button>
+              }
+            </div>
+          </div>
+
+          <div class="film-edge right" aria-hidden="true">
+            @for (hole of [1, 2, 3, 4, 5, 6, 7]; track hole) {
+              <span class="film-hole"></span>
+            }
+          </div>
+        </article>
+      } @else if (isTicketScreen()) {
+        <div class="payment-stage">
+          <article class="ticket">
+            <div class="ticket-topline">
+              <p class="label">
+                @switch (screen()) {
+                  @case ('waiting') {
+                    Cashier Approval
+                  }
+                  @case ('expired') {
+                    Expired
+                  }
+                  @case ('cancelled') {
+                    Cancelled
+                  }
+                  @case ('payment-failed') {
+                    Payment Failed
+                  }
+                }
+              </p>
+              @if (autoReturnSeconds(); as seconds) {
+                <div class="auto-return-badge" aria-label="Auto return countdown">
+                  <span>Auto Return</span>
+                  <strong>{{ seconds }}s</strong>
+                </div>
+              }
+            </div>
+
+            @if (screen() !== 'waiting') {
+              <h1>{{ title() }}</h1>
+            }
+            <p>{{ message() }}</p>
+
+            @if (screen() === 'waiting') {
+              <div class="timeout-panel">
+                <div class="timeout-meta">
+                  <span>Time Left</span>
+                  <strong>{{ countdown() || '0:00' }}</strong>
+                </div>
+                <div class="progress-track" aria-hidden="true">
+                  <div
+                    class="progress-fill timeout-fill"
+                    [style.--progress]="timeoutProgress()"
+                  ></div>
+                </div>
+              </div>
+            } @else {
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill" [style.--progress]="progress()"></div>
+              </div>
+              <button
+                type="button"
+                class="primary-action"
+                (click)="action.emit('acknowledge-recent')"
+                [disabled]="loading()"
+              >
+                Back To Start
+              </button>
+            }
+          </article>
+        </div>
+      } @else {
+        <article class="film-card">
+          <div class="film-edge left" aria-hidden="true">
+            @for (hole of [1, 2, 3, 4, 5, 6, 7]; track hole) {
+              <span class="film-hole"></span>
+            }
+          </div>
+
+          <div class="film-body">
+            @if (autoReturnSeconds(); as seconds) {
+              <div class="auto-return-badge" aria-label="Auto return countdown">
+                <span>Auto Return</span>
+                <strong>{{ seconds }}s</strong>
+              </div>
+            }
+
+            <p class="label">{{ screen() === 'completed' ? '' : eyebrow() }}</p>
+            <div class="film-copy">
+              <h1>{{ title() }}</h1>
+              @if (screen() !== 'approved' && screen() !== 'completed') {
+                <p>{{ message() }}</p>
+              }
+              @if (screen() === 'completed' && config()?.activeOffer?.type === 'PER_SESSION') {
+                <p class="extra-print-note">Need extra prints? Please go to the cashier.</p>
+              }
+              @if (screen() === 'offer' && config()?.activeOffer; as offer) {
+                <div class="offer-line" [class.offer-line-spacer]="!showOfferDetails()">
+                  @if (showOfferDetails()) {
+                    <div>
+                      <strong>{{ offer.name }}</strong>
+                      <span>{{ offer.includedPrintEntitlement }}</span>
+                    </div>
+                    <div class="price-pill">{{ formatMoney(offer.priceCents) }}</div>
+                  }
+                </div>
+              } @else {
+                <div class="progress-track" aria-hidden="true">
+                  <div class="progress-fill" [style.--progress]="progress()"></div>
+                </div>
+              }
+            </div>
+
+            @switch (screen()) {
+              @case ('connect') {
+                <button
+                  type="button"
+                  class="primary-action"
+                  (click)="action.emit('connect')"
+                  [disabled]="loading()"
+                >
+                  Connect Booth
+                </button>
+              }
+              @case ('offer') {
+                <button
+                  type="button"
+                  class="primary-action"
+                  (click)="action.emit('confirm-offer')"
+                  [disabled]="loading()"
+                >
+                  Touch To Start
+                </button>
+              }
+              @case ('offline') {
+                <button
+                  type="button"
+                  class="primary-action"
+                  (click)="action.emit('refresh')"
+                  [disabled]="loading()"
+                >
+                  Retry
+                </button>
+              }
+              @case ('completed') {
+                <button
+                  type="button"
+                  class="primary-action"
+                  (click)="action.emit('return-welcome')"
+                  [disabled]="loading()"
+                >
+                  Back To Start
+                </button>
+              }
+              @case ('error') {
+                <button
+                  type="button"
+                  class="primary-action"
+                  (click)="action.emit('refresh')"
+                  [disabled]="loading()"
+                >
+                  Check Status
+                </button>
+              }
+            }
+          </div>
+
+          <div class="film-edge right" aria-hidden="true">
+            @for (hole of [1, 2, 3, 4, 5, 6, 7]; track hole) {
+              <span class="film-hole"></span>
+            }
+          </div>
+        </article>
       }
+    </section>
+
+    <footer class="bottombar">
+      <div class="hint">
+        {{ footerLeft() }}
+      </div>
+      <div></div>
+      <div class="hint right">
+        {{ footerRight() }}
+      </div>
     </footer>
+
+    @if (backConfirmOpen()) {
+      <div
+        class="back-modal is-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="backModalTitle"
+      >
+        <article class="back-modal-card">
+          <p class="label">Confirm</p>
+          <h2 id="backModalTitle">Go Back?</h2>
+          <p>Cancel this payment request and return to the start screen?</p>
+          <div class="back-modal-actions">
+            <button
+              type="button"
+              class="back-modal-action is-secondary"
+              (click)="closeBackConfirm()"
+            >
+              Stay
+            </button>
+            <button
+              type="button"
+              class="back-modal-action"
+              (click)="confirmBack()"
+              [disabled]="loading()"
+            >
+              Go Back
+            </button>
+          </div>
+        </article>
+      </div>
+    }
+
+    @if (paymentConfirmOpen()) {
+      <div
+        class="back-modal is-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="paymentModalTitle"
+      >
+        <article class="back-modal-card">
+          <p class="label">Confirm Payment</p>
+          <h2 id="paymentModalTitle">Use Payment?</h2>
+          <p>Continue with {{ cashOption()?.label ?? 'this payment option' }}?</p>
+          <div class="back-modal-actions">
+            <button
+              type="button"
+              class="back-modal-action is-secondary"
+              (click)="closePaymentConfirm()"
+            >
+              Change
+            </button>
+            <button
+              type="button"
+              class="back-modal-action"
+              (click)="confirmPayment()"
+              [disabled]="loading()"
+            >
+              Confirm
+            </button>
+          </div>
+        </article>
+      </div>
+    }
   </section>
 
   <ng-content select="[booth-stage-error]"></ng-content>

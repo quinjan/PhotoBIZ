@@ -1442,6 +1442,15 @@ export class BoothsPageComponent extends AdminRoutePage {
                     ></textarea>
                   </mat-form-field>
                   <mat-form-field appearance="outline">
+                    <mat-label>Completion thank-you message</mat-label>
+                    <textarea
+                      matInput
+                      rows="2"
+                      [ngModel]="w.boothAppearanceCompletionMessage()"
+                      (ngModelChange)="w.boothAppearanceCompletionMessage.set($event)"
+                    ></textarea>
+                  </mat-form-field>
+                  <mat-form-field appearance="outline">
                     <mat-label>Theme</mat-label>
                     <mat-select
                       [ngModel]="w.boothAppearanceThemePreset()"
@@ -1458,18 +1467,27 @@ export class BoothsPageComponent extends AdminRoutePage {
                     (change)="w.setBoothBackgroundImageFromFile($event)"
                   />
                 </mat-card-content>
-                <mat-card-actions align="end">
-                  <button mat-button type="button" (click)="w.clearBoothBackgroundImage()">
-                    Clear Image
-                  </button>
+                <mat-card-actions class="session-setup-actions">
                   <button
-                    mat-flat-button
-                    color="primary"
+                    mat-stroked-button
                     type="button"
-                    (click)="w.saveBoothSession()"
+                    (click)="w.resetBoothSessionToThemeDefaults()"
                   >
-                    Save
+                    Reset to theme defaults
                   </button>
+                  <div class="session-primary-actions">
+                    <button mat-button type="button" (click)="w.clearBoothBackgroundImage()">
+                      Clear Image
+                    </button>
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      type="button"
+                      (click)="w.saveBoothSession()"
+                    >
+                      Save
+                    </button>
+                  </div>
                 </mat-card-actions>
               </mat-card>
 
@@ -1830,6 +1848,17 @@ export class TransactionsPageComponent extends AdminRoutePage {
     {
       headerName: 'Booth',
       valueGetter: (params) => this.w.boothNameFor(params.data?.boothId ?? null),
+    },
+    {
+      headerName: 'Cancelled By',
+      minWidth: 210,
+      valueGetter: (params) => (params.data ? this.w.cancellationDetailFor(params.data) : ''),
+    },
+    {
+      field: 'cancelledAt',
+      headerName: 'Cancelled',
+      valueFormatter: (params) => (params.value ? this.w.formatDate(params.value) : ''),
+      minWidth: 170,
     },
     {
       field: 'createdAt',
@@ -2318,6 +2347,12 @@ export class AccountPageComponent extends AdminRoutePage {
 export class AuditPageComponent extends AdminRoutePage {
   readonly columns: ColDef<AuditLogSummary>[] = [
     { field: 'action', headerName: 'Action', minWidth: 220 },
+    {
+      headerName: 'Details',
+      flex: 2,
+      minWidth: 320,
+      valueGetter: (params) => (params.data ? this.w.auditDetailFor(params.data) : ''),
+    },
     { field: 'entityType', headerName: 'Entity' },
     { field: 'entityId', headerName: 'Entity ID' },
     {

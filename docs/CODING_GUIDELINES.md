@@ -147,6 +147,23 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Ensure all buttons, cards, form controls, and kiosk touch targets remain usable on target booth and desktop viewports.
 - Do not use arbitrary tenant CSS, scripts, HTML templates, or layout definitions.
 
+## Booth UI Themes
+
+Booth UI themes are PhotoBIZ-owned presets, not tenant-authored skins. They may feel visually and verbally distinct, but they must preserve one shared kiosk workflow.
+
+- MVP tenant customization is limited to the selected theme preset, session label, welcome headline, welcome subtitle, completion thank-you message, active package, booth payment assignment, client display name/logo, and an optional constrained background image.
+- Tenants must not customize arbitrary CSS, JavaScript, HTML, layout definitions, remote image URLs, primary/accent colors, typography, button styles, timers, state transitions, action IDs, or action semantics.
+- Theme presets must be backed by a PhotoBIZ-owned theme registry concept covering preset IDs, Admin Web labels, fixed colors, font mode, default reset copy, voice-pack copy, action-label policy, and legacy alias normalization.
+- Backend validation and responses remain authoritative for persisted theme config. `BoothStageConfig.theme` must stay constrained to preset-derived values plus optional validated background image data.
+- Admin Web preview and Booth UI kiosk rendering must use the same shared Booth UI stage component and effective config shape. Preview-only controls may wrap the stage, but the stage visuals, state treatment, offer rendering, and actions must match kiosk behavior.
+- Every preset must support the same `BoothStageConfig`, screen states, action IDs, backend-driven timers, active transaction behavior, recent transaction acknowledgement, offline/unavailable/error states, and return-to-welcome flow.
+- Presets may express personality through layout, spacing, typography, motion, overlays, button styling, background treatment, and PhotoBIZ-owned voice-pack titles or messages. For example, a Fairy Tale preset may render the starting-session title as `Going inside Wonderland` while still mapping to the shared starting-session state.
+- Voice-pack copy must not change workflow meaning, hide required status, imply payment/session authority the frontend does not have, or conflict with backend state. Tenant-provided copy remains limited to the approved session fields.
+- Critical action labels should stay plain and shared, including `Back To Start`, `Retry`, `Cash`, payment/cancellation confirmation labels, and recovery labels. Only low-risk start CTA wording may vary by PhotoBIZ-owned preset.
+- Every preset must render uploaded background images from the same constrained input with preset-owned overlays, cropping, and contrast treatment that preserve readability on target booth and desktop preview viewports.
+- Adding or changing a preset must update backend preset validation/normalization, Admin Web preset selection and preview defaults, shared stage routing, the theme registry/voice pack, and focused tests in the same change.
+- Theme changes should verify all customer-facing states where practical: welcome, payment, cash waiting, approved/starting, session, completed, expired, cancelled, payment failed, offline, unavailable, and error.
+
 ## Realtime, Jobs, And Agent Rules
 
 - Use SignalR for booth state, cashier notifications, dashboards, and agent command updates that must arrive quickly.
