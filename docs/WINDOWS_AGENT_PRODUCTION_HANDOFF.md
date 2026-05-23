@@ -21,7 +21,7 @@ The Agent must be easy for a PhotoBIZ technician to install, pair, start, monito
 
 Status: foundation started, production Agent not complete.
 
-Overall distance to desired production state: about 25% complete. The documentation and backend lifecycle contract are mostly in place. The remaining majority is the local Windows app: runtime service extraction, WPF GUI, encrypted configuration, kiosk process ownership, diagnostics, installer, signing, and hardware QA.
+Overall distance to desired production state: about 35% complete. The documentation, backend lifecycle contract, and core start/stop runtime service are now in place. The remaining majority is the local Windows app: WPF GUI, encrypted configuration, staff/technician screens, diagnostics, installer, signing, and hardware QA.
 
 Completed:
 
@@ -35,7 +35,13 @@ Completed:
 - Admin overview DTOs expose the latest Agent status summary for future Admin Web display.
 - EF migration `20260523220631_AddAgentRuntimeMetadata` adds the Agent metadata fields to `booths`.
 - The current Agent dev host sends the new heartbeat payload and calls the offline endpoint on shutdown.
+- Agent runtime orchestration has been extracted into `AgentBoothRuntime` with explicit `StartAsync` and `StopAsync` methods for the future WPF app.
+- The current worker is now a thin dev host over `AgentBoothRuntime`.
+- LumaBooth trigger listening is no longer an always-on hosted service; the runtime starts and stops it with the booth lifecycle.
+- Kiosk Chrome launch now tracks the PhotoBIZ-launched process and can close only that owned process on stop/relaunch.
+- The current Agent project no longer registers Windows Service hosting or references `Microsoft.Extensions.Hosting.WindowsServices`.
 - Focused backend tests cover pair/launch-not-online, heartbeat metadata, immediate offline behavior, and preserving active transactions during graceful offline.
+- Focused Agent tests cover kiosk launch before heartbeat, graceful stop calling offline and closing the owned kiosk process, and failed kiosk launch preventing heartbeat.
 - Current validation passed:
   - `dotnet test services/api/tests/PhotoBIZ.Api.Tests/PhotoBIZ.Api.Tests.csproj --no-restore`
   - `dotnet test agent/windows-agent/tests/PhotoBIZ.WindowsAgent.Tests/PhotoBIZ.WindowsAgent.Tests.csproj --no-restore`
@@ -46,9 +52,8 @@ Completed:
 Not complete yet:
 
 - No WPF Agent Control Center project exists yet.
-- Existing `PhotoBIZ.WindowsAgent` is still a worker/dev-host style project and still references Windows Service hosting.
-- Runtime behavior has not yet been extracted into start/stop services that the WPF app can own.
-- Kiosk Chrome launch does not yet store and close only the PhotoBIZ-launched process.
+- Existing `PhotoBIZ.WindowsAgent` is still a worker/dev-host style project, although its core lifecycle now lives behind reusable runtime services.
+- Kiosk process ownership is implemented in-process only; it does not yet persist launched process identity across app restarts.
 - Pairing/config is not yet stored under `C:\ProgramData\PhotoBIZ\Agent`.
 - Agent credential and LumaBooth API password are not yet encrypted locally with DPAPI.
 - Staff mode and technician/admin mode screens are not implemented.
@@ -60,16 +65,15 @@ Not complete yet:
 
 Recommended next implementation slices:
 
-1. Extract the current worker behavior into reusable runtime services with explicit `StartBoothAsync` and `StopBoothAsync` orchestration.
-2. Add kiosk process ownership: launch Chrome, record process identity, relaunch, and close only the PhotoBIZ-launched instance.
-3. Add local config and secret storage under `C:\ProgramData\PhotoBIZ\Agent`, with DPAPI for Agent credential and LumaBooth API password.
-4. Add the WPF Agent Control Center project and wire Dashboard plus Start/Stop Booth against the runtime services.
-5. Add Pair/Re-pair screens and handle unauthorized API responses as a re-pair-required state.
-6. Add Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
-7. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
-8. Render Agent status in Admin Web using the new overview DTO fields.
-9. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
-10. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
+1. Add local config and secret storage under `C:\ProgramData\PhotoBIZ\Agent`, with DPAPI for Agent credential and LumaBooth API password.
+2. Add Pair/Re-pair application services that validate credentials, save encrypted secrets, clear old local kiosk/session state, and handle unauthorized API responses as a re-pair-required state.
+3. Add the WPF Agent Control Center project and wire Dashboard plus Start/Stop Booth against `AgentBoothRuntime`.
+4. Add Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
+5. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
+6. Render Agent status in Admin Web using the new overview DTO fields.
+7. Improve kiosk process ownership for crash/restart scenarios if needed, such as storing launched process identity in local runtime state.
+8. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
+9. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
 
 ## Decisions Already Made
 
@@ -172,12 +176,12 @@ Keep tenant isolation and backend authority intact. Agent endpoints remain privi
 Current Agent project:
 
 - `agent/windows-agent/src/PhotoBIZ.WindowsAgent`
-- Current shape is a worker/service-capable project using `Microsoft.Extensions.Hosting.WindowsServices`.
-- Current worker logic already supports pairing, heartbeat, command polling, kiosk launch, simulator/API mode, trigger listener, active session store, print copies, and focus handoff.
+- Current shape is a worker/dev-host project over reusable runtime services. It no longer registers Windows Service hosting.
+- Current runtime logic supports pairing, heartbeat, command polling, kiosk launch/owned-process close, simulator/API mode, trigger listener start/stop, active session store, print copies, and focus handoff.
 
-Refactor instead of rewriting:
+Continue refactoring instead of rewriting:
 
-- Extract existing `Worker` behavior into reusable runtime services that can be started/stopped by the WPF app.
+- Keep `AgentBoothRuntime` as the lifecycle boundary the WPF app calls for Start/Stop Booth.
 - Keep core logic testable without UI:
   - pairing client
   - heartbeat loop

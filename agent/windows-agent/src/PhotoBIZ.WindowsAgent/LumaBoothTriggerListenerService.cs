@@ -4,10 +4,17 @@ using Microsoft.Extensions.Options;
 
 namespace PhotoBIZ.WindowsAgent;
 
+public interface ILumaBoothTriggerListener
+{
+    bool IsRunning { get; }
+    Task StartAsync(CancellationToken cancellationToken);
+    Task StopAsync(CancellationToken cancellationToken);
+}
+
 public sealed class LumaBoothTriggerListenerService(
     LumaBoothTriggerHandler triggerHandler,
     IOptions<PhotoBizAgentOptions> options,
-    ILogger<LumaBoothTriggerListenerService> logger) : BackgroundService
+    ILogger<LumaBoothTriggerListenerService> logger) : ILumaBoothTriggerListener, IDisposable
 {
     private static readonly Action<ILogger, string, Exception?> LogInvalidUrl =
         LoggerMessage.Define<string>(
@@ -19,8 +26,19 @@ public sealed class LumaBoothTriggerListenerService(
             LogLevel.Information,
             new EventId(2101, nameof(LogListenerStarted)),
             "LumaBooth trigger listener started at {TriggerListenerUrl}.");
+    private static readonly Action<ILogger, string, Exception?> LogListenerStopped =
+        LoggerMessage.Define<string>(
+            LogLevel.Information,
+            new EventId(2102, nameof(LogListenerStopped)),
+            "LumaBooth trigger listener stopped at {TriggerListenerUrl}.");
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private readonly SemaphoreSlim stateLock = new(1, 1);
+    private CancellationTokenSource? listenerCancellation;
+    private Task? listenerTask;
+
+    public bool IsRunning => listenerTask is not null && !listenerTask.IsCompleted;
+
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         var settings = options.Value;
         if (!IsApiMode(settings))
@@ -34,12 +52,68 @@ public sealed class LumaBoothTriggerListenerService(
             return;
         }
 
+        await stateLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (IsRunning)
+            {
+                return;
+            }
+
+            listenerCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            listenerTask = Task.Run(
+                () => RunListenerAsync(listenerUri, listenerCancellation.Token),
+                CancellationToken.None);
+        }
+        finally
+        {
+            stateLock.Release();
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await stateLock.WaitAsync(cancellationToken);
+        try
+        {
+            var task = listenerTask;
+            var cancellation = listenerCancellation;
+
+            listenerTask = null;
+            listenerCancellation = null;
+
+            if (cancellation is not null)
+            {
+                await cancellation.CancelAsync();
+            }
+
+            if (task is not null)
+            {
+                try
+                {
+                    await task.WaitAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+
+            cancellation?.Dispose();
+        }
+        finally
+        {
+            stateLock.Release();
+        }
+    }
+
+    private async Task RunListenerAsync(Uri listenerUri, CancellationToken stoppingToken)
+    {
         var listenerAddress = IPAddress.TryParse(listenerUri.Host, out var parsedAddress)
             ? parsedAddress
             : IPAddress.Loopback;
         var listener = new TcpListener(listenerAddress, listenerUri.Port);
         listener.Start();
-        LogListenerStarted(logger, settings.LumaBooth.TriggerListenerUrl, null);
+        LogListenerStarted(logger, listenerUri.ToString(), null);
 
         try
         {
@@ -55,6 +129,7 @@ public sealed class LumaBoothTriggerListenerService(
         finally
         {
             listener.Stop();
+            LogListenerStopped(logger, listenerUri.ToString(), null);
         }
     }
 
@@ -125,5 +200,11 @@ public sealed class LumaBoothTriggerListenerService(
     private static bool IsApiMode(PhotoBizAgentOptions settings)
     {
         return string.Equals(settings.LumaBooth.Mode, LumaBoothIntegrationMode.Api, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose()
+    {
+        listenerCancellation?.Dispose();
+        stateLock.Dispose();
     }
 }

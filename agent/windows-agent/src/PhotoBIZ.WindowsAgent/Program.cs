@@ -15,17 +15,10 @@ builder.Services.AddTransient<ILumaBoothClient>(services =>
 builder.Services.AddSingleton<IActiveLumaBoothSessionStore, FileActiveLumaBoothSessionStore>();
 builder.Services.AddSingleton<IWindowFocusService, WindowFocusService>();
 builder.Services.AddSingleton<IBoothUiLauncher, ChromeBoothUiLauncher>();
+builder.Services.AddSingleton<ILumaBoothTriggerListener, LumaBoothTriggerListenerService>();
 builder.Services.AddSingleton<LumaBoothTriggerHandler>();
+builder.Services.AddSingleton<IAgentBoothRuntime, AgentBoothRuntime>();
 builder.Services.AddHostedService<Worker>();
-builder.Services.AddHostedService<LumaBoothTriggerListenerService>();
-
-if (OperatingSystem.IsWindows())
-{
-    builder.Services.AddWindowsService(options =>
-    {
-        options.ServiceName = "PhotoBIZ Windows Booth Agent";
-    });
-}
 
 var host = builder.Build();
 host.Run();

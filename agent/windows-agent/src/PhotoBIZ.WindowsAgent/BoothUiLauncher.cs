@@ -5,8 +5,12 @@ namespace PhotoBIZ.WindowsAgent;
 
 public interface IBoothUiLauncher
 {
-    Task LaunchAsync(AgentBoothUiLaunchPayload launch, CancellationToken cancellationToken);
+    bool IsLaunchedProcessRunning { get; }
+    Task<BoothUiLaunchResult> LaunchAsync(AgentBoothUiLaunchPayload launch, CancellationToken cancellationToken);
+    Task CloseLaunchedAsync(CancellationToken cancellationToken);
 }
+
+public sealed record BoothUiLaunchResult(int ProcessId, string Url);
 
 public sealed class ChromeBoothUiLauncher(
     IOptions<PhotoBizAgentOptions> options,
@@ -17,12 +21,41 @@ public sealed class ChromeBoothUiLauncher(
             LogLevel.Information,
             new EventId(3000, nameof(LogBoothUiLaunched)),
             "Launched Booth UI browser for booth {BoothCode}.");
+    private static readonly Action<ILogger, int, Exception?> LogBoothUiClosed =
+        LoggerMessage.Define<int>(
+            LogLevel.Information,
+            new EventId(3001, nameof(LogBoothUiClosed)),
+            "Closed PhotoBIZ-launched Booth UI browser process {ProcessId}.");
 
     private readonly DisplayOptions displayOptions = options.Value.Display;
+    private Process? launchedProcess;
 
-    public Task LaunchAsync(AgentBoothUiLaunchPayload launch, CancellationToken cancellationToken)
+    public bool IsLaunchedProcessRunning
+    {
+        get
+        {
+            if (launchedProcess is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                launchedProcess.Refresh();
+                return !launchedProcess.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+    }
+
+    public async Task<BoothUiLaunchResult> LaunchAsync(AgentBoothUiLaunchPayload launch, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        await CloseLaunchedAsync(cancellationToken);
 
         var url = BuildBoothUiUrl(displayOptions.BoothUiBaseUrl, launch.KioskToken);
         var chromePath = ResolveChromePath(displayOptions.ChromeExecutablePath);
@@ -32,15 +65,55 @@ public sealed class ChromeBoothUiLauncher(
             Directory.CreateDirectory(userDataDir);
         }
 
-        Process.Start(new ProcessStartInfo
+        launchedProcess = Process.Start(new ProcessStartInfo
         {
             FileName = chromePath,
             Arguments = BuildChromeArguments(url, displayOptions.KioskMode, userDataDir),
             UseShellExecute = false
-        });
+        }) ?? throw new InvalidOperationException("Chrome process did not start.");
 
         LogBoothUiLaunched(logger, launch.BoothCode, null);
-        return Task.CompletedTask;
+        return new BoothUiLaunchResult(launchedProcess.Id, url);
+    }
+
+    public async Task CloseLaunchedAsync(CancellationToken cancellationToken)
+    {
+        var process = launchedProcess;
+        launchedProcess = null;
+
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            process.Refresh();
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            _ = process.CloseMainWindow();
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync(cancellationToken);
+            }
+
+            LogBoothUiClosed(logger, process.Id, null);
+        }
+        finally
+        {
+            process.Dispose();
+        }
     }
 
     public static string BuildBoothUiUrl(string boothUiBaseUrl, string kioskToken)
