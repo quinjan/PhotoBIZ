@@ -284,7 +284,7 @@ Client-level customization:
 
 Booth-level customization:
 
-- PhotoBIZ-managed theme preset: `VINTAGE`, `CLEAN_MODERN`, or `POP`.
+- PhotoBIZ-managed theme preset: `VINTAGE` or `POP` for current Admin choices. `CLEAN_MODERN` is treated only as a legacy-tolerated saved value.
 - Active booth offer.
 - Booth-specific session label, welcome headline, welcome subtitle, and completion thank-you message overrides.
 - Optional background image upload, stored as a constrained PNG/JPEG/WebP data URL and rendered by the selected theme.

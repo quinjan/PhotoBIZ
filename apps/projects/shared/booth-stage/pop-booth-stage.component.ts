@@ -50,7 +50,9 @@ export class PopBoothStageComponent {
   protected readonly backgroundImage = computed(() => stageBackgroundImage(this.config()));
   protected readonly activeTransaction = computed(() => this.config()?.activeTransaction ?? null);
   protected readonly showOfferDetails = computed(() => shouldShowStageOfferDetails(this.config()));
-  protected readonly clientName = computed(() => this.config()?.client?.displayName || 'Pixel Pop Studio');
+  protected readonly clientName = computed(
+    () => this.config()?.client?.displayName || 'Pixel Pop Studio',
+  );
   protected readonly boothLocationLine = computed(() => {
     const booth = this.config()?.booth;
     const location = booth?.locationName?.trim();
@@ -90,14 +92,16 @@ export class PopBoothStageComponent {
   protected readonly isTicketScreen = computed(() =>
     ['waiting', 'expired', 'cancelled', 'payment-failed'].includes(this.screen()),
   );
-  protected readonly isFrameScreen = computed(() => ['approved', 'session'].includes(this.screen()));
-  protected readonly shouldShowBackButton = computed(() =>
-    this.screen() === 'payment' || this.screen() === 'waiting',
+  protected readonly isFrameScreen = computed(() =>
+    ['approved', 'session'].includes(this.screen()),
+  );
+  protected readonly shouldShowBackButton = computed(
+    () => this.screen() === 'payment' || this.screen() === 'waiting',
   );
   protected readonly ticketEyebrow = computed(() => {
     switch (this.screen()) {
       case 'waiting':
-        return 'Cashier Approval';
+        return '';
       case 'expired':
         return 'Expired';
       case 'cancelled':
@@ -240,7 +244,7 @@ export class PopBoothStageComponent {
       case 'waiting':
         return this.transactionNumber();
       case 'completed':
-        return 'Auto return';
+        return '';
       case 'expired':
       case 'cancelled':
       case 'payment-failed':
@@ -264,7 +268,7 @@ export class PopBoothStageComponent {
       case 'offer':
         return offer?.allowsExtraPrintAddOn ? 'Extra prints after session' : '';
       case 'payment':
-        return 'Auto returns if idle';
+        return '';
       case 'waiting':
         return 'Cashier POS approval';
       case 'error':
@@ -348,7 +352,7 @@ export class PopBoothStageComponent {
   private popMessage(): string {
     switch (this.screen()) {
       case 'approved':
-        return 'Payment confirmed. Follow the booth screen.';
+        return 'Follow the booth screen.';
       case 'session':
         return 'Follow LumaBooth.';
       case 'completed':

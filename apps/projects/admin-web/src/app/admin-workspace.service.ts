@@ -325,12 +325,6 @@ export class AdminWorkspace {
       welcomeSubtitle: 'Tap start when you are ready.',
       completionThankYouMessage: 'Thanks for sharing your smile.',
     },
-    CLEAN_MODERN: {
-      sessionLabel: 'Self Photo Booth',
-      welcomeHeadline: 'Ready when you are.',
-      welcomeSubtitle: 'Review the active package, pay, then begin your session.',
-      completionThankYouMessage: 'Thanks for sharing your smile.',
-    },
     POP: {
       sessionLabel: 'Self Photo Booth',
       welcomeHeadline: 'Ready To Pop?',
@@ -498,7 +492,6 @@ export class AdminWorkspace {
     readonly label: string;
   }[] = [
     { value: 'VINTAGE', label: 'Vintage' },
-    { value: 'CLEAN_MODERN', label: 'Clean Modern' },
     { value: 'POP', label: 'Pop' },
   ];
   private readonly defaultBoothPreviewScreen: BoothPreviewScreen = {
@@ -2597,7 +2590,7 @@ export class AdminWorkspace {
       case 'CLEAN_MODERN':
       case 'MODERN_CLEAN':
       case 'CLASSIC_LIGHT':
-        return 'CLEAN_MODERN';
+        return 'VINTAGE';
       default:
         return 'VINTAGE';
     }
@@ -2610,8 +2603,6 @@ export class AdminWorkspace {
     switch (this.normalizeBoothThemePreset(value)) {
       case 'POP':
         return { primaryColor: '#0bbbe6', accentColor: '#ff0090' };
-      case 'CLEAN_MODERN':
-        return { primaryColor: '#111827', accentColor: '#2563eb' };
       default:
         return { primaryColor: '#4f2d1d', accentColor: '#f5d27e' };
     }

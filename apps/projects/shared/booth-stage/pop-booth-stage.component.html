@@ -1,0 +1,288 @@
+<main
+  class="stage pop-stage"
+  [ngClass]="[stateClass(), toneClass()]"
+  [style.--stage-image]="backgroundImage()"
+>
+  <section class="screen">
+    <div class="flash-layer" aria-hidden="true"></div>
+    <div class="burst-stack" aria-hidden="true">
+      <div class="burst one"></div>
+      <div class="burst two"></div>
+      <div class="burst three"></div>
+    </div>
+
+    <header class="topbar" [class.has-back]="shouldShowBackButton()">
+      @if (shouldShowBackButton()) {
+        <button
+          type="button"
+          class="back-button"
+          (click)="openBackConfirm()"
+          [disabled]="loading()"
+        >
+          Back
+        </button>
+      }
+
+      <div class="booth-name">
+        <strong>{{ clientName() }}</strong>
+        <span>{{ boothLocationLine() }}</span>
+      </div>
+
+      <div class="state-chip">{{ friendlyBoothState() }}</div>
+    </header>
+
+    <section class="stage-canvas">
+      @if (screen() === 'payment') {
+        <article class="photo-card payment-choice-card">
+          @if (autoReturnSeconds(); as seconds) {
+            <div class="auto-return-badge" aria-label="Auto return countdown">
+              <span>Auto Return</span>
+              <strong>{{ seconds }}s</strong>
+            </div>
+          }
+
+          <header class="payment-head">
+            <p class="label">Payment</p>
+            <h1>{{ title() }}</h1>
+            @if (config()?.activeOffer; as offer) {
+              <div class="payment-due">
+                <span>Amount Due</span>
+                <strong>{{ formatMoney(offer.priceCents) }}</strong>
+              </div>
+            }
+          </header>
+
+          <div class="payment-choice-grid">
+            @if (cashOption(); as option) {
+              <button
+                type="button"
+                class="payment-choice"
+                (click)="openPaymentConfirm()"
+                [disabled]="loading()"
+              >
+                <h2>{{ option.label || 'Cash' }}</h2>
+              </button>
+            }
+          </div>
+        </article>
+      } @else if (isTicketScreen()) {
+        <article class="ticket">
+          @if (ticketEyebrow() || autoReturnSeconds()) {
+            <div class="ticket-topline">
+              @if (ticketEyebrow()) {
+                <p class="label">{{ ticketEyebrow() }}</p>
+              }
+              @if (autoReturnSeconds(); as seconds) {
+                <div class="auto-return-badge" aria-label="Auto return countdown">
+                  <span>Auto Return</span>
+                  <strong>{{ seconds }}s</strong>
+                </div>
+              }
+            </div>
+          }
+
+          <h1>{{ title() }}</h1>
+          <p>{{ message() }}</p>
+
+          @if (screen() === 'waiting') {
+            <div class="timeout-panel">
+              <div class="timeout-meta">
+                <span>Time Left</span>
+                <strong>{{ countdown() || '0:00' }}</strong>
+              </div>
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill timeout-fill" [style.width]="timeoutProgress()"></div>
+              </div>
+            </div>
+          } @else {
+            <div class="progress-track" aria-hidden="true">
+              <div class="progress-fill" [style.--progress]="progress()"></div>
+            </div>
+            <button
+              type="button"
+              class="primary-action is-yellow"
+              (click)="action.emit('acknowledge-recent')"
+              [disabled]="loading()"
+            >
+              Back To Start
+            </button>
+          }
+        </article>
+      } @else if (isFrameScreen()) {
+        <div class="frame-stage">
+          <div class="photo-frame" aria-hidden="true">
+            <div class="photo-frame-inner">
+              <div class="camera-ring"></div>
+            </div>
+          </div>
+          <article class="frame-copy">
+            <p class="label">{{ screen() === 'approved' ? 'Get Ready' : 'In Progress' }}</p>
+            <h1>{{ title() }}</h1>
+            <p>{{ message() }}</p>
+            <div class="progress-track" aria-hidden="true">
+              <div class="progress-fill" [style.--progress]="progress()"></div>
+            </div>
+          </article>
+        </div>
+      } @else {
+        <article class="photo-card">
+          @if (autoReturnSeconds(); as seconds) {
+            <div class="auto-return-badge" aria-label="Auto return countdown">
+              <span>Auto Return</span>
+              <strong>{{ seconds }}s</strong>
+            </div>
+          }
+
+          <div class="card-kicker">
+            <span class="frame-chip">{{ frameChip() }}</span>
+          </div>
+
+          <div class="hero-copy">
+            <h1>{{ title() }}</h1>
+            @if (screen() !== 'completed') {
+              <p>{{ message() }}</p>
+            } @else {
+              <p>{{ message() }}</p>
+              @if (config()?.activeOffer?.type === 'PER_SESSION') {
+                <p class="extra-print-note">Need extra prints? Please go to the cashier.</p>
+              }
+            }
+
+            @if (screen() === 'offer' && config()?.activeOffer; as offer) {
+              <div class="offer-line" [class.offer-spacer]="!showOfferDetails()">
+                @if (showOfferDetails()) {
+                  <div>
+                    <strong>{{ offer.name }}</strong>
+                    <span>{{ offer.includedPrintEntitlement }}</span>
+                  </div>
+                  <div class="price-pill">{{ formatMoney(offer.priceCents) }}</div>
+                }
+              </div>
+            } @else {
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-fill" [style.--progress]="progress()"></div>
+              </div>
+            }
+          </div>
+
+          @switch (screen()) {
+            @case ('connect') {
+              <button
+                type="button"
+                class="primary-action"
+                (click)="action.emit('connect')"
+                [disabled]="loading()"
+              >
+                Connect Booth
+              </button>
+            }
+            @case ('offer') {
+              <button
+                type="button"
+                class="primary-action"
+                (click)="action.emit('confirm-offer')"
+                [disabled]="loading()"
+              >
+                Start Booth
+              </button>
+            }
+            @case ('offline') {
+              <button
+                type="button"
+                class="primary-action is-yellow"
+                (click)="action.emit('refresh')"
+                [disabled]="loading()"
+              >
+                Retry
+              </button>
+            }
+            @case ('completed') {
+              <button
+                type="button"
+                class="primary-action is-magenta"
+                (click)="action.emit('return-welcome')"
+                [disabled]="loading()"
+              >
+                Back To Start
+              </button>
+            }
+            @case ('error') {
+              <button
+                type="button"
+                class="primary-action is-yellow"
+                (click)="action.emit('refresh')"
+                [disabled]="loading()"
+              >
+                Check Status
+              </button>
+            }
+          }
+        </article>
+      }
+    </section>
+
+    @if (screen() !== 'offer') {
+      <footer class="bottombar">
+        <div class="hint">{{ footerLeft() }}</div>
+        <div></div>
+        <div class="hint right">{{ footerRight() }}</div>
+      </footer>
+    }
+
+    @if (backConfirmOpen()) {
+      <div
+        class="modal is-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="popBackModalTitle"
+      >
+        <article class="modal-card">
+          <p class="label">Confirm</p>
+          <h2 id="popBackModalTitle">Go Back?</h2>
+          <p>Cancel this payment request and return to the start screen?</p>
+          <div class="modal-actions">
+            <button type="button" class="modal-action is-secondary" (click)="closeBackConfirm()">
+              Stay
+            </button>
+            <button
+              type="button"
+              class="modal-action"
+              (click)="confirmBack()"
+              [disabled]="loading()"
+            >
+              Go Back
+            </button>
+          </div>
+        </article>
+      </div>
+    }
+
+    @if (paymentConfirmOpen()) {
+      <div
+        class="modal is-open"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="popPaymentModalTitle"
+      >
+        <article class="modal-card">
+          <p class="label">Confirm Payment</p>
+          <h2 id="popPaymentModalTitle">Use Payment?</h2>
+          <p>Continue with {{ cashOption()?.label || 'this payment option' }}?</p>
+          <div class="modal-actions">
+            <button type="button" class="modal-action is-secondary" (click)="closePaymentConfirm()">
+              Change
+            </button>
+            <button
+              type="button"
+              class="modal-action"
+              (click)="confirmPayment()"
+              [disabled]="loading()"
+            >
+              Confirm
+            </button>
+          </div>
+        </article>
+      </div>
+    }
+  </section>
+</main>

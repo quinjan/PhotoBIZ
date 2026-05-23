@@ -127,6 +127,194 @@ describe('App', () => {
     expect(text).not.toContain('Maya');
   });
 
+  it('should render the redesigned Pop payment screen with a confirmation modal', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        booth: { id: 'booth-id', state: 'OFFER_CONFIRMED' },
+        paymentOptions: [{ method: 'CASH', label: 'Cash', runtimeEnabled: true }],
+        activeTransaction: {
+          id: 'transaction-id',
+          transactionNumber: 'TXN-001',
+          transactionType: 'SESSION_PURCHASE',
+          status: 'CREATED',
+          paymentMethod: 'PENDING',
+          amountCents: 25000,
+          currency: 'PHP',
+          createdAt: new Date(Date.now()).toISOString(),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('.pop-stage')).toBeTruthy();
+    expect(compiled.querySelector('.payment-choice-card')).toBeTruthy();
+    expect(compiled.textContent).toContain('Payment Options');
+    expect(compiled.textContent).toContain('Amount Due');
+    expect(compiled.textContent).toContain('PHP 250');
+    expect(compiled.textContent).toContain('30s');
+    expect(compiled.querySelector('.pop-stage .bottombar')?.textContent).not.toContain(
+      'Auto returns if idle',
+    );
+
+    (compiled.querySelector('.payment-choice') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(compiled.textContent).toContain('Confirm Payment');
+    expect(compiled.textContent).toContain('Use Payment?');
+    expect(compiled.textContent).toContain('Continue with Cash?');
+  });
+
+  it('should hide Pop welcome footer and card eyebrow copy', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        session: {
+          label: 'Self Photo Booth',
+          welcomeHeadline: 'Ready To Pop?',
+          welcomeSubtitle: 'Tap start when you are ready.',
+          completionThankYouMessage: 'Thank you for popping by.',
+        },
+        booth: { id: 'booth-id', state: 'WELCOME' },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('.pop-stage')).toBeTruthy();
+    expect(compiled.querySelector('.pop-stage .bottombar')).toBeNull();
+    expect(compiled.querySelector('.pop-stage .card-kicker .label')).toBeNull();
+    expect(compiled.querySelector('.pop-stage .frame-chip')?.textContent?.trim()).toBe(
+      'Photo Ready',
+    );
+    expect(compiled.querySelector('.pop-stage .card-kicker')?.textContent).not.toContain(
+      'Self Photo Booth',
+    );
+  });
+
+  it('should hide only the Pop cash waiting eyebrow while keeping the shared heading', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        booth: { id: 'booth-id', state: 'PAYMENT_PENDING' },
+        activeTransaction: {
+          id: 'transaction-id',
+          transactionNumber: 'TXN-001',
+          transactionType: 'SESSION_PURCHASE',
+          status: 'PENDING_CASH',
+          paymentMethod: 'CASH',
+          amountCents: 25000,
+          currency: 'PHP',
+          createdAt: new Date(Date.now() - 30_000).toISOString(),
+          expiresAt: new Date(Date.now() + 30_000).toISOString(),
+        },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    const ticket = compiled.querySelector('.pop-stage .ticket') as HTMLElement;
+
+    expect(ticket.querySelector('h1')?.textContent?.trim()).toBe('Cashier Approval');
+    expect(ticket.querySelector('.ticket-topline .label')).toBeNull();
+  });
+
+  it('should route the Pop payment back confirmation through kiosk cancellation', async () => {
+    const fixture = TestBed.createComponent(App);
+    const http = TestBed.inject(HttpTestingController);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        booth: { id: 'booth-id', state: 'OFFER_CONFIRMED' },
+        activeTransaction: {
+          id: 'transaction-id',
+          transactionNumber: 'TXN-001',
+          transactionType: 'SESSION_PURCHASE',
+          status: 'CREATED',
+          paymentMethod: 'PENDING',
+          amountCents: 25000,
+          currency: 'PHP',
+          createdAt: new Date(Date.now()).toISOString(),
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    (compiled.querySelector('.back-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(compiled.textContent).toContain('Go Back?');
+
+    const confirmBack = Array.from(compiled.querySelectorAll('.modal-action')).find(
+      (button) => button.textContent?.trim() === 'Go Back',
+    ) as HTMLButtonElement;
+    confirmBack.click();
+
+    const cancelRequest = http.expectOne(
+      'http://localhost:5082/api/booth-ui/transactions/transaction-id/cancel',
+    );
+    expect(cancelRequest.request.method).toBe('POST');
+    expect(cancelRequest.request.body).toEqual({ trigger: 'BACK_BUTTON' });
+    cancelRequest.flush({});
+    await Promise.resolve();
+
+    http.expectOne('http://localhost:5082/api/booth-ui/config').flush(boothConfig());
+    await fixture.whenStable();
+    http.verify();
+  });
+
   it('should count down the Vintage payment auto-return from the backend transaction creation time', async () => {
     vi.useFakeTimers();
 
@@ -334,6 +522,32 @@ describe('App', () => {
     expect(text).not.toContain('Payment confirmed. The booth session is starting.');
   });
 
+  it('should render the shortened Pop approved instruction', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        booth: { id: 'booth-id', state: 'STARTING_LUMABOOTH' },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Follow the booth screen.');
+    expect(text).not.toContain('Payment confirmed. Follow the booth screen.');
+  });
+
   it('should render the configurable completed thank-you message and Back To Start label', async () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as unknown as {
@@ -359,6 +573,46 @@ describe('App', () => {
     expect(text).toContain('Need extra prints? Please go to the cashier.');
     expect(text.match(/Need extra prints\?/g)).toHaveLength(1);
     expect(text).toContain('Back To Start');
+  });
+
+  it('should render Pop completion voice without replacing the configured thank-you', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as unknown as {
+      config: { set: (value: unknown) => void };
+    };
+
+    app.config.set(
+      boothConfig({
+        theme: {
+          preset: 'POP',
+          primaryColor: '#0bbbe6',
+          accentColor: '#ff0090',
+          backgroundImageUrl: null,
+          fontMode: 'sans',
+        },
+        session: {
+          label: 'SM Manila',
+          welcomeHeadline: 'Ready To Pop?',
+          welcomeSubtitle: 'Tap start when you are ready.',
+          completionThankYouMessage: 'Thank you for popping by.',
+        },
+        booth: { id: 'booth-id', state: 'COMPLETED' },
+      }),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Thank you for popping by.');
+    expect(text).toContain('Fresh shots, big energy.');
+    expect(text).toContain('Need extra prints? Please go to the cashier.');
+    expect(text).toContain('Back To Start');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.pop-stage .bottombar')?.textContent,
+    ).not.toContain('Auto return');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.pop-stage .card-kicker .label'),
+    ).toBeNull();
   });
 
   it('should hide extra-print copy for covered completed sessions', async () => {

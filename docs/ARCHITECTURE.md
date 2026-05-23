@@ -195,7 +195,7 @@ The Booth UI completed prompt is package-aware. The completed title uses the boo
 
 `recentTransaction` is populated only for customer-facing terminal outcomes such as `CANCELLED`, `EXPIRED`, or `PAYMENT_FAILED` whose terminal notice has not been acknowledged. Booth UI uses it to show a full-screen recovery status after cashier cancellation, payment failure, or payment expiration even when the booth has already reset to `WELCOME`. The backend worker expires overdue pending cash transactions, and the Booth UI config endpoint also performs the same backend expiration check before returning state so a kiosk refresh at `expiresAt` can immediately show the expired screen even if the worker has not ticked yet. The `Back To Start` action and 15-second terminal outcome timer call `POST /api/booth-ui/recent-transactions/{transactionId}/acknowledge`, then reload config. Booth UI must stay on the current terminal screen until backend config stops returning that `recentTransaction`; it must not use local-only dismissal memory for these states. Booth UI must not render customer-visible payment outcome toasts or an app-level busy overlay.
 
-Booth themes are PhotoBIZ-owned presets: `VINTAGE`, `CLEAN_MODERN`, and `POP`. The shared Booth UI stage selects a preset-specific Angular presentation component instead of accepting arbitrary tenant CSS or ad hoc color inputs. Theme colors, typography, and button styling come from the selected preset. Booth-level background images are optional uploads stored as constrained PNG/JPEG/WebP data URLs, with backend size/type validation.
+Booth themes are PhotoBIZ-owned presets. Admin Web currently exposes `VINTAGE` and `POP` as selectable choices; `CLEAN_MODERN` remains a legacy-tolerated preset value so existing saved data can fall back safely. The shared Booth UI stage selects a preset-specific Angular presentation component instead of accepting arbitrary tenant CSS or ad hoc color inputs. Theme colors, typography, and button styling come from the selected preset. Booth-level background images are optional uploads stored as constrained PNG/JPEG/WebP data URLs, with backend size/type validation.
 
 ## LumaBooth Integration Constraints
 
@@ -378,7 +378,7 @@ Responsibilities:
 
 - Authenticate with booth-scoped kiosk token.
 - Load client branding, booth theme, and session config from backend.
-- Select the configured shared theme component (`VINTAGE`, `CLEAN_MODERN`, or `POP`) and render the state.
+- Select the configured shared theme component (`VINTAGE` or `POP` for current Admin choices; `CLEAN_MODERN` only for legacy-tolerated saved data) and render the state.
 - Display welcome screen.
 - Display the booth's active offer.
 - Let customer select only booth-assigned runtime-enabled payment methods for payable per-session flows.

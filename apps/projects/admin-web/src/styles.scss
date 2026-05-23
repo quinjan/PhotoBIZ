@@ -173,6 +173,56 @@ select,
   margin-right: auto;
 }
 
+.background-upload-control {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+
+.background-file-input {
+  display: none;
+}
+
+.background-upload-meta {
+  align-items: center;
+  color: var(--admin-muted);
+  display: inline-flex;
+  font-size: 13px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.background-file-name {
+  overflow-wrap: anywhere;
+}
+
+.background-clear-icon {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--admin-border-strong);
+  border-radius: 999px;
+  color: var(--admin-danger);
+  cursor: pointer;
+  display: inline-grid;
+  flex: 0 0 auto;
+  font-size: 13px;
+  font-weight: 800;
+  height: 28px;
+  line-height: 1;
+  padding: 0;
+  place-items: center;
+  width: 28px;
+}
+
+.background-clear-icon:hover,
+.background-clear-icon:focus-visible {
+  border-color: var(--admin-danger);
+  outline: 2px solid rgba(180, 35, 24, 0.18);
+  outline-offset: 2px;
+}
+
 .form-page {
   max-width: 920px;
 }
@@ -503,6 +553,27 @@ select,
   font-size: 13px;
   line-height: 1.4;
   margin: 0;
+}
+
+.confirmation-dialog-content p {
+  line-height: 1.45;
+  margin: 0;
+}
+
+.confirmation-detail-list {
+  background: #f8fafc;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius);
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.confirmation-detail-list span {
+  color: var(--admin-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .mat-mdc-dialog-actions {

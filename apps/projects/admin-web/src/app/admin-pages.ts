@@ -2,6 +2,7 @@ import {
   Component,
   ElementRef,
   HostListener,
+  Inject,
   OnDestroy,
   ViewChild,
   computed,
@@ -9,9 +10,11 @@ import {
   signal,
 } from '@angular/core';
 import { ComponentType } from '@angular/cdk/portal';
-import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatSlideToggleChange } from '@angular/material/slide-toggle';
 import { BoothStageComponent } from '@photobiz/booth-stage';
 import { ColDef, ICellRendererParams } from 'ag-grid-community';
+import { firstValueFrom } from 'rxjs';
 import { AdminGridComponent } from './admin-grid.component';
 import { AdminUiModule } from './admin-ui.module';
 import {
@@ -75,6 +78,77 @@ function packageOfferTypeLabel(value: string | null | undefined): string {
   }
 }
 
+type ConfirmationTone = 'primary' | 'danger';
+
+type ConfirmationDialogData = {
+  readonly title: string;
+  readonly message: string;
+  readonly details?: readonly string[];
+  readonly confirmLabel: string;
+  readonly cancelLabel?: string;
+  readonly tone?: ConfirmationTone;
+};
+
+@Component({
+  selector: 'admin-confirmation-dialog',
+  standalone: true,
+  imports: [AdminUiModule],
+  template: `
+    <h2 mat-dialog-title>{{ data.title }}</h2>
+    <mat-dialog-content class="dialog-form confirmation-dialog-content">
+      <p>{{ data.message }}</p>
+      @if (data.details?.length) {
+        <div class="confirmation-detail-list">
+          @for (detail of data.details; track detail) {
+            <span>{{ detail }}</span>
+          }
+        </div>
+      }
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button type="button" (click)="close(false)">
+        {{ data.cancelLabel ?? 'Keep Editing' }}
+      </button>
+      <button
+        mat-flat-button
+        type="button"
+        [color]="data.tone === 'danger' ? null : 'primary'"
+        [class.danger-flat-button]="data.tone === 'danger'"
+        (click)="close(true)"
+      >
+        {{ data.confirmLabel }}
+      </button>
+    </mat-dialog-actions>
+  `,
+})
+export class ConfirmationDialogComponent {
+  constructor(
+    @Inject(MAT_DIALOG_DATA) readonly data: ConfirmationDialogData,
+    private readonly dialogRef: MatDialogRef<ConfirmationDialogComponent, boolean>,
+  ) {}
+
+  close(confirmed: boolean): void {
+    this.dialogRef.close(confirmed);
+  }
+}
+
+async function confirmWithDialog(
+  dialog: MatDialog,
+  data: ConfirmationDialogData,
+): Promise<boolean> {
+  const ref = dialog.open<ConfirmationDialogComponent, ConfirmationDialogData, boolean>(
+    ConfirmationDialogComponent,
+    {
+      autoFocus: 'dialog',
+      data,
+      maxWidth: 'calc(100vw - 32px)',
+      width: '520px',
+    },
+  );
+
+  return (await firstValueFrom(ref.afterClosed())) === true;
+}
+
 function activityGridColumns(workspace: AdminWorkspace): ColDef<TransactionSummary>[] {
   const activityFor = (transaction: TransactionSummary | undefined) =>
     transaction ? workspace.transactionActivityFor(transaction) : null;
@@ -121,6 +195,10 @@ abstract class AdminRoutePage {
       maxWidth: 'calc(100vw - 32px)',
       width,
     });
+  }
+
+  protected confirmAction(data: ConfirmationDialogData): Promise<boolean> {
+    return confirmWithDialog(this.dialog, data);
   }
 }
 
@@ -212,9 +290,33 @@ export class ClientDialogComponent {
 })
 export class SubscriptionAssignmentDialogComponent {
   readonly w = inject(AdminWorkspace);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef = inject(MatDialogRef<SubscriptionAssignmentDialogComponent>);
 
   async save(): Promise<void> {
+    const clientAccountId = this.w.subscriptionClientId() ?? this.w.selectedClientId();
+    const existingSubscription = clientAccountId
+      ? this.w.latestSubscriptionFor(clientAccountId)
+      : null;
+
+    if (
+      !(await confirmWithDialog(this.dialog, {
+        title: existingSubscription ? 'Update Subscription?' : 'Assign Subscription?',
+        message:
+          'Subscription status and booth allowance control whether this client can keep booths active and start new sessions.',
+        details: [
+          `Client: ${this.w.clientNameFor(clientAccountId)}`,
+          `Plan: ${this.w.planNameFor(this.w.subscriptionPlanId())}`,
+          `Status: ${this.w.subscriptionStatus()}`,
+          `Active booth allowance: ${this.w.subscriptionAllowance()}`,
+        ],
+        confirmLabel: existingSubscription ? 'Update Subscription' : 'Assign Subscription',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
     if (await this.w.assignSubscription()) {
       this.dialogRef.close();
     }
@@ -309,6 +411,7 @@ export class UserDialogComponent {
 })
 export class LocationDialogComponent {
   readonly w = inject(AdminWorkspace);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef = inject(MatDialogRef<LocationDialogComponent>);
 
   async save(): Promise<void> {
@@ -321,11 +424,36 @@ export class LocationDialogComponent {
   }
 
   async deactivate(location: LocationSummary): Promise<void> {
+    if (
+      !(await confirmWithDialog(this.dialog, {
+        title: 'Deactivate Location?',
+        message:
+          'This location will no longer be available for normal setup workflows. Existing records and audit history stay intact.',
+        details: [`Location: ${location.name}`],
+        confirmLabel: 'Deactivate Location',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
     await this.w.deactivateLocation(location);
     this.dialogRef.close();
   }
 
   async activate(location: LocationSummary): Promise<void> {
+    if (
+      !(await confirmWithDialog(this.dialog, {
+        title: 'Activate Location?',
+        message: 'This location will become available again for booth setup workflows.',
+        details: [`Location: ${location.name}`],
+        confirmLabel: 'Activate Location',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
     await this.w.activateLocation(location);
     this.dialogRef.close();
   }
@@ -425,6 +553,7 @@ export class BoothDialogComponent {
 })
 export class PrintEntitlementDialogComponent {
   readonly w = inject(AdminWorkspace);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef = inject(MatDialogRef<PrintEntitlementDialogComponent>);
 
   async save(): Promise<void> {
@@ -437,6 +566,19 @@ export class PrintEntitlementDialogComponent {
     readonly clientAccountId: string;
     readonly name: string;
   }) {
+    if (
+      !(await confirmWithDialog(this.dialog, {
+        title: 'Delete Print Entitlement?',
+        message:
+          'This removes the print entitlement from the client library. Packages that already use it are protected by backend validation.',
+        details: [`Print entitlement: ${entitlement.name}`],
+        confirmLabel: 'Delete Print Entitlement',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
     await this.w.deletePrintEntitlement(entitlement);
     this.dialogRef.close();
   }
@@ -576,11 +718,29 @@ export class PrintEntitlementsDialogComponent {
 })
 export class ExtraPrintDialogComponent {
   readonly w = inject(AdminWorkspace);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef = inject(MatDialogRef<ExtraPrintDialogComponent>);
 
   async save(): Promise<void> {
     const candidate = this.w.extraPrintCandidate();
     if (!candidate) {
+      return;
+    }
+
+    if (
+      !(await confirmWithDialog(this.dialog, {
+        title: 'Create Extra Print Transaction?',
+        message:
+          'This creates a cash add-on transaction for the previous eligible session. Collect cash before approving it.',
+        details: [
+          `Session: ${candidate.transactionNumber}`,
+          `Copies: ${this.w.extraPrintCopies()}`,
+          `Total: ${this.w.formatMoney(this.w.extraPrintTotalCents())}`,
+        ],
+        confirmLabel: 'Create Extra Prints',
+        tone: 'primary',
+      }))
+    ) {
       return;
     }
 
@@ -849,7 +1009,7 @@ export class ClientsPageComponent extends AdminRoutePage {
                       mat-flat-button
                       color="primary"
                       type="button"
-                      (click)="w.updateClientStatus(client, 'ACTIVE')"
+                      (click)="confirmClientStatus(client, 'ACTIVE')"
                     >
                       Activate Client
                     </button>
@@ -858,7 +1018,7 @@ export class ClientsPageComponent extends AdminRoutePage {
                       mat-flat-button
                       class="danger-flat-button"
                       type="button"
-                      (click)="w.updateClientStatus(client, 'SUSPENDED')"
+                      (click)="confirmClientStatus(client, 'SUSPENDED')"
                     >
                       Suspend Client
                     </button>
@@ -867,7 +1027,7 @@ export class ClientsPageComponent extends AdminRoutePage {
                     mat-button
                     class="danger-link-button"
                     type="button"
-                    (click)="w.updateClientStatus(client, 'ARCHIVED')"
+                    (click)="confirmClientStatus(client, 'ARCHIVED')"
                   >
                     Archive
                   </button>
@@ -879,7 +1039,7 @@ export class ClientsPageComponent extends AdminRoutePage {
                     color="primary"
                     type="button"
                     [disabled]="!w.ownerTransferUserId()"
-                    (click)="w.transferClientOwner(client.id)"
+                    (click)="confirmOwnerTransfer(client)"
                   >
                     Save
                   </button>
@@ -903,6 +1063,54 @@ export class ClientDetailPageComponent extends AdminRoutePage {
   openSubscriptionAssignment(clientId: string): void {
     this.w.openSubscriptionModal(clientId);
     this.openDialog(SubscriptionAssignmentDialogComponent);
+  }
+
+  async confirmClientStatus(client: ClientSummary, status: string): Promise<void> {
+    const action =
+      status === 'ACTIVE' ? 'activate' : status === 'SUSPENDED' ? 'suspend' : 'archive';
+    const actionLabel = action.charAt(0).toUpperCase() + action.slice(1);
+    const tone: ConfirmationTone = status === 'ACTIVE' ? 'primary' : 'danger';
+
+    if (
+      !(await this.confirmAction({
+        title: `${actionLabel} Client?`,
+        message:
+          status === 'ACTIVE'
+            ? 'This client can regain normal platform access based on their subscription state.'
+            : 'This changes the client account lifecycle and can affect client access and booth operations.',
+        details: [`Client: ${client.name}`, `New status: ${status}`],
+        confirmLabel: `${actionLabel} Client`,
+        tone,
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.updateClientStatus(client, status);
+  }
+
+  async confirmOwnerTransfer(client: ClientSummary): Promise<void> {
+    const transferTarget = this.w.ownerTransferTargetFor(client.id);
+
+    if (!transferTarget) {
+      await this.w.transferClientOwner(client.id);
+      return;
+    }
+
+    if (
+      !(await this.confirmAction({
+        title: 'Transfer Client Owner?',
+        message:
+          'Ownership transfer promotes the selected user to Client Owner and demotes the current owner to Client Admin.',
+        details: [`Client: ${client.name}`, `New owner: ${transferTarget.name}`],
+        confirmLabel: 'Transfer Owner',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.transferClientOwner(client.id);
   }
 }
 
@@ -993,7 +1201,7 @@ export class SubscriptionsPageComponent extends AdminRoutePage {
             mat-flat-button
             color="primary"
             type="button"
-            (click)="w.saveSubscriptionDefinition()"
+            (click)="confirmSaveSubscriptionDefinition()"
           >
             Save
           </button>
@@ -1006,6 +1214,30 @@ export class SubscriptionDetailPageComponent extends AdminRoutePage {
   constructor() {
     super();
     this.activate('subscription-detail');
+  }
+
+  async confirmSaveSubscriptionDefinition(): Promise<void> {
+    const selected = this.w.selectedSubscriptionDefinition();
+
+    if (
+      selected &&
+      !(await this.confirmAction({
+        title: 'Save Subscription Definition?',
+        message:
+          'Changes to catalog status or per-booth pricing affect how this subscription is presented and estimated in platform reporting.',
+        details: [
+          `Subscription: ${this.w.planName()}`,
+          `Monthly per booth: ${pageCurrency(this.w.planPrice())}`,
+          `Catalog status: ${this.w.subscriptionActive() ? 'ACTIVE' : 'INACTIVE'}`,
+        ],
+        confirmLabel: 'Save Subscription',
+        tone: this.w.subscriptionActive() ? 'primary' : 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.saveSubscriptionDefinition();
   }
 }
 
@@ -1105,7 +1337,7 @@ export class UsersPageComponent extends AdminRoutePage {
                 mat-button
                 color="warn"
                 type="button"
-                (click)="w.updateUserStatus(user, 'INACTIVE')"
+                (click)="confirmUserStatus(user, 'INACTIVE')"
               >
                 Deactivate
               </button>
@@ -1114,12 +1346,12 @@ export class UsersPageComponent extends AdminRoutePage {
                 mat-button
                 color="primary"
                 type="button"
-                (click)="w.updateUserStatus(user, 'ACTIVE')"
+                (click)="confirmUserStatus(user, 'ACTIVE')"
               >
                 Activate
               </button>
             }
-            <button mat-flat-button color="primary" type="button" (click)="w.saveUserDetail()">
+            <button mat-flat-button color="primary" type="button" (click)="confirmSaveUser(user)">
               Save
             </button>
           </mat-card-actions>
@@ -1134,6 +1366,56 @@ export class UserDetailPageComponent extends AdminRoutePage {
   constructor() {
     super();
     this.activate('user-detail');
+  }
+
+  async confirmUserStatus(user: UserSummary, status: string): Promise<void> {
+    const activating = status === 'ACTIVE';
+
+    if (
+      !(await this.confirmAction({
+        title: activating ? 'Activate User?' : 'Deactivate User?',
+        message: activating
+          ? 'This user will be able to sign in again with their current role and permissions.'
+          : 'This user will lose admin and POS access. Active booth assignments remain backend-controlled.',
+        details: [`User: ${user.name}`, `Email: ${user.email}`],
+        confirmLabel: activating ? 'Activate User' : 'Deactivate User',
+        tone: activating ? 'primary' : 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.updateUserStatus(user, status);
+  }
+
+  async confirmSaveUser(user: UserSummary): Promise<void> {
+    const permissions =
+      this.w.userDetailRole() === 'CASHIER'
+        ? this.w.cashierPermissionRows
+            .filter((permission) => this.w.userDetailPermissions()[permission.key])
+            .map((permission) => permission.label)
+            .join(', ') || 'No cashier permissions'
+        : 'Role-based POS permissions';
+
+    if (
+      !(await this.confirmAction({
+        title: 'Save User Changes?',
+        message:
+          'User role and cashier permissions affect admin access, payment approval, transaction cancellation, and recovery actions.',
+        details: [
+          `User: ${user.name}`,
+          `New name: ${this.w.userDetailName()}`,
+          `Role: ${this.w.roleLabel(this.w.userDetailRole())}`,
+          `Permissions: ${permissions}`,
+        ],
+        confirmLabel: 'Save User',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.saveUserDetail();
   }
 }
 
@@ -1279,7 +1561,7 @@ export class BoothsPageComponent extends AdminRoutePage {
                     mat-button
                     class="danger-link-button"
                     type="button"
-                    (click)="w.updateBoothStatus(booth, 'INACTIVE')"
+                    (click)="confirmBoothStatus(booth, 'INACTIVE')"
                   >
                     Deactivate
                   </button>
@@ -1288,7 +1570,7 @@ export class BoothsPageComponent extends AdminRoutePage {
                     mat-flat-button
                     color="primary"
                     type="button"
-                    (click)="w.updateBoothStatus(booth, 'ACTIVE')"
+                    (click)="confirmBoothStatus(booth, 'ACTIVE')"
                   >
                     Activate
                   </button>
@@ -1301,7 +1583,7 @@ export class BoothsPageComponent extends AdminRoutePage {
         <mat-card class="credential-card">
           <mat-card-header>
             <mat-card-title>One-time credentials</mat-card-title>
-            <button mat-button color="primary" type="button" (click)="w.issueBoothCredentials()">
+            <button mat-button color="primary" type="button" (click)="confirmIssueCredentials()">
               Re-issue Credentials
             </button>
           </mat-card-header>
@@ -1384,7 +1666,7 @@ export class BoothsPageComponent extends AdminRoutePage {
                     mat-flat-button
                     color="primary"
                     type="button"
-                    (click)="w.saveBoothDetails()"
+                    (click)="confirmSaveBoothDetails(booth)"
                   >
                     Save
                   </button>
@@ -1405,7 +1687,7 @@ export class BoothsPageComponent extends AdminRoutePage {
                     </div>
                     <mat-slide-toggle
                       [checked]="w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false"
-                      (change)="w.setCashPaymentEnabled(booth.id, $event.checked)"
+                      (change)="confirmSetCashPaymentEnabled(booth, $event)"
                     />
                   </div>
                 </mat-card-content>
@@ -1461,11 +1743,36 @@ export class BoothsPageComponent extends AdminRoutePage {
                       }
                     </mat-select>
                   </mat-form-field>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    (change)="w.setBoothBackgroundImageFromFile($event)"
-                  />
+                  <div class="background-upload-control">
+                    <input
+                      #boothBackgroundInput
+                      class="background-file-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      (change)="setBoothBackgroundImageFromFile($event)"
+                    />
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      class="background-upload-button"
+                      (click)="boothBackgroundInput.click()"
+                    >
+                      Choose Image
+                    </button>
+                    <div class="background-upload-meta">
+                      <span class="background-file-name">{{ backgroundImageFileLabel() }}</span>
+                      @if (w.boothAppearanceBackgroundImageDataUrl()) {
+                        <button
+                          type="button"
+                          class="background-clear-icon"
+                          aria-label="Remove background image"
+                          (click)="clearBoothBackgroundImage()"
+                        >
+                          X
+                        </button>
+                      }
+                    </div>
+                  </div>
                 </mat-card-content>
                 <mat-card-actions class="session-setup-actions">
                   <button
@@ -1476,14 +1783,11 @@ export class BoothsPageComponent extends AdminRoutePage {
                     Reset to theme defaults
                   </button>
                   <div class="session-primary-actions">
-                    <button mat-button type="button" (click)="w.clearBoothBackgroundImage()">
-                      Clear Image
-                    </button>
                     <button
                       mat-flat-button
                       color="primary"
                       type="button"
-                      (click)="w.saveBoothSession()"
+                      (click)="confirmSaveBoothSession()"
                     >
                       Save
                     </button>
@@ -1545,12 +1849,173 @@ export class BoothsPageComponent extends AdminRoutePage {
 })
 export class BoothDetailPageComponent extends AdminRoutePage implements OnDestroy {
   @ViewChild('boothPreviewShell') private boothPreviewShell?: ElementRef<HTMLElement>;
+  @ViewChild('boothBackgroundInput') private boothBackgroundInput?: ElementRef<HTMLInputElement>;
 
   protected readonly boothPreviewFullscreen = signal(false);
+  protected readonly boothBackgroundFileName = signal('');
+  protected readonly backgroundImageFileLabel = computed(() => {
+    if (this.boothBackgroundFileName()) {
+      return this.boothBackgroundFileName();
+    }
+
+    return this.w.boothAppearanceBackgroundImageDataUrl()
+      ? 'Background image uploaded'
+      : 'No file chosen';
+  });
 
   constructor() {
     super();
     this.activate('booth-detail');
+  }
+
+  async confirmBoothStatus(booth: BoothSummary, status: string): Promise<void> {
+    const activating = status === 'ACTIVE';
+
+    if (
+      !(await this.confirmAction({
+        title: activating ? 'Activate Booth?' : 'Deactivate Booth?',
+        message: activating
+          ? 'This booth can become available again when subscription and runtime checks pass.'
+          : 'This booth will no longer be active for normal operations. Backend rules still protect active transaction state.',
+        details: [`Booth: ${booth.name}`, `Code: ${booth.code}`],
+        confirmLabel: activating ? 'Activate Booth' : 'Deactivate Booth',
+        tone: activating ? 'primary' : 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.updateBoothStatus(booth, status);
+  }
+
+  async confirmIssueCredentials(): Promise<void> {
+    const booth = this.w.selectedBoothDetail();
+
+    if (!booth) {
+      await this.w.issueBoothCredentials();
+      return;
+    }
+
+    if (
+      !(await this.confirmAction({
+        title: 'Re-Issue Booth Credentials?',
+        message:
+          'This rotates the kiosk token and Windows Agent credential. The old Agent credential stops working after the new one is issued.',
+        details: [`Booth: ${booth.name}`, `Code: ${booth.code}`],
+        confirmLabel: 'Re-Issue Credentials',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.issueBoothCredentials();
+  }
+
+  async confirmSaveBoothDetails(booth: BoothSummary): Promise<void> {
+    const selectedOffer = this.w
+      .activeOffers()
+      .find((offer) => offer.id === this.w.boothDetailOfferId());
+    const assignedStaff = this.w
+      .boothDetailPosStaffOptions()
+      .find((user) => user.id === this.w.boothDetailCashierUserId());
+
+    if (
+      !(await this.confirmAction({
+        title: 'Save Booth Changes?',
+        message:
+          'Booth details can change location, POS staff, active package, and cash assignment for this booth.',
+        details: [
+          `Booth: ${booth.name}`,
+          `New code: ${this.w.boothDetailCode()}`,
+          `Location: ${this.w.locationNameFor(this.w.boothDetailLocationId() ?? '')}`,
+          `POS staff: ${assignedStaff?.name ?? 'Unassigned'}`,
+          `Active package: ${selectedOffer?.name ?? 'No change'}`,
+        ],
+        confirmLabel: 'Save Booth',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.saveBoothDetails();
+  }
+
+  async confirmSetCashPaymentEnabled(
+    booth: BoothSummary,
+    event: MatSlideToggleChange,
+  ): Promise<void> {
+    const enabled = event.checked;
+
+    if (
+      !(await this.confirmAction({
+        title: enabled ? 'Enable Cash For Booth?' : 'Disable Cash For Booth?',
+        message: enabled
+          ? 'Cash will be available as a runtime payment option for this booth.'
+          : 'Cash will no longer be exposed as a runtime payment option for this booth.',
+        details: [`Booth: ${booth.name}`],
+        confirmLabel: enabled ? 'Enable Cash' : 'Disable Cash',
+        tone: enabled ? 'primary' : 'danger',
+      }))
+    ) {
+      event.source.checked = !enabled;
+      return;
+    }
+
+    await this.w.setCashPaymentEnabled(booth.id, enabled);
+    event.source.checked = this.w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false;
+  }
+
+  async confirmSaveBoothSession(): Promise<void> {
+    const booth = this.w.selectedBoothDetail();
+
+    if (!booth) {
+      await this.w.saveBoothSession();
+      return;
+    }
+
+    if (
+      !(await this.confirmAction({
+        title: 'Save Booth Session Setup?',
+        message:
+          'These changes update the customer-facing Booth UI copy, theme preset, and optional background image for this booth.',
+        details: [
+          `Booth: ${booth.name}`,
+          `Theme: ${this.w.boothAppearanceThemePreset()}`,
+          `Session label: ${this.w.boothAppearanceSessionLabel()}`,
+        ],
+        confirmLabel: 'Save Session Setup',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.saveBoothSession();
+  }
+
+  protected setBoothBackgroundImageFromFile(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+
+    this.w.setBoothBackgroundImageFromFile(event);
+    this.boothBackgroundFileName.set(
+      file &&
+        ['image/png', 'image/jpeg', 'image/webp'].includes(file.type) &&
+        file.size <= 2 * 1024 * 1024
+        ? file.name
+        : '',
+    );
+  }
+
+  protected clearBoothBackgroundImage(): void {
+    this.w.clearBoothBackgroundImage();
+    this.boothBackgroundFileName.set('');
+
+    if (this.boothBackgroundInput?.nativeElement) {
+      this.boothBackgroundInput.nativeElement.value = '';
+    }
   }
 
   @HostListener('document:fullscreenchange')
@@ -1800,7 +2265,7 @@ export class PackagesPageComponent extends AdminRoutePage {
                 type="button"
                 [color]="selectedPackage.active ? null : 'primary'"
                 [class.danger-flat-button]="selectedPackage.active"
-                (click)="w.updatePackageStatus(selectedPackage, !selectedPackage.active)"
+                (click)="confirmPackageStatus(selectedPackage, !selectedPackage.active)"
               >
                 {{ selectedPackage.active ? 'Deactivate' : 'Activate' }}
               </button>
@@ -1808,7 +2273,7 @@ export class PackagesPageComponent extends AdminRoutePage {
           </div>
           <div class="detail-action-group primary-action-group">
             <button mat-button type="button" (click)="w.setView('packages')">Cancel</button>
-            <button mat-flat-button color="primary" type="button" (click)="w.savePackage()">
+            <button mat-flat-button color="primary" type="button" (click)="confirmSavePackage()">
               Save
             </button>
           </div>
@@ -1821,6 +2286,48 @@ export class PackageDetailPageComponent extends AdminRoutePage {
   constructor() {
     super();
     this.activate('package-detail');
+  }
+
+  async confirmPackageStatus(offer: OfferSummary, active: boolean): Promise<void> {
+    if (
+      !(await this.confirmAction({
+        title: active ? 'Activate Package?' : 'Deactivate Package?',
+        message: active
+          ? 'This package can be selected for booths again.'
+          : 'This package will no longer be selectable for new booth activations. Existing transactions keep their saved snapshots.',
+        details: [`Package: ${offer.name}`, `Type: ${packageOfferTypeLabel(offer.offerType)}`],
+        confirmLabel: active ? 'Activate Package' : 'Deactivate Package',
+        tone: active ? 'primary' : 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.updatePackageStatus(offer, active);
+  }
+
+  async confirmSavePackage(): Promise<void> {
+    const selectedPackage = this.w.selectedPackage();
+
+    if (
+      selectedPackage &&
+      !(await this.confirmAction({
+        title: 'Save Package Changes?',
+        message:
+          'Package edits affect future booth activations and sales reporting. Existing transactions keep their original package snapshot.',
+        details: [
+          `Package: ${this.w.packageName()}`,
+          `Type: ${packageOfferTypeLabel(this.w.packageOfferType())}`,
+          `Price: ${pageCurrency(this.w.packagePriceCents())}`,
+        ],
+        confirmLabel: 'Save Package',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.savePackage();
   }
 }
 
@@ -1920,7 +2427,7 @@ export class TransactionsPageComponent extends AdminRoutePage {
                   <button
                     mat-stroked-button
                     type="button"
-                    (click)="w.returnBoothToWelcome(booth.id)"
+                    (click)="confirmReturnBoothToWelcome(booth)"
                   >
                     Return to Welcome
                   </button>
@@ -1953,7 +2460,7 @@ export class TransactionsPageComponent extends AdminRoutePage {
                 color="primary"
                 type="button"
                 [disabled]="!w.canApproveCashAction()"
-                (click)="w.approveCash(transaction.id)"
+                (click)="confirmApproveCash(transaction)"
               >
                 Approve Cash
               </button>
@@ -1962,7 +2469,7 @@ export class TransactionsPageComponent extends AdminRoutePage {
                 color="warn"
                 type="button"
                 [disabled]="!w.canCancelTransactionAction()"
-                (click)="w.cancelTransaction(transaction.id)"
+                (click)="confirmCancelTransaction(transaction)"
               >
                 Cancel Transaction
               </button>
@@ -1973,7 +2480,7 @@ export class TransactionsPageComponent extends AdminRoutePage {
                   mat-flat-button
                   color="primary"
                   type="button"
-                  (click)="w.createPlanActivation(booth.id)"
+                  (click)="confirmCreatePlanActivation(booth)"
                 >
                   Activate Package
                 </button>
@@ -2012,6 +2519,87 @@ export class PosPageComponent extends AdminRoutePage {
   openExtraPrintDialog(): void {
     this.w.extraPrintCopies.set(1);
     this.openDialog(ExtraPrintDialogComponent, '620px');
+  }
+
+  async confirmReturnBoothToWelcome(booth: BoothSummary): Promise<void> {
+    if (
+      !(await this.confirmAction({
+        title: 'Return Booth To Welcome?',
+        message:
+          'This is a recovery command. It can cancel the active non-terminal booth transaction so the booth can accept a new customer.',
+        details: [`Booth: ${booth.name}`, `Current state: ${booth.currentState}`],
+        confirmLabel: 'Return To Welcome',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.returnBoothToWelcome(booth.id);
+  }
+
+  async confirmApproveCash(transaction: TransactionSummary): Promise<void> {
+    if (
+      !(await this.confirmAction({
+        title: 'Approve Cash Payment?',
+        message:
+          'Approve only after cash has been collected. Backend will mark the transaction paid and continue the session workflow.',
+        details: [
+          `Transaction: ${transaction.transactionNumber}`,
+          `Amount: ${this.w.formatMoney(transaction.amountCents)}`,
+        ],
+        confirmLabel: 'Approve Cash',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.approveCash(transaction.id);
+  }
+
+  async confirmCancelTransaction(transaction: TransactionSummary): Promise<void> {
+    if (
+      !(await this.confirmAction({
+        title: 'Cancel Transaction?',
+        message:
+          'This writes cancellation context, releases the cashier payment request, and may return the booth flow to a terminal cancelled state.',
+        details: [
+          `Transaction: ${transaction.transactionNumber}`,
+          `Status: ${transaction.status}`,
+          `Amount: ${this.w.formatMoney(transaction.amountCents)}`,
+        ],
+        confirmLabel: 'Cancel Transaction',
+        tone: 'danger',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.cancelTransaction(transaction.id);
+  }
+
+  async confirmCreatePlanActivation(booth: BoothSummary): Promise<void> {
+    const offer = this.w.pendingPlanActivationOffer();
+
+    if (
+      !(await this.confirmAction({
+        title: 'Create Package Activation?',
+        message:
+          'This creates a cash transaction for the selected booth package. Collect cash before approving the activation payment.',
+        details: [
+          `Booth: ${booth.name}`,
+          `Package: ${offer?.name ?? 'Selected package'}`,
+          `Amount: ${this.w.formatMoney(offer?.priceCents ?? 0)}`,
+        ],
+        confirmLabel: 'Create Activation',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.createPlanActivation(booth.id);
   }
 }
 
@@ -2193,7 +2781,7 @@ export class ReportsPageComponent extends AdminRoutePage {
                   [checked]="resource.enabled"
                   [disabled]="resource.locked"
                   [matTooltip]="resource.locked ? lockedReason(resource) : ''"
-                  (change)="w.setPaymentResourceEnabled(resource.method, $event.checked)"
+                  (change)="confirmSetPaymentResourceEnabled(resource, $event)"
                 >
                   {{ resource.enabled ? 'Enabled' : 'Disabled' }}
                 </mat-slide-toggle>
@@ -2209,6 +2797,37 @@ export class SettingsPageComponent extends AdminRoutePage {
   constructor() {
     super();
     this.activate('settings');
+  }
+
+  async confirmSetPaymentResourceEnabled(
+    resource: {
+      readonly method: string;
+      readonly label: string;
+      readonly enabled: boolean;
+    },
+    event: MatSlideToggleChange,
+  ): Promise<void> {
+    const enabled = event.checked;
+
+    if (
+      !(await this.confirmAction({
+        title: enabled ? 'Enable Payment Resource?' : 'Disable Payment Resource?',
+        message: enabled
+          ? 'This starts or re-enables tenant setup for this payment resource. Runtime use still depends on backend readiness and booth assignment.'
+          : 'This disables tenant setup for this payment resource and can remove it from future booth payment assignment workflows.',
+        details: [`Resource: ${resource.label}`],
+        confirmLabel: enabled ? 'Enable Resource' : 'Disable Resource',
+        tone: enabled ? 'primary' : 'danger',
+      }))
+    ) {
+      event.source.checked = !enabled;
+      return;
+    }
+
+    await this.w.setPaymentResourceEnabled(resource.method, enabled);
+    event.source.checked =
+      this.w.tenantPaymentResources().find((item) => item.method === resource.method)?.enabled ??
+      resource.enabled;
   }
 
   lockedReason(resource: { readonly method: string }): string {

@@ -9,12 +9,14 @@ import { ICellRendererParams } from 'ag-grid-community';
 import { vi } from 'vitest';
 import { AdminGridComponent } from './admin-grid.component';
 import {
+  BoothDetailPageComponent,
   ClientsPageComponent,
   PackagesPageComponent,
   PrintEntitlementsDialogComponent,
 } from './admin-pages';
 import {
   AdminWorkspace,
+  BoothAppearanceSummary,
   BoothSummary,
   ClientSummary,
   OfferSummary,
@@ -114,6 +116,59 @@ describe('App', () => {
     expect(workspace.boothAppearanceHeadline()).toBe('Ready To Pose?');
     expect(workspace.boothAppearanceSubtitle()).toBe('Tap start when you are ready.');
     expect(workspace.boothAppearanceCompletionMessage()).toBe('Thanks for sharing your smile.');
+  });
+
+  it('offers only Vintage and Pop booth themes in Admin choices', () => {
+    const workspace = createWorkspaceWithRejectedSession();
+
+    expect(workspace.boothThemePresets.map((preset) => preset.label)).toEqual(['Vintage', 'Pop']);
+    expect(workspace.boothThemePresets.map((preset) => preset.value)).toEqual(['VINTAGE', 'POP']);
+  });
+
+  it('maps deprecated Clean Modern booth appearance data back to Vintage in Admin', () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const session = makeSession();
+    const booth = makeBooth();
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        appearanceConfigs: [makeAppearance({ boothId: booth.id, themePreset: 'CLEAN_MODERN' })],
+      }),
+    );
+
+    workspace.syncBoothDetail(booth.id);
+
+    expect(workspace.boothAppearanceThemePreset()).toBe('VINTAGE');
+    expect(workspace.boothAppearanceHeadline()).toBe('Ready To Pose?');
+  });
+
+  it('clears booth background from the upload row instead of the footer actions', async () => {
+    const fixture = TestBed.createComponent(BoothDetailPageComponent);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession();
+    const booth = makeBooth();
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { booths: [booth] }));
+    workspace.syncBoothDetail(booth.id);
+    workspace.boothAppearanceBackgroundImageDataUrl.set('data:image/png;base64,abc');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).not.toContain('Clear Image');
+    expect(compiled.textContent).toContain('Background image uploaded');
+    expect(compiled.querySelector('.background-clear-icon')).toBeTruthy();
+
+    (compiled.querySelector('.background-clear-icon') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(workspace.boothAppearanceBackgroundImageDataUrl()).toBe('');
+    expect((compiled.querySelector('.background-file-input') as HTMLInputElement).value).toBe('');
+    expect(compiled.textContent).toContain('No file chosen');
   });
 
   it('limits application owner navigation to platform management pages', async () => {
@@ -640,6 +695,19 @@ describe('App', () => {
       (button) => button.textContent?.trim() === 'Create Extra Prints',
     ) as HTMLButtonElement;
     createButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const confirmation = document.body.querySelector('admin-confirmation-dialog') as HTMLElement;
+    expect(confirmation).toBeTruthy();
+    expect(confirmation.textContent).toContain('Create Extra Print Transaction?');
+    const confirmButton = Array.from(confirmation.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Create Extra Prints',
+    ) as HTMLButtonElement;
+    confirmButton.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await new Promise<void>((resolve) => setTimeout(resolve));
 
     const request = http.expectOne(`${apiBaseUrl}/api/cashier/transactions/session-1/extra-prints`);
     expect(request.request.method).toBe('POST');
@@ -1362,6 +1430,23 @@ function makePaymentAssignment(
     paymentMethod: 'CASH',
     runtimeEnabled: true,
     status: 'ASSIGNED',
+    ...overrides,
+  };
+}
+
+function makeAppearance(overrides: Partial<BoothAppearanceSummary> = {}): BoothAppearanceSummary {
+  return {
+    accentColor: '#f5d27e',
+    backgroundImageDataUrl: null,
+    backgroundImageUrl: null,
+    boothId: 'booth-1',
+    completionThankYouMessage: '',
+    defaultWelcomeHeadline: '',
+    defaultWelcomeSubtitle: '',
+    id: 'appearance-1',
+    primaryColor: '#4f2d1d',
+    sessionLabel: '',
+    themePreset: 'VINTAGE',
     ...overrides,
   };
 }
