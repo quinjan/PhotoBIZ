@@ -154,6 +154,7 @@ describe('App', () => {
     workspace.session.set(session);
     workspace.overview.set(makeOverview(session, { booths: [booth] }));
     workspace.syncBoothDetail(booth.id);
+    workspace.boothDetailTab.set('session');
     workspace.boothAppearanceBackgroundImageDataUrl.set('data:image/png;base64,abc');
     fixture.detectChanges();
     await fixture.whenStable();

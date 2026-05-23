@@ -1760,7 +1760,9 @@ export class BoothsPageComponent extends AdminRoutePage {
                       Choose Image
                     </button>
                     <div class="background-upload-meta">
-                      <span class="background-file-name">{{ backgroundImageFileLabel() }}</span>
+                      <span class="background-file-name" aria-live="polite">
+                        {{ backgroundImageFileLabel() }}
+                      </span>
                       @if (w.boothAppearanceBackgroundImageDataUrl()) {
                         <button
                           type="button"
