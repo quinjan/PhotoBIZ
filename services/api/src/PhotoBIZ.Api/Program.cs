@@ -47,6 +47,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         };
+        options.Events.OnValidatePrincipal = PhotoBizAuthenticationGuards.ValidatePrincipalAsync;
     });
 builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();

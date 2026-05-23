@@ -68,6 +68,50 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task LoginAndExistingSessionsHonorUserAndClientLifecycle()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var inactiveUserSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            ownerEmail: "inactive-owner@photobiz.test");
+        var archivedClientSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            ownerEmail: "archived-owner@photobiz.test");
+        var activeSessionSeed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            ownerEmail: "session-owner@photobiz.test");
+
+        await factory.SetUserStatusAsync(inactiveUserSeed.ClientOwnerId, StatusValues.User.Inactive);
+        await factory.SetClientStatusAsync(archivedClientSeed.ClientAccountId, StatusValues.ClientAccount.Archived);
+
+        var inactiveLoginResponse = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = inactiveUserSeed.ClientOwnerEmail,
+            password = PhotoBizApiFactory.Password
+        });
+        var archivedLoginResponse = await client.PostAsJsonAsync("/api/auth/login", new
+        {
+            email = archivedClientSeed.ClientOwnerEmail,
+            password = PhotoBizApiFactory.Password
+        });
+
+        await LoginAsync(client, activeSessionSeed.ClientOwnerEmail);
+        await factory.SetUserStatusAsync(activeSessionSeed.ClientOwnerId, StatusValues.User.Inactive);
+        var invalidatedSessionResponse = await client.GetAsync("/api/auth/session");
+
+        Assert.Equal(HttpStatusCode.BadRequest, inactiveLoginResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, archivedLoginResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, invalidatedSessionResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task ClientOwnerCanCreateAndUpdatePrintEntitlements()
     {
         await using var factory = new PhotoBizApiFactory();
@@ -852,6 +896,62 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task SuspendedClientCanReadButCannotMutateOrUseRuntimeSurfaces()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var adminClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "suspended-client-kiosk-token";
+        const string agentCredential = "suspended-client-agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 2,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken,
+            agentCredential: agentCredential,
+            ownerEmail: "suspended-owner@photobiz.test");
+        await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Paid, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetClientStatusAsync(seed.ClientAccountId, StatusValues.ClientAccount.Suspended);
+
+        await LoginAsync(adminClient, seed.ClientOwnerEmail);
+        var overviewResponse = await adminClient.GetAsync("/api/admin/overview");
+        var mutationResponse = await adminClient.PostAsJsonAsync("/api/admin/locations", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            name = "Blocked Location"
+        });
+
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+        var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        var transactionResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+        var commandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+
+        Assert.Equal(HttpStatusCode.OK, overviewResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, mutationResponse.StatusCode);
+        Assert.NotNull(config);
+        Assert.Null(config.ActiveOffer);
+        Assert.Equal("Client account is not active.", config.Session.WelcomeSubtitle);
+        Assert.Equal(HttpStatusCode.BadRequest, transactionResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, commandResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task ClientOwnerCanUpdateAndDeactivateLocationBoothAndOffer()
     {
         await using var factory = new PhotoBizApiFactory();
@@ -902,6 +1002,123 @@ public sealed class PhotoBizManagementApiTests
         Assert.Equal(HttpStatusCode.OK, boothResponse.StatusCode);
         Assert.NotNull(overview);
         Assert.DoesNotContain(overview.Activations, item => item.BoothId == seed.BoothId && item.Status == StatusValues.OfferActivation.Active);
+    }
+
+    [Fact]
+    public async Task InactiveLocationBlocksBoothSetupAndRuntimePaths()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var adminClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var cashierClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "inactive-location-kiosk-token";
+        const string agentCredential = "inactive-location-agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 2,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken,
+            agentCredential: agentCredential,
+            ownerEmail: "inactive-location-owner@photobiz.test");
+        var cashierEmail = await factory.SeedCashierAsync(seed, "inactive-location-cashier@photobiz.test");
+        var transactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PendingCash, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetLocationStatusAsync(seed.LocationId, StatusValues.Booth.Inactive);
+
+        await LoginAsync(adminClient, seed.ClientOwnerEmail);
+        var createBoothResponse = await adminClient.PostAsJsonAsync("/api/admin/booths", new
+        {
+            clientAccountId = seed.ClientAccountId,
+            locationId = seed.LocationId,
+            name = "Blocked Booth",
+            code = "BLOCKED-001"
+        });
+        var updateBoothResponse = await adminClient.PutAsJsonAsync($"/api/admin/booths/{seed.BoothId}", new
+        {
+            locationId = seed.LocationId,
+            name = "Still Blocked Booth",
+            code = seed.BoothCode,
+            status = StatusValues.Booth.Active
+        });
+
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+        var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        var transactionResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+
+        await LoginAsync(cashierClient, cashierEmail);
+        var approveResponse = await cashierClient.PostAsJsonAsync($"/api/cashier/transactions/{transactionId}/approve-cash", new { });
+
+        await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Paid, StatusValues.LumaboothSessionMode.Print);
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+        var commandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, createBoothResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, updateBoothResponse.StatusCode);
+        Assert.NotNull(config);
+        Assert.Null(config.ActiveOffer);
+        Assert.Equal("Booth location is inactive.", config.Session.WelcomeSubtitle);
+        Assert.Equal(HttpStatusCode.BadRequest, transactionResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, approveResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, commandResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task InactiveBoothBlocksKioskAndAgentRuntimePaths()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var boothClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var agentClient = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        const string kioskToken = "inactive-booth-kiosk-token";
+        const string agentCredential = "inactive-booth-agent-secret";
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: kioskToken,
+            agentCredential: agentCredential,
+            ownerEmail: "inactive-booth-owner@photobiz.test");
+        await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Paid, StatusValues.LumaboothSessionMode.Print);
+        await factory.SetBoothStatusAsync(seed.BoothId, StatusValues.Booth.Inactive);
+
+        boothClient.DefaultRequestHeaders.Add("X-Kiosk-Token", kioskToken);
+        var config = await boothClient.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        var transactionResponse = await boothClient.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+
+        agentClient.DefaultRequestHeaders.Add("X-Agent-Credential", agentCredential);
+        var commandResponse = await agentClient.GetAsync($"/api/agent/commands/next?boothCode={Uri.EscapeDataString(seed.BoothCode)}");
+
+        Assert.NotNull(config);
+        Assert.Null(config.ActiveOffer);
+        Assert.Equal(StatusValues.Booth.Offline, config.Booth.State);
+        Assert.Equal("Booth is inactive.", config.Session.WelcomeSubtitle);
+        Assert.Equal(HttpStatusCode.BadRequest, transactionResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, commandResponse.StatusCode);
     }
 
     [Fact]
@@ -2252,6 +2469,47 @@ public sealed class PhotoBizManagementApiTests
                 .Where(item => item.ClientAccountId == seed.ClientAccountId && item.Id != seed.BoothId)
                 .Select(item => item.Id)
                 .SingleAsync();
+        }
+
+        public async Task SetClientStatusAsync(Guid clientAccountId, string status)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var client = await dbContext.ClientAccounts.SingleAsync(item => item.Id == clientAccountId);
+            client.Status = status;
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task SetUserStatusAsync(Guid userId, string status)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var user = await dbContext.Users.SingleAsync(item => item.Id == userId);
+            user.Status = status;
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task SetLocationStatusAsync(Guid locationId, string status)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var location = await dbContext.Locations.SingleAsync(item => item.Id == locationId);
+            location.Status = status;
+            await dbContext.SaveChangesAsync();
+        }
+
+        public async Task SetBoothStatusAsync(Guid boothId, string status)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var booth = await dbContext.Booths.SingleAsync(item => item.Id == boothId);
+            booth.Status = status;
+            if (status != StatusValues.Booth.Active)
+            {
+                booth.CurrentState = StatusValues.Booth.Offline;
+            }
+
+            await dbContext.SaveChangesAsync();
         }
 
         public async Task BackdateCompletedTransactionAsync(Guid transactionId, TimeSpan age)

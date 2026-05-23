@@ -34,10 +34,12 @@ public sealed class PhotoBizTransactionWorkflow(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, now))
-        {
-            throw new InvalidOperationException("The booth agent is offline.");
-        }
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
 
         if (await HasAnotherActiveTransactionAsync(booth.Id, null, cancellationToken))
         {
@@ -78,10 +80,12 @@ public sealed class PhotoBizTransactionWorkflow(
         CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, now))
-        {
-            throw new InvalidOperationException("The booth agent is offline.");
-        }
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
 
         if (activeOffer.OfferType == StatusValues.OfferType.PerSession)
         {
@@ -153,6 +157,13 @@ public sealed class PhotoBizTransactionWorkflow(
         PhotoBizCurrentUser currentUser,
         CancellationToken cancellationToken)
     {
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
         if (pendingOffer.OfferType == StatusValues.OfferType.PerSession)
         {
             throw new InvalidOperationException("PER_SESSION packages do not require cashier plan activation.");
@@ -214,10 +225,12 @@ public sealed class PhotoBizTransactionWorkflow(
         string paymentMethod,
         CancellationToken cancellationToken)
     {
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
-        {
-            throw new InvalidOperationException("The booth agent is offline.");
-        }
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
 
         if (await HasAnotherActiveTransactionAsync(booth.Id, transaction.Id, cancellationToken))
         {
@@ -268,11 +281,12 @@ public sealed class PhotoBizTransactionWorkflow(
         }
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
-        if (transaction.TransactionType != StatusValues.TransactionType.PlanActivation &&
-            PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
-        {
-            throw new InvalidOperationException("The booth agent is offline.");
-        }
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: transaction.TransactionType != StatusValues.TransactionType.PlanActivation,
+            cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         transaction.Status = StatusValues.Transaction.Paid;
@@ -367,10 +381,12 @@ public sealed class PhotoBizTransactionWorkflow(
         }
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == parentTransaction.BoothId, cancellationToken);
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
-        {
-            throw new InvalidOperationException("The booth agent is offline.");
-        }
+        await PhotoBizRuntimeAvailability.EnsureBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
 
         if (IsBoothInLumaboothSession(booth))
         {
@@ -536,6 +552,18 @@ public sealed class PhotoBizTransactionWorkflow(
         Booth booth,
         CancellationToken cancellationToken)
     {
+        var gate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
+        if (!gate.Succeeded)
+        {
+            return null;
+        }
+
         var transaction = await dbContext.Transactions
             .Where(item => item.BoothId == booth.Id && item.Status == StatusValues.Transaction.Paid)
             .OrderBy(item => item.CreatedAt)

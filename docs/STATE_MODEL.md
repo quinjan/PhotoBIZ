@@ -333,13 +333,13 @@ Typical MVP mapping:
 | Agent/session/print failure | `ERROR` |
 | Expiration, cancellation, print completion, print timeout, or recovery | `WELCOME` |
 
-## Current Implementation Gaps
+## Current Implementation Alignment
 
-These gaps describe current code behavior that should be aligned with this document in a future implementation pass.
+The backend now enforces the parent gates in this document across the main runtime paths.
 
-- Login currently checks email/password only. It does not enforce `ApplicationUser.Status`, `ClientAccount.Status`, or tenant access mode.
-- Existing authenticated sessions are not consistently invalidated when a user becomes inactive or a client is archived.
-- Suspended/archived client account behavior is not consistently enforced across Admin Web, Booth UI, cashier, and agent endpoints.
-- Inactive location currently does not block booth creation, booth movement, Booth UI config, transactions, POS actions, or agent commands.
-- Inactive booth deactivates active offer activations, but kiosk and agent paths still need explicit booth lifecycle gating.
-- Booth UI config blocks suspended/cancelled subscriptions in one path, but transaction creation does not consistently revalidate client, subscription, location, and booth lifecycle gates.
+- Login rejects inactive users and archived client accounts. Suspended client accounts may authenticate for read-only access.
+- Authenticated cookie sessions are rejected when the user becomes inactive or the client account is archived.
+- Suspended client accounts can read Admin Web overview data but cannot perform client-scoped setup mutations, kiosk transactions, POS runtime actions, or agent runtime actions.
+- Inactive locations block new booth registration, booth movement/reactivation into that location, Booth UI runtime config availability, kiosk transactions, POS runtime actions, and new agent commands.
+- Inactive booths are effectively offline and block kiosk transactions and new agent commands.
+- Booth UI transaction creation and payment selection revalidate client account, latest subscription, location, booth lifecycle, and agent availability gates before changing transaction state.

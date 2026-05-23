@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using PhotoBIZ.Api.Data;
@@ -95,6 +97,56 @@ public static class PhotoBizUserContext
     public static Guid? ParseGuid(string? value)
     {
         return Guid.TryParse(value, out var parsed) ? parsed : null;
+    }
+}
+
+public static class PhotoBizAuthenticationGuards
+{
+    public static async Task ValidatePrincipalAsync(CookieValidatePrincipalContext context)
+    {
+        var userIdValue = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            await RejectPrincipalAsync(context);
+            return;
+        }
+
+        var dbContext = context.HttpContext.RequestServices.GetRequiredService<PhotoBizDbContext>();
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .Include(item => item.ClientAccount)
+            .SingleOrDefaultAsync(item => item.Id == userId, context.HttpContext.RequestAborted);
+
+        if (!CanMaintainAuthenticatedSession(user))
+        {
+            await RejectPrincipalAsync(context);
+        }
+    }
+
+    public static bool CanAuthenticate(ApplicationUser user)
+    {
+        return CanMaintainAuthenticatedSession(user);
+    }
+
+    public static bool CanMaintainAuthenticatedSession(ApplicationUser? user)
+    {
+        if (user is null || user.Status != StatusValues.User.Active)
+        {
+            return false;
+        }
+
+        if (user.Role == StatusValues.User.ApplicationOwner)
+        {
+            return true;
+        }
+
+        return user.ClientAccount?.Status is StatusValues.ClientAccount.Active or StatusValues.ClientAccount.Suspended;
+    }
+
+    private static async Task RejectPrincipalAsync(CookieValidatePrincipalContext context)
+    {
+        context.RejectPrincipal();
+        await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     }
 }
 

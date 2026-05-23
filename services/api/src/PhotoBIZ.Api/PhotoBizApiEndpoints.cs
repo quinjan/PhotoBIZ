@@ -26,6 +26,7 @@ public static class PhotoBizApiEndpoints
 
         var admin = app.MapGroup("/api/admin").RequireAuthorization();
         admin.AddEndpointFilter(RequireCompletedPasswordChangeAsync);
+        admin.AddEndpointFilter(RequireActiveClientForAdminMutationAsync);
         admin.MapGet("/overview", GetOverviewAsync);
         admin.MapPost("/clients", CreateClientAsync);
         admin.MapPost("/clients/onboard", CreateClientWithOwnerAsync);
@@ -86,9 +87,11 @@ public static class PhotoBizApiEndpoints
         IPasswordHasher<ApplicationUser> passwordHasher,
         CancellationToken cancellationToken)
     {
-        var user = await dbContext.Users.SingleOrDefaultAsync(item => item.Email == request.Email.Trim(), cancellationToken);
+        var user = await dbContext.Users
+            .Include(item => item.ClientAccount)
+            .SingleOrDefaultAsync(item => item.Email == request.Email.Trim(), cancellationToken);
 
-        if (user is null)
+        if (user is null || !PhotoBizAuthenticationGuards.CanAuthenticate(user))
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
@@ -205,6 +208,48 @@ public static class PhotoBizApiEndpoints
         return await next(context);
     }
 
+    private static async ValueTask<object?> RequireActiveClientForAdminMutationAsync(
+        EndpointFilterInvocationContext context,
+        EndpointFilterDelegate next)
+    {
+        var method = context.HttpContext.Request.Method;
+        if (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method))
+        {
+            return await next(context);
+        }
+
+        var principal = context.HttpContext.User;
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            return await next(context);
+        }
+
+        var currentUser = principal.GetRequiredCurrentUser();
+        if (currentUser.IsApplicationOwner)
+        {
+            return await next(context);
+        }
+
+        if (!currentUser.ClientAccountId.HasValue)
+        {
+            return TypedResults.Forbid();
+        }
+
+        var dbContext = context.HttpContext.RequestServices.GetRequiredService<PhotoBizDbContext>();
+        var clientStatus = await dbContext.ClientAccounts
+            .AsNoTracking()
+            .Where(item => item.Id == currentUser.ClientAccountId.Value)
+            .Select(item => item.Status)
+            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+
+        if (clientStatus != StatusValues.ClientAccount.Active)
+        {
+            return TypedResults.Forbid();
+        }
+
+        return await next(context);
+    }
+
     private static async Task<Results<Ok<AuthSessionResponse>, UnauthorizedHttpResult>> GetSessionAsync(
         PhotoBizDbContext dbContext,
         ClaimsPrincipal principal,
@@ -216,7 +261,14 @@ public static class PhotoBizApiEndpoints
         }
 
         var userId = principal.GetRequiredCurrentUser().UserId;
-        var user = await dbContext.Users.SingleAsync(item => item.Id == userId, cancellationToken);
+        var user = await dbContext.Users
+            .Include(item => item.ClientAccount)
+            .SingleOrDefaultAsync(item => item.Id == userId, cancellationToken);
+
+        if (user is null || !PhotoBizAuthenticationGuards.CanMaintainAuthenticatedSession(user))
+        {
+            return TypedResults.Unauthorized();
+        }
 
         return TypedResults.Ok(ToSessionResponse(user));
     }
@@ -1081,6 +1133,14 @@ public static class PhotoBizApiEndpoints
             });
         }
 
+        if (location.Status != StatusValues.Booth.Active)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["locationId"] = ["Location must be ACTIVE before registering a booth."]
+            });
+        }
+
         var subscriptionValidation = await ValidateSubscriptionAllowsNewBoothAsync(dbContext, clientAccountId, cancellationToken);
 
         if (subscriptionValidation is not null)
@@ -1217,6 +1277,16 @@ public static class PhotoBizApiEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["locationId"] = ["Location must exist in the booth's client account."]
+            });
+        }
+
+        var isMovingBooth = request.LocationId != booth.LocationId;
+        if (location.Status != StatusValues.Booth.Active &&
+            (request.Status == StatusValues.Booth.Active || isMovingBooth))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["locationId"] = ["Location must be ACTIVE before moving or reactivating a booth there."]
             });
         }
 
@@ -1646,6 +1716,39 @@ public static class PhotoBizApiEndpoints
             });
         }
 
+        if (booth.Status != StatusValues.Booth.Active)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["boothId"] = ["Booth must be ACTIVE before activating a package."]
+            });
+        }
+
+        var locationIsActive = await dbContext.Locations
+            .AsNoTracking()
+            .AnyAsync(
+                item =>
+                    item.Id == booth.LocationId &&
+                    item.ClientAccountId == booth.ClientAccountId &&
+                    item.Status == StatusValues.Booth.Active,
+                cancellationToken);
+
+        if (!locationIsActive)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["location"] = ["Booth location must be ACTIVE before activating a package."]
+            });
+        }
+
+        if (!activeOffer.Active)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["boothOfferId"] = ["Booth offer must be active before assignment."]
+            });
+        }
+
         var subscriptionValidation = await ValidateSubscriptionAllowsExistingBoothAsync(dbContext, booth.ClientAccountId, cancellationToken);
 
         if (subscriptionValidation is not null)
@@ -2019,14 +2122,16 @@ public static class PhotoBizApiEndpoints
             booth.Id,
             now,
             cancellationToken);
-        var subscription = await dbContext.ClientSubscriptions
-            .Where(item => item.ClientAccountId == booth.ClientAccountId)
-            .OrderByDescending(item => item.StartsOn)
-            .FirstOrDefaultAsync(cancellationToken);
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
 
-        if (subscription is null || subscription.Status is StatusValues.Subscription.Suspended or StatusValues.Subscription.Cancelled)
+        if (!runtimeGate.Succeeded)
         {
-            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, "Subscription inactive", recentTransaction));
+            return TypedResults.Ok(ToUnavailableConfig(booth, client, appearance, effectiveBoothState, runtimeGate.Message, recentTransaction));
         }
 
         var selectedActivation = await dbContext.BoothOfferActivations
@@ -2081,12 +2186,16 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["booth"] = ["The booth agent is offline. Start the Windows Agent before creating a transaction."]
-            });
+            return ToValidationProblem(runtimeGate);
         }
 
         var activeActivation = await dbContext.BoothOfferActivations
@@ -2171,6 +2280,18 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return ToValidationProblem(runtimeGate);
+        }
+
         var pendingActivation = await dbContext.BoothOfferActivations
             .Include(item => item.BoothOffer)
             .Where(item =>
@@ -2217,12 +2338,16 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
-        if (PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
         {
-            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
-            {
-                ["booth"] = ["The booth agent is offline. Start the Windows Agent before selecting payment."]
-            });
+            return ToValidationProblem(runtimeGate);
         }
 
         var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == transactionId && item.BoothId == booth.Id, cancellationToken);
@@ -2236,6 +2361,13 @@ public static class PhotoBizApiEndpoints
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
                 ["booth"] = ["The booth already has an active session in progress. Finish, cancel, or expire it before starting another one."]
+            });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["paymentMethod"] = [exception.Message]
             });
         }
 
@@ -2295,20 +2427,33 @@ public static class PhotoBizApiEndpoints
         }
 
         var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
-        if (transaction.TransactionType != StatusValues.TransactionType.PlanActivation &&
-            PhotoBizBoothAvailability.IsAgentOffline(booth, DateTimeOffset.UtcNow))
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: transaction.TransactionType != StatusValues.TransactionType.PlanActivation,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return ToValidationProblem(runtimeGate);
+        }
+
+        try
+        {
+            var updated = await workflow.ApproveCashAsync(transaction, currentUser, cancellationToken);
+            return TypedResults.Ok(ToTransactionSummary(updated));
+        }
+        catch (InvalidOperationException exception)
         {
             return TypedResults.ValidationProblem(new Dictionary<string, string[]>
             {
-                ["booth"] = ["The booth agent is offline. Start the Windows Agent before approving cash."]
+                ["transaction"] = [exception.Message]
             });
         }
-
-        var updated = await workflow.ApproveCashAsync(transaction, currentUser, cancellationToken);
-        return TypedResults.Ok(ToTransactionSummary(updated));
     }
 
-    private static async Task<Results<Ok<TransactionSummary>, ForbidHttpResult>> CancelTransactionAsync(
+    private static async Task<Results<Ok<TransactionSummary>, ForbidHttpResult, ValidationProblem>> CancelTransactionAsync(
         Guid transactionId,
         ClaimsPrincipal principal,
         PhotoBizDbContext dbContext,
@@ -2333,8 +2478,31 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
-        var updated = await workflow.CancelAsync(transaction, currentUser, cancellationToken);
-        return TypedResults.Ok(ToTransactionSummary(updated));
+        var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return ToValidationProblem(runtimeGate);
+        }
+
+        try
+        {
+            var updated = await workflow.CancelAsync(transaction, currentUser, cancellationToken);
+            return TypedResults.Ok(ToTransactionSummary(updated));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["transaction"] = [exception.Message]
+            });
+        }
     }
 
     private static async Task<Results<Ok<TransactionSummary>, ForbidHttpResult, ValidationProblem>> CreateExtraPrintAddOnAsync(
@@ -2363,6 +2531,19 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
+        var booth = await dbContext.Booths.SingleAsync(item => item.Id == parentTransaction.BoothId, cancellationToken);
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: true,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return ToValidationProblem(runtimeGate);
+        }
+
         try
         {
             var addOn = await workflow.CreateExtraPrintAddOnAsync(parentTransaction, currentUser, request.CopyCount, cancellationToken);
@@ -2377,7 +2558,7 @@ public static class PhotoBizApiEndpoints
         }
     }
 
-    private static async Task<Results<Ok, ForbidHttpResult>> ReturnBoothToWelcomeAsync(
+    private static async Task<Results<Ok, ForbidHttpResult, ValidationProblem>> ReturnBoothToWelcomeAsync(
         Guid boothId,
         ClaimsPrincipal principal,
         PhotoBizDbContext dbContext,
@@ -2403,6 +2584,18 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Forbid();
         }
 
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return ToValidationProblem(runtimeGate);
+        }
+
         await workflow.ReturnBoothToWelcomeAsync(booth, currentUser, cancellationToken);
 
         await auditService.WriteAsync(currentUser, "booth.returned_to_welcome", nameof(Booth), booth.Id, new { booth.Code }, cancellationToken);
@@ -2420,6 +2613,11 @@ public static class PhotoBizApiEndpoints
         var booth = await ResolveBoothFromAgentCredentialAsync(request.BoothCode, httpContext, dbContext, tokenHasher, cancellationToken);
 
         if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (!await IsAgentSurfaceAvailableAsync(dbContext, booth, cancellationToken))
         {
             return TypedResults.Unauthorized();
         }
@@ -2444,6 +2642,11 @@ public static class PhotoBizApiEndpoints
             return TypedResults.Unauthorized();
         }
 
+        if (!await IsAgentSurfaceAvailableAsync(dbContext, booth, cancellationToken))
+        {
+            return TypedResults.Unauthorized();
+        }
+
         PhotoBizBoothAvailability.MarkAgentHeartbeat(booth, DateTimeOffset.UtcNow);
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -2460,6 +2663,11 @@ public static class PhotoBizApiEndpoints
         var booth = await ResolveBoothFromAgentCredentialAsync(request.BoothCode, httpContext, dbContext, tokenHasher, cancellationToken);
 
         if (booth is null)
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        if (!await IsAgentSurfaceAvailableAsync(dbContext, booth, cancellationToken))
         {
             return TypedResults.Unauthorized();
         }
@@ -2485,6 +2693,23 @@ public static class PhotoBizApiEndpoints
         if (booth is null)
         {
             return TypedResults.Unauthorized();
+        }
+
+        if (!await IsAgentSurfaceAvailableAsync(dbContext, booth, cancellationToken))
+        {
+            return TypedResults.Unauthorized();
+        }
+
+        var runtimeGate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: true,
+            requireAgent: false,
+            cancellationToken);
+
+        if (!runtimeGate.Succeeded)
+        {
+            return TypedResults.NoContent();
         }
 
         var command = await workflow.TryAcquireNextAgentCommandAsync(booth, cancellationToken);
@@ -2713,6 +2938,29 @@ public static class PhotoBizApiEndpoints
         return query.Where(item => item.ClientAccountId == currentUser.ClientAccountId);
     }
 
+    private static ValidationProblem ToValidationProblem(PhotoBizRuntimeGateResult runtimeGate)
+    {
+        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [string.IsNullOrWhiteSpace(runtimeGate.Key) ? "booth" : runtimeGate.Key] = [runtimeGate.Message]
+        });
+    }
+
+    private static async Task<bool> IsAgentSurfaceAvailableAsync(
+        PhotoBizDbContext dbContext,
+        Booth booth,
+        CancellationToken cancellationToken)
+    {
+        var gate = await PhotoBizRuntimeAvailability.CheckBoothRuntimeAsync(
+            dbContext,
+            booth,
+            requireSubscription: false,
+            requireAgent: false,
+            cancellationToken);
+
+        return gate.Succeeded;
+    }
+
     private static async Task<Booth?> ResolveBoothFromKioskTokenAsync(
         HttpContext httpContext,
         PhotoBizDbContext dbContext,
@@ -2845,10 +3093,12 @@ public static class PhotoBizApiEndpoints
 
         var user = await dbContext.Users
             .AsNoTracking()
+            .Include(item => item.ClientAccount)
             .SingleOrDefaultAsync(item => item.Id == currentUser.UserId, cancellationToken);
 
         if (user is null ||
             user.Status != StatusValues.User.Active ||
+            user.ClientAccount?.Status != StatusValues.ClientAccount.Active ||
             !IsPosAssignableRole(user.Role) ||
             !user.AssignedBoothId.HasValue)
         {

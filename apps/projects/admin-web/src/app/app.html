@@ -3,8 +3,16 @@
 @if (!w.session()) {
   <main class="auth-screen">
     <section class="auth-brand-panel">
-      <div class="brand-mark">PB</div>
-      <h1>PhotoBIZ</h1>
+      <div class="auth-logo-lockup">
+        <img
+          class="auth-logo"
+          src="/brand/photobiz-in-app-icon.svg"
+          alt="PhotoBIZ"
+          width="310"
+          height="72"
+        />
+      </div>
+      <h1 class="sr-only">PhotoBIZ</h1>
       <p>Operations, booths, subscriptions, and cashier workflows in one admin workspace.</p>
     </section>
 
@@ -29,8 +37,16 @@
 } @else if (w.session()?.mustChangePassword) {
   <main class="auth-screen">
     <section class="auth-brand-panel">
-      <div class="brand-mark">PB</div>
-      <h1>PhotoBIZ</h1>
+      <div class="auth-logo-lockup">
+        <img
+          class="auth-logo"
+          src="/brand/photobiz-in-app-icon.svg"
+          alt="PhotoBIZ"
+          width="310"
+          height="72"
+        />
+      </div>
+      <h1 class="sr-only">PhotoBIZ</h1>
       <p>Update your password before opening the admin workspace.</p>
     </section>
 
@@ -73,8 +89,13 @@
   <mat-sidenav-container class="admin-shell">
     <mat-sidenav mode="side" opened class="admin-side">
       <div class="side-brand">
-        <div class="brand-mark">PB</div>
-        <span>PhotoBIZ</span>
+        <img
+          class="side-brand-logo"
+          src="/brand/photobiz-in-app-icon.svg"
+          alt="PhotoBIZ"
+          width="310"
+          height="72"
+        />
       </div>
       <nav class="admin-nav" aria-label="Admin navigation">
         @for (item of w.visibleNavItems(); track item.key) {

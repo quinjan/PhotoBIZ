@@ -226,6 +226,37 @@ public sealed class PhotoBizTransactionWorkflowTests
     }
 
     [Fact]
+    public async Task CreateTransactionRejectsInactiveParentGates()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+
+        booth.Status = StatusValues.Booth.Inactive;
+        var inactiveBooth = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None));
+
+        booth.Status = StatusValues.Booth.Active;
+        var location = await dbContext.Locations.SingleAsync(item => item.Id == booth.LocationId);
+        location.Status = StatusValues.Booth.Inactive;
+        await dbContext.SaveChangesAsync();
+        var inactiveLocation = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None));
+
+        location.Status = StatusValues.Booth.Active;
+        var client = await dbContext.ClientAccounts.SingleAsync(item => item.Id == booth.ClientAccountId);
+        client.Status = StatusValues.ClientAccount.Suspended;
+        await dbContext.SaveChangesAsync();
+        var inactiveClient = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None));
+
+        Assert.Equal("Booth is inactive.", inactiveBooth.Message);
+        Assert.Equal("Booth location is inactive.", inactiveLocation.Message);
+        Assert.Equal("Client account is not active.", inactiveClient.Message);
+    }
+
+    [Fact]
     public async Task CreateTransactionRejectsSecondActiveTransactionForSameBooth()
     {
         await using var dbContext = CreateDbContext();
@@ -374,6 +405,8 @@ public sealed class PhotoBizTransactionWorkflowTests
     private static async Task<(Booth Booth, BoothOfferActivation Activation, BoothOffer Offer)> SeedBoothGraphAsync(PhotoBizDbContext dbContext)
     {
         var clientId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
         var locationId = Guid.NewGuid();
         var boothId = Guid.NewGuid();
         var offerId = Guid.NewGuid();
@@ -384,6 +417,23 @@ public sealed class PhotoBizTransactionWorkflowTests
             Id = clientId,
             Name = "The Memory Box",
             CreatedAt = DateTimeOffset.UtcNow
+        });
+        dbContext.SubscriptionPlans.Add(new SubscriptionPlan
+        {
+            Id = planId,
+            Name = $"Plan {planId:N}",
+            PricePerBoothCents = 990000,
+            Currency = "PHP",
+            Active = true
+        });
+        dbContext.ClientSubscriptions.Add(new ClientSubscription
+        {
+            Id = subscriptionId,
+            ClientAccountId = clientId,
+            SubscriptionPlanId = planId,
+            Status = StatusValues.Subscription.Active,
+            ActiveBoothAllowance = 1,
+            StartsOn = DateOnly.FromDateTime(DateTime.UtcNow)
         });
         dbContext.Locations.Add(new Location
         {

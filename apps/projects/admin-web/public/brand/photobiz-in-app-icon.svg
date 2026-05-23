@@ -5,9 +5,7 @@
   aria-labelledby="title desc"
 >
   <title id="title">PhotoBIZ in-app icon</title>
-  <desc id="desc">
-    Compact PhotoBIZ logo for use inside the application shell.
-  </desc>
+  <desc id="desc">Compact PhotoBIZ logo for use inside the application shell.</desc>
   <defs>
     <linearGradient id="mark-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#155eef" />

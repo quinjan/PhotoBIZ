@@ -2785,7 +2785,7 @@ export class AdminWorkspace {
       case 'audit':
         return 'Audit Log';
       default:
-        return 'Admin Web';
+        return 'PhotoBIZ';
     }
   }
 
