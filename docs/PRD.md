@@ -20,7 +20,7 @@ The booth workflow remains: customer reviews the booth's active offer, chooses a
 - Initial staffing model: one cashier per booth.
 - Initial payment model: cash approval only for real transactions.
 - Coming soon payment model: `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`.
-- Payment setup model: client-level payment resources are registered first, then assigned per booth before they can appear in runtime payment choices.
+- Payment setup model: tenant-level payment resources are managed in Settings, then assigned per booth before they can appear in runtime payment choices. Cash is always enabled for every tenant during MVP.
 - Photo booth software: LumaBooth on Windows.
 - Digital delivery: LumaBooth/Fotoshare.
 - Starter hardware: DNP RX1 printer and Canon R50 camera.
@@ -105,7 +105,7 @@ Permissions:
 - Activate exactly one booth offer per booth.
 - Manage active booth session appearance.
 - View transactions, reports, and audit logs for their client account.
-- Configure client-level payment resources and assign allowed payment options per booth.
+- Configure tenant-level payment resources and assign allowed payment options per booth.
 - Use Cashier POS for the assigned booth after being assigned as POS staff.
 - Cannot create another Client Owner, change their own role, or deactivate their own account.
 
@@ -119,7 +119,7 @@ Permissions:
 - Manage assigned client locations and booths.
 - Manage booth offers and active booth offer assignment.
 - Manage active session appearance.
-- Manage booth-level payment option assignments from active client payment resources.
+- Configure tenant-level payment resources and manage booth-level payment option assignments from usable client payment resources.
 - View client transactions and reports.
 - Perform booth recovery actions.
 - Use Cashier POS for the assigned booth after being assigned as POS staff.
@@ -150,11 +150,12 @@ POS staff workflow note:
 
 MVP subscriptions are manually managed by the Application Owner. A Subscription is the reusable catalog definition with a name, active/inactive state, currency, and monthly price per active booth. A client subscription assignment links a client account to one Subscription and records status plus active booth allowance.
 
+Detailed lifecycle and parent availability rules are defined in [PhotoBIZ State Model](STATE_MODEL.md). `docs/ARCHITECTURE.md` remains authoritative if state guidance conflicts.
+
 Subscription statuses:
 
 - `TRIAL`
 - `ACTIVE`
-- `PAST_DUE`
 - `SUSPENDED`
 - `CANCELLED`
 
@@ -332,13 +333,13 @@ Guardrails:
 
 ### Workflow D: Payment Setup And Booth Assignment
 
-1. Client Owner or Client Admin opens Payment Settings.
-2. Cash is available as the MVP runtime payment method.
-3. Client can draft one Maya Checkout QR configuration for the client account.
-4. Client can draft multiple Maya Terminal ECR device configurations for the client account, each with a client-visible terminal name and required `deviceId`.
-5. Client assigns payment options per booth.
-6. Maya QR can be assigned only when the client Maya QR resource exists and is active or verified.
-7. Maya ECR can be assigned only by selecting a specific active client ECR `deviceId`.
+1. Client Owner or Client Admin opens Settings > Payment Resources.
+2. Settings shows tenant information and the tenant-level payment resources for the client account.
+3. Cash is the MVP runtime payment method. It is always enabled for the tenant and cannot be disabled.
+4. Client can enable or disable Maya Checkout QR and Maya Terminal ECR setup at the tenant level. Enabling a Maya resource creates or re-enables draft setup state only.
+5. Client can later complete one Maya Checkout QR configuration and multiple Maya Terminal ECR device configurations, each with a client-visible terminal name and required `deviceId`.
+6. Client assigns payment options per booth from usable tenant resources.
+7. Provider-backed runtime payment requires a verified client resource, a booth assignment, runtime enablement, and the provider feature to be live.
 8. Maya QR and Maya ECR remain locked for runtime payment until PhotoBIZ enables the future provider integrations.
 
 ### Workflow E: Cash Payment
@@ -346,7 +347,7 @@ Guardrails:
 1. Booth UI shows the active booth offer.
 2. Customer confirms the active offer.
 3. Customer chooses cash payment when the offer requires payment for a per-session purchase.
-4. Backend creates one transaction with status `PENDING_CASH` and rejects any additional kiosk session purchase attempts for the same booth until the current transaction reaches a terminal state.
+4. Backend creates one transaction with status `PENDING_CASH`, moves the booth to `PAYMENT_PENDING`, and rejects any additional kiosk session purchase attempts for the same booth until the current transaction reaches a terminal state.
 5. Cashier sees the pending cash request in the Central Web App.
 6. Cashier collects cash.
 7. Cashier clicks `Approve Cash`.
@@ -363,11 +364,11 @@ For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the p
 
 ### Workflow F: Coming Soon Maya Setup
 
-1. Client Owner opens Payment Settings.
-2. Client Owner sees `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR` as coming soon.
-3. Client Owner can draft Maya Business credentials and one Maya Checkout QR configuration.
-4. Client Owner can draft multiple Maya Terminal ECR device records with `deviceId` values.
-5. Client Owner or Client Admin assigns configured payment resources per booth.
+1. Client Owner or Client Admin opens Settings > Payment Resources.
+2. Client sees `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR` as tenant-level setup options that are not runtime-enabled yet.
+3. Client can toggle Maya Checkout QR and Maya Terminal ECR setup on or off for the tenant. Toggling on creates or re-enables draft setup state.
+4. Future setup can collect Maya Business credentials, one Maya Checkout QR configuration, and multiple Maya Terminal ECR device records with `deviceId` values.
+5. Client Owner or Client Admin assigns verified payment resources per booth when the provider flow supports assignment.
 6. Cashless payment methods remain unavailable to customers and cashiers until PhotoBIZ enables real Maya integration in a future phase.
 
 ### Workflow G: Transaction Expiration
@@ -439,7 +440,9 @@ Post-session extra print add-ons are supported only for completed `PER_SESSION` 
 Rules:
 
 - Add-on transactions must be linked to the original completed session transaction.
-- Add-ons are available only for the latest completed `SESSION_PURCHASE` on the same booth.
+- Add-ons are available only for the immediately previous booth session transaction when that previous session is an eligible completed `PER_SESSION` `SESSION_PURCHASE`; prior extra-print add-on transactions are add-ons, not sessions, and do not replace the previous session reference.
+- If a newer current booth session exists but has not yet reached the LumaBooth handoff/session states, Cashier POS may still create extra prints for the immediately previous eligible session.
+- If the immediately previous booth session transaction is not eligible, Cashier POS must show that there is no eligible transaction for extra print and must not scan older session history.
 - Booth UI does not create add-ons; it only shows the 15-second post-session cashier prompt.
 - Cashier POS creates the add-on and selects 1 to 5 copies.
 - Add-ons are cash-only in MVP.
@@ -449,6 +452,8 @@ Rules:
 - Add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offers.
 
 ## Booth Requirements
+
+Detailed booth lifecycle, runtime state, and location-to-booth availability rules are defined in [PhotoBIZ State Model](STATE_MODEL.md). `docs/ARCHITECTURE.md` remains authoritative if state guidance conflicts.
 
 MVP booth fields:
 
@@ -470,17 +475,17 @@ Booth states:
 - `OFFLINE`
 - `WELCOME`
 - `OFFER_CONFIRMED`
-- `PAYMENT_METHOD_SELECTED`
 - `PAYMENT_PENDING`
 - `PAID`
 - `STARTING_LUMABOOTH`
 - `IN_LUMABOOTH_SESSION`
 - `PRINTING_OR_SHARING`
 - `COMPLETED`
-- `RETURNING_TO_WELCOME`
 - `ERROR`
 
 ## Transaction Requirements
+
+Detailed transaction, booth-session, and effective runtime availability rules are defined in [PhotoBIZ State Model](STATE_MODEL.md). `docs/ARCHITECTURE.md` remains authoritative if state guidance conflicts.
 
 Transaction statuses:
 
@@ -553,7 +558,7 @@ Future reports:
 
 - Active clients.
 - Active booths.
-- Trial, active, past-due, suspended, and cancelled subscriptions.
+- Trial, active, suspended, and cancelled subscriptions.
 - Manual MRR estimate based on assigned client subscriptions and their monthly price per booth.
 - Clients over booth allowance.
 - Client health.
@@ -590,19 +595,21 @@ Future reports:
 - Future Maya QR/ECR methods visible only as locked assigned options until provider integration is enabled.
 - Today's sales.
 - Today's completed sessions.
-- Assigned booth activity with All, Sales, and Sessions filters. Payment actions stay transaction-oriented; history uses activity wording and session-count rows show the historical used-session sequence.
-- Extra print controls for the latest eligible completed per-session transaction, including a 1 to 5 copy selector and computed cash total.
+- Assigned booth activity. Payment actions stay transaction-oriented; history uses activity wording, includes extra-print add-on transactions, and session-count rows show the historical used-session sequence.
+- Extra print controls for the immediately previous booth transaction, including a 1 to 5 copy selector and computed cash total only when that transaction is eligible.
 - Assigned-booth sales summary and cashier-owned audit events.
 - Basic recovery action: return to welcome screen.
 
 ## Payment Requirements
 
-Payment configuration has two levels:
+Payment configuration has two levels plus the built-in cash resource:
 
-1. Client-level resources define what the client account has registered.
+1. Tenant-level resources define what the client account has registered or started configuring.
 2. Booth-level assignments define which of those resources a booth may use when the method is runtime-enabled.
 
-Backend payment validation must check booth-level assignment, provider/resource status, and runtime feature availability. Client-level setup alone is never enough to expose a payment method in Booth UI or Cashier POS.
+Admin Web Settings is the tenant-level payment resource surface. Cash is built in, always enabled/verified, and cannot be disabled at the tenant level. Maya resource toggles create or enable `DRAFT` tenant setup records; `DRAFT` means setup has started, not that the method is runtime-usable.
+
+Backend payment validation must check booth-level assignment, provider/resource status, and runtime feature availability. Tenant-level setup alone is never enough to expose a payment method in Booth UI or Cashier POS.
 
 ### Cash MVP
 
@@ -611,6 +618,7 @@ Cash is approved manually by the cashier.
 Requirements:
 
 - Cash is the only real MVP payment method.
+- Cash is always available as a tenant resource and cannot be disabled in Settings.
 - Cash can be assigned per booth and is the only payment option that can be runtime-enabled in MVP.
 - Payment approval requires an authenticated cashier, Client Admin, or Client Owner assigned to the booth.
 - Cash approval is blocked when the assigned booth's agent is offline, so staff do not collect cash for a session the agent cannot start.
@@ -629,7 +637,7 @@ Future requirements:
 - Client Owner supplies Maya public API key.
 - Client Owner supplies Maya secret API key, stored encrypted and never returned to frontend clients.
 - PhotoBIZ provides a webhook URL for the client to register in Maya Business Manager.
-- Booths can assign Maya Checkout QR only after the client-level resource exists and is active or verified.
+- Booths can assign Maya Checkout QR only after the client-level resource exists and is verified/usable.
 - Maya webhooks become the source of truth for payment success, failure, expiration, and cancellation.
 - Payment attempts table supports auditability and retries.
 - Booth UI and Cashier POS display this option only after client payment config is verified, assigned to the booth, and runtime provider integration is enabled.
@@ -708,7 +716,7 @@ The MVP is considered complete when:
 14. Application Owner dashboard shows client and subscription health.
 15. Client Owner dashboard shows client sales and booth status.
 16. Cashier dashboard shows only the assigned booth.
-17. Maya Checkout QR and Maya Terminal ECR are visible only as coming soon setup flows and locked booth assignment options.
+17. Maya Checkout QR and Maya Terminal ECR are visible only as tenant setup toggles/future setup flows and locked booth assignment options.
 18. Per-session transactions can accept post-session extra print add-ons.
 19. Time-unlimited and session-count offers reject extra print add-ons.
 20. Booth payment options are filtered by booth assignment, and cash is the only runtime-enabled MVP payment option.

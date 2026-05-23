@@ -13,7 +13,6 @@ public static class StatusValues
     {
         public const string Trial = "TRIAL";
         public const string Active = "ACTIVE";
-        public const string PastDue = "PAST_DUE";
         public const string Suspended = "SUSPENDED";
         public const string Cancelled = "CANCELLED";
     }
@@ -35,14 +34,12 @@ public static class StatusValues
         public const string Offline = "OFFLINE";
         public const string Welcome = "WELCOME";
         public const string OfferConfirmed = "OFFER_CONFIRMED";
-        public const string PaymentMethodSelected = "PAYMENT_METHOD_SELECTED";
         public const string PaymentPending = "PAYMENT_PENDING";
         public const string Paid = "PAID";
         public const string StartingLumabooth = "STARTING_LUMABOOTH";
         public const string InLumaboothSession = "IN_LUMABOOTH_SESSION";
         public const string PrintingOrSharing = "PRINTING_OR_SHARING";
         public const string Completed = "COMPLETED";
-        public const string ReturningToWelcome = "RETURNING_TO_WELCOME";
         public const string Error = "ERROR";
     }
 
@@ -76,8 +73,6 @@ public static class StatusValues
         public const string TwoBySixOrOneByFour = "2 pcs 6x2 or 1 pc 6x4";
         public const string TwoBySix = "2 pcs 6x2";
         public const string OneByFour = "1 pc 6x4";
-        public const string Active = "ACTIVE";
-        public const string Inactive = "INACTIVE";
     }
 
     public static class LumaboothSessionMode

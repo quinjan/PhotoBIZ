@@ -1,8 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { BoothStageAction, BoothStageComponent, BoothStageConfig, BoothStageScreenState } from '@photobiz/booth-stage';
+import {
+  BoothStageAction,
+  BoothStageComponent,
+  BoothStageConfig,
+  BoothStageScreenState,
+} from '@photobiz/booth-stage';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { firstValueFrom, interval } from 'rxjs';
 
@@ -21,6 +26,18 @@ type PaymentNotice = {
 type DismissedPaymentNotice = {
   readonly transactionId: string;
   readonly expiresAt: number;
+};
+
+type ToastKind = 'success' | 'error' | 'info';
+type ToastNotification = {
+  readonly id: number;
+  readonly kind: ToastKind;
+  readonly message: string;
+};
+type RunOptions = {
+  readonly errorMessage?: string;
+  readonly notifyError?: boolean;
+  readonly showBusy?: boolean;
 };
 
 @Component({
@@ -43,6 +60,7 @@ export class App {
   private completedReturnTimer: number | null = null;
   private returnToWelcomeInFlight = false;
   private showReturnToWelcomeErrorOnFailure = false;
+  private returnToWelcomeErrorShown = false;
 
   protected readonly kioskToken = signal(
     App.readTokenFromUrl() ?? localStorage.getItem('photobiz.kioskToken') ?? '',
@@ -56,7 +74,11 @@ export class App {
     App.readStoredPaymentNotice(this.kioskToken()),
   );
   protected readonly error = signal('');
-  protected readonly loading = signal(false);
+  private readonly busyRequests = signal(0);
+  protected readonly loading = computed(() => this.busyRequests() > 0);
+  protected readonly toasts = signal<readonly ToastNotification[]>([]);
+  private readonly toastTimers = new Map<number, number>();
+  private nextToastId = 0;
   protected readonly screen = computed<BoothStageScreenState>(() => {
     const config = this.config();
     const recentTransaction = config?.recentTransaction;
@@ -110,10 +132,6 @@ export class App {
       return 'completed';
     }
 
-    if (config.booth.state === 'RETURNING_TO_WELCOME') {
-      return 'expired';
-    }
-
     return 'offer';
   });
   protected readonly paymentNotice = computed<PaymentNotice | null>(() => {
@@ -134,7 +152,11 @@ export class App {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         if (this.kioskToken()) {
-          this.loadConfig();
+          void this.loadConfig({
+            errorMessage: 'Could not refresh booth config.',
+            notifyError: false,
+            showBusy: false,
+          });
         }
       });
 
@@ -144,6 +166,10 @@ export class App {
       }
 
       this.clearCompletedReturnTimer();
+      for (const timer of this.toastTimers.values()) {
+        window.clearTimeout(timer);
+      }
+      this.toastTimers.clear();
     });
   }
 
@@ -153,19 +179,22 @@ export class App {
   }
 
   protected async confirmOffer(): Promise<void> {
-    await this.run(async () => {
-      const transaction = await firstValueFrom(
-        this.http.post<BoothTransaction>(
-          `${App.apiBaseUrl}/api/booth-ui/transactions`,
-          {},
-          { headers: this.headers() },
-        ),
-      );
+    await this.run(
+      async () => {
+        const transaction = await firstValueFrom(
+          this.http.post<BoothTransaction>(
+            `${App.apiBaseUrl}/api/booth-ui/transactions`,
+            {},
+            { headers: this.headers() },
+          ),
+        );
 
-      this.clearPaymentNotice();
-      this.transaction.set(transaction);
-      await this.loadConfig();
-    }, 'Could not confirm this offer.');
+        this.clearPaymentNotice();
+        this.transaction.set(transaction);
+        await this.loadConfig();
+      },
+      { errorMessage: 'Could not confirm this offer.' },
+    );
   }
 
   protected async chooseCash(): Promise<void> {
@@ -175,33 +204,29 @@ export class App {
       return;
     }
 
-    await this.run(async () => {
-      const updated = await firstValueFrom(
-        this.http.post<BoothTransaction>(
-          `${App.apiBaseUrl}/api/booth-ui/transactions/${transaction.id}/payment-method`,
-          { method: 'CASH' },
-          { headers: this.headers() },
-        ),
-      );
+    await this.run(
+      async () => {
+        const updated = await firstValueFrom(
+          this.http.post<BoothTransaction>(
+            `${App.apiBaseUrl}/api/booth-ui/transactions/${transaction.id}/payment-method`,
+            { method: 'CASH' },
+            { headers: this.headers() },
+          ),
+        );
 
-      this.transaction.set(updated);
-      await this.loadConfig();
-    }, 'Could not select cash payment.');
+        this.transaction.set(updated);
+        await this.loadConfig();
+        this.succeed('Cash payment request sent.');
+      },
+      { errorMessage: 'Could not select cash payment.' },
+    );
   }
 
-  protected async loadConfig(suppressErrors = false): Promise<void> {
-    if (suppressErrors) {
-      try {
-        await this.loadConfigCore();
-      } catch {
-        // Return-to-welcome is a kiosk recovery path; do not surface transient
-        // refresh failures after the customer has chosen to leave the completed screen.
-      }
-
-      return;
-    }
-
-    await this.run(() => this.loadConfigCore(), 'Could not load booth config.');
+  protected async loadConfig(options: RunOptions = {}): Promise<void> {
+    await this.run(() => this.loadConfigCore(), {
+      errorMessage: 'Could not load booth config.',
+      ...options,
+    });
   }
 
   protected handleStageAction(action: BoothStageAction): void {
@@ -240,9 +265,10 @@ export class App {
 
     this.returnToWelcomeInFlight = true;
     this.clearCompletedReturnTimer();
-    this.loading.set(true);
+    this.beginBusy();
     if (showErrorOnFailure) {
       this.error.set('');
+      this.returnToWelcomeErrorShown = false;
     }
     let commandSucceeded = false;
 
@@ -258,16 +284,21 @@ export class App {
     } catch {
       // Keep the customer-facing completed screen calm and retry. The screen should
       // not move to welcome until the backend accepts the return command.
-      if (this.showReturnToWelcomeErrorOnFailure) {
-        this.error.set('Could not return to welcome. Please wait or ask the cashier to return the booth to welcome.');
+      if (this.showReturnToWelcomeErrorOnFailure && !this.returnToWelcomeErrorShown) {
+        this.fail(
+          'Could not return to welcome. Please wait or ask the cashier to return the booth to welcome.',
+        );
+        this.returnToWelcomeErrorShown = true;
       }
     } finally {
       if (commandSucceeded) {
         this.showReturnToWelcomeErrorOnFailure = false;
+        this.returnToWelcomeErrorShown = false;
         this.error.set('');
+        this.clearToasts('error');
         this.transaction.set(null);
         this.applyBackendConfirmedWelcome();
-        await this.loadConfig(true);
+        await this.loadConfig({ notifyError: false, showBusy: false });
       } else if (this.config()?.booth.state === 'COMPLETED') {
         this.completedReturnTimer = window.setTimeout(() => {
           this.completedReturnTimer = null;
@@ -275,7 +306,7 @@ export class App {
         }, App.completedPromptRetryMs);
       }
 
-      this.loading.set(false);
+      this.endBusy();
       this.returnToWelcomeInFlight = false;
     }
   }
@@ -383,8 +414,10 @@ export class App {
   }
 
   private isPaymentNoticeDismissed(transactionId: string): boolean {
-    return this.dismissedRecentTransactionId() === transactionId ||
-      App.readDismissedPaymentNoticeId(this.kioskToken()) === transactionId;
+    return (
+      this.dismissedRecentTransactionId() === transactionId ||
+      App.readDismissedPaymentNoticeId(this.kioskToken()) === transactionId
+    );
   }
 
   private rememberDismissedPaymentNotice(transactionId: string): void {
@@ -398,7 +431,9 @@ export class App {
     );
   }
 
-  private static toPaymentNotice(recentTransaction: NonNullable<BoothStageConfig['recentTransaction']>): PaymentNotice | null {
+  private static toPaymentNotice(
+    recentTransaction: NonNullable<BoothStageConfig['recentTransaction']>,
+  ): PaymentNotice | null {
     switch (recentTransaction.status) {
       case 'CANCELLED':
         return {
@@ -432,7 +467,12 @@ export class App {
 
     try {
       const notice = JSON.parse(rawNotice) as PaymentNotice;
-      if (!notice.transactionId || !notice.title || !notice.message || notice.expiresAt <= Date.now()) {
+      if (
+        !notice.transactionId ||
+        !notice.title ||
+        !notice.message ||
+        notice.expiresAt <= Date.now()
+      ) {
         localStorage.removeItem(App.paymentNoticeStorageKey(kioskToken));
         return null;
       }
@@ -479,23 +519,136 @@ export class App {
       return queryToken;
     }
 
-    const firstPathSegment = window.location.pathname
-      .split('/')
-      .filter(Boolean)[0];
+    const firstPathSegment = window.location.pathname.split('/').filter(Boolean)[0];
 
     return firstPathSegment ? decodeURIComponent(firstPathSegment) : null;
   }
 
-  private async run(operation: () => Promise<void>, fallbackMessage: string): Promise<void> {
-    this.loading.set(true);
+  protected dismissToast(id: number): void {
+    this.removeToast(id);
+  }
+
+  private async run(operation: () => Promise<void>, options: RunOptions = {}): Promise<boolean> {
+    const showBusy = options.showBusy ?? true;
+    if (showBusy) {
+      this.beginBusy();
+    }
     this.error.set('');
 
     try {
       await operation();
+      return true;
     } catch (error) {
-      this.error.set(error instanceof Error ? error.message : fallbackMessage);
+      const message = this.getRequestErrorMessage(error, options.errorMessage ?? 'Request failed.');
+      this.error.set(message);
+      if (options.notifyError !== false) {
+        this.showToast('error', message);
+      }
+      return false;
     } finally {
-      this.loading.set(false);
+      if (showBusy) {
+        this.endBusy();
+      }
     }
+  }
+
+  private fail(message: string): void {
+    this.error.set(message);
+    this.showToast('error', message);
+  }
+
+  private succeed(message: string): void {
+    this.error.set('');
+    this.clearToasts('error');
+    this.showToast('success', message);
+  }
+
+  private beginBusy(): void {
+    this.busyRequests.update((count) => count + 1);
+  }
+
+  private endBusy(): void {
+    this.busyRequests.update((count) => Math.max(0, count - 1));
+  }
+
+  private showToast(kind: ToastKind, message: string): void {
+    const normalizedMessage = message.trim();
+    if (!normalizedMessage) {
+      return;
+    }
+
+    const id = ++this.nextToastId;
+    this.toasts.update((toasts) => [...toasts, { id, kind, message: normalizedMessage }]);
+    const timeout = kind === 'error' ? 7000 : 4500;
+    const timer = window.setTimeout(() => this.removeToast(id), timeout);
+    this.toastTimers.set(id, timer);
+  }
+
+  private removeToast(id: number): void {
+    const timer = this.toastTimers.get(id);
+    if (timer !== undefined) {
+      window.clearTimeout(timer);
+      this.toastTimers.delete(id);
+    }
+
+    this.toasts.update((toasts) => toasts.filter((toast) => toast.id !== id));
+  }
+
+  private clearToasts(kind: ToastKind): void {
+    for (const toast of this.toasts()) {
+      if (toast.kind === kind) {
+        this.removeToast(toast.id);
+      }
+    }
+  }
+
+  private getRequestErrorMessage(error: unknown, fallback: string): string {
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 0) {
+        return `${fallback} The API is unreachable.`;
+      }
+
+      const apiMessage = this.getApiErrorMessage(error.error);
+      return apiMessage ? `${fallback} ${apiMessage}` : fallback;
+    }
+
+    if (error instanceof Error && error.message) {
+      return `${fallback} ${error.message}`;
+    }
+
+    return fallback;
+  }
+
+  private getApiErrorMessage(errorBody: unknown): string {
+    if (typeof errorBody === 'string') {
+      return errorBody;
+    }
+
+    if (!errorBody || typeof errorBody !== 'object') {
+      return '';
+    }
+
+    const body = errorBody as {
+      detail?: unknown;
+      errors?: Record<string, unknown>;
+      title?: unknown;
+    };
+    if (typeof body.detail === 'string') {
+      return body.detail;
+    }
+
+    if (body.errors) {
+      for (const value of Object.values(body.errors)) {
+        if (Array.isArray(value) && typeof value[0] === 'string') {
+          return value[0];
+        }
+
+        if (typeof value === 'string') {
+          return value;
+        }
+      }
+    }
+
+    return typeof body.title === 'string' ? body.title : '';
   }
 }

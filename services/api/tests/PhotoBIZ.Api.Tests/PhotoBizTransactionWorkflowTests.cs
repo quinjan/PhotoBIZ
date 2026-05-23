@@ -76,6 +76,36 @@ public sealed class PhotoBizTransactionWorkflowTests
     }
 
     [Fact]
+    public async Task TimedOutExtraPrintAddOnReturnsBoothToWelcome()
+    {
+        await using var dbContext = CreateDbContext();
+        var auditService = new PhotoBizAuditService(dbContext);
+        var workflow = new PhotoBizTransactionWorkflow(dbContext, auditService);
+        var (booth, activation, offer) = await SeedBoothGraphAsync(dbContext);
+        var cashier = new PhotoBizCurrentUser(Guid.NewGuid(), StatusValues.User.Cashier, booth.ClientAccountId, booth.Id);
+
+        var parent = await workflow.CreateTransactionAsync(booth, activation, offer, CancellationToken.None);
+        parent = await workflow.SetPaymentMethodAsync(parent, booth, StatusValues.PaymentMethod.Cash, CancellationToken.None);
+        parent = await workflow.ApproveCashAsync(parent, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        await workflow.MarkSessionStartedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+        await workflow.MarkSessionCompletedAsync(parent.Id, booth.Id, "PBZ-parent", CancellationToken.None);
+
+        var addOn = await workflow.CreateExtraPrintAddOnAsync(parent, cashier, 3, CancellationToken.None);
+        addOn = await workflow.ApproveCashAsync(addOn, cashier, CancellationToken.None);
+        _ = await workflow.TryAcquireNextAgentCommandAsync(booth, CancellationToken.None);
+        addOn.PaidAt = DateTimeOffset.UtcNow.Subtract(PhotoBizTransactionWorkflow.PrintingOrSharingTimeout).AddSeconds(-1);
+        await dbContext.SaveChangesAsync();
+
+        var resetCount = await workflow.ResetTimedOutPrintingBoothsToWelcomeAsync(CancellationToken.None);
+
+        Assert.Equal(1, resetCount);
+        Assert.Equal(StatusValues.Transaction.Cancelled, addOn.Status);
+        Assert.Equal("Extra print workflow timed out before completion.", addOn.FailureReason);
+        Assert.Equal(StatusValues.Booth.Welcome, booth.CurrentState);
+    }
+
+    [Fact]
     public async Task ExtraPrintAddOnRejectsInvalidEligibility()
     {
         await using var dbContext = CreateDbContext();
@@ -104,7 +134,7 @@ public sealed class PhotoBizTransactionWorkflowTests
             workflow.CreateExtraPrintAddOnAsync(parent, cashier, 1, CancellationToken.None));
 
         Assert.Equal(StatusValues.Transaction.PendingCash, addOn.Status);
-        Assert.Equal("The booth already has an active transaction.", activeTransaction.Message);
+        Assert.Equal("Extra prints are available only for the previous booth transaction.", activeTransaction.Message);
     }
 
     [Fact]

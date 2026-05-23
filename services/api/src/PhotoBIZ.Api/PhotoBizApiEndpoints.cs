@@ -49,6 +49,7 @@ public static class PhotoBizApiEndpoints
         admin.MapDelete("/print-entitlements/{printEntitlementId:guid}", DeletePrintEntitlementAsync);
         admin.MapPost("/booths/{boothId:guid}/activate-offer", ActivateOfferAsync);
         admin.MapPut("/booths/{boothId:guid}/appearance", UpdateAppearanceAsync);
+        admin.MapPut("/payment-resources/{paymentMethod}", UpdatePaymentResourceAsync);
         admin.MapPost("/booths/{boothId:guid}/payment-options", AssignPaymentOptionAsync);
         admin.MapDelete("/booths/{boothId:guid}/payment-options/{paymentMethod}", DisablePaymentOptionAsync);
 
@@ -243,6 +244,8 @@ public static class PhotoBizApiEndpoints
             .OrderBy(item => item.Name)
             .ToListAsync(cancellationToken);
         var activations = await ApplyScopedBoothIds(dbContext.BoothOfferActivations.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
+        var paymentProviderConfigs = await ApplyClientScope(dbContext.ClientPaymentProviderConfigs.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
+        var mayaEcrDevices = await ApplyClientScope(dbContext.ClientMayaEcrDevices.AsNoTracking(), currentUser, item => item.ClientAccountId).ToListAsync(cancellationToken);
         var paymentAssignments = await ApplyScopedBoothIds(dbContext.BoothPaymentOptionAssignments.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var appearanceConfigs = await ApplyScopedBoothIds(dbContext.BoothAppearanceConfigs.AsNoTracking(), currentUser, scopedBoothIds, item => item.BoothId).ToListAsync(cancellationToken);
         var subscriptions = await ApplyClientScope(dbContext.ClientSubscriptions.AsNoTracking(), currentUser, item => item.ClientAccountId)
@@ -276,6 +279,7 @@ public static class PhotoBizApiEndpoints
             offers.Select(ToOfferSummary).ToArray(),
             printEntitlements.Select(ToPrintEntitlementSummary).ToArray(),
             activations.Select(ToOfferActivationSummary).ToArray(),
+            BuildPaymentResourceSummaries(clients, paymentProviderConfigs, mayaEcrDevices),
             paymentAssignments.Select(assignment => new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status)).ToArray(),
             appearanceConfigs.Select(config =>
             {
@@ -717,6 +721,23 @@ public static class PhotoBizApiEndpoints
             {
                 ["activeBoothAllowance"] = ["Active booth allowance cannot be lower than the current active booth count."]
             });
+        }
+
+        if (request.SubscriptionPlanId is { } requestedPlanId && requestedPlanId != subscription.SubscriptionPlanId)
+        {
+            var planExists = await dbContext.SubscriptionPlans
+                .AsNoTracking()
+                .AnyAsync(item => item.Id == requestedPlanId && item.Active, cancellationToken);
+
+            if (!planExists)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["subscriptionPlanId"] = ["Active subscription plan was not found."]
+                });
+            }
+
+            subscription.SubscriptionPlanId = requestedPlanId;
         }
 
         subscription.Status = request.Status;
@@ -1488,7 +1509,6 @@ public static class PhotoBizApiEndpoints
             Id = Guid.NewGuid(),
             ClientAccountId = clientAccountId,
             Name = request.Name.Trim(),
-            Status = StatusValues.PrintEntitlement.Active,
             CreatedAt = DateTimeOffset.UtcNow
         };
 
@@ -1746,6 +1766,112 @@ public static class PhotoBizApiEndpoints
         await auditService.WriteAsync(currentUser, "booth_appearance.updated", nameof(BoothAppearanceConfig), appearance.Id, new { appearance.BoothId, appearance.ThemePreset }, cancellationToken);
 
         return TypedResults.Ok();
+    }
+
+    private static async Task<Results<Ok<PaymentResourceSummary>, ForbidHttpResult, ValidationProblem>> UpdatePaymentResourceAsync(
+        string paymentMethod,
+        UpdatePaymentResourceRequest request,
+        ClaimsPrincipal principal,
+        PhotoBizDbContext dbContext,
+        PhotoBizAuditService auditService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = principal.GetRequiredCurrentUser();
+        if (!currentUser.IsClientOwner && !currentUser.IsClientAdmin)
+        {
+            return TypedResults.Forbid();
+        }
+
+        if (!IsKnownPaymentMethod(paymentMethod))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["paymentMethod"] = ["Payment method is not supported."]
+            });
+        }
+
+        var clientAccountId = currentUser.ClientAccountId!.Value;
+
+        if (paymentMethod == StatusValues.PaymentMethod.Cash)
+        {
+            if (!request.Enabled)
+            {
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["enabled"] = ["Cash is always enabled for client tenants."]
+                });
+            }
+
+            return TypedResults.Ok(new PaymentResourceSummary(clientAccountId, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified));
+        }
+
+        PaymentResourceSummary summary;
+
+        if (paymentMethod == StatusValues.PaymentMethod.MayaCheckoutQr)
+        {
+            var config = await dbContext.ClientPaymentProviderConfigs
+                .SingleOrDefaultAsync(
+                    item =>
+                        item.ClientAccountId == clientAccountId &&
+                        item.Provider == StatusValues.PaymentProvider.Maya &&
+                        item.IntegrationType == StatusValues.PaymentMethod.MayaCheckoutQr,
+                    cancellationToken);
+
+            if (config is null)
+            {
+                config = new ClientPaymentProviderConfig
+                {
+                    Id = Guid.NewGuid(),
+                    ClientAccountId = clientAccountId,
+                    Provider = StatusValues.PaymentProvider.Maya,
+                    IntegrationType = StatusValues.PaymentMethod.MayaCheckoutQr,
+                    Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled
+                };
+                dbContext.ClientPaymentProviderConfigs.Add(config);
+            }
+            else
+            {
+                config.Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await auditService.WriteAsync(currentUser, "payment_resource.updated", nameof(ClientPaymentProviderConfig), config.Id, new { paymentMethod, config.Status }, cancellationToken);
+            summary = ToPaymentResourceSummary(clientAccountId, paymentMethod, config.Status);
+        }
+        else
+        {
+            var device = await dbContext.ClientMayaEcrDevices
+                .OrderBy(item => item.DisplayName)
+                .FirstOrDefaultAsync(
+                    item =>
+                        item.ClientAccountId == clientAccountId &&
+                        item.Provider == StatusValues.PaymentProvider.Maya,
+                    cancellationToken);
+
+            if (device is null)
+            {
+                device = new ClientMayaEcrDevice
+                {
+                    Id = Guid.NewGuid(),
+                    ClientAccountId = clientAccountId,
+                    DisplayName = "Maya Terminal ECR",
+                    DeviceId = "MAYA-ECR-DRAFT",
+                    Provider = StatusValues.PaymentProvider.Maya,
+                    Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled
+                };
+                dbContext.ClientMayaEcrDevices.Add(device);
+            }
+            else
+            {
+                device.Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await auditService.WriteAsync(currentUser, "payment_resource.updated", nameof(ClientMayaEcrDevice), device.Id, new { paymentMethod, device.Status }, cancellationToken);
+            summary = ToPaymentResourceSummary(clientAccountId, paymentMethod, device.Status);
+        }
+
+        return TypedResults.Ok(summary);
     }
 
     private static async Task<Results<Ok<PaymentAssignmentSummary>, ForbidHttpResult, ValidationProblem>> AssignPaymentOptionAsync(
@@ -2816,7 +2942,7 @@ public static class PhotoBizApiEndpoints
             transaction.AmountCents,
             transaction.ParentTransactionId,
             transaction.ExtraPrintCount,
-            CanCreateExtraPrintAddOn(transaction, isLatestCompletedSession: false, hasActiveBoothTransaction: false, extraPrintUnitPriceCents),
+            CanCreateExtraPrintAddOn(transaction, isExtraPrintReference: false, extraPrintUnitPriceCents),
             extraPrintUnitPriceCents,
             offerSnapshot.OfferName,
             offerSnapshot.OfferType,
@@ -2830,21 +2956,14 @@ public static class PhotoBizApiEndpoints
 
     private static IEnumerable<TransactionSummary> ToTransactionSummaries(IReadOnlyCollection<Transaction> transactions)
     {
-        var latestCompletedSessionIdsByBooth = transactions
-            .Where(transaction =>
-                transaction.TransactionType == StatusValues.TransactionType.SessionPurchase &&
-                transaction.Status == StatusValues.Transaction.Completed)
+        var extraPrintReferenceIdsByBooth = transactions
             .GroupBy(transaction => transaction.BoothId)
             .ToDictionary(
                 group => group.Key,
-                group => group
-                    .OrderByDescending(transaction => transaction.CompletedAt ?? transaction.CreatedAt)
-                    .ThenByDescending(transaction => transaction.CreatedAt)
-                    .First().Id);
-        var boothIdsWithActiveTransactions = transactions
-            .Where(transaction => !IsTerminalTransactionStatus(transaction.Status))
-            .Select(transaction => transaction.BoothId)
-            .ToHashSet();
+                group => ResolveExtraPrintReferenceTransactionId(group
+                    .OrderByDescending(transaction => transaction.CreatedAt)
+                    .ThenByDescending(transaction => transaction.Id)
+                    .ToArray()));
         var coveredSessionSequencesById = transactions
             .Where(transaction =>
                 transaction.TransactionType == StatusValues.TransactionType.CoveredPlanSession &&
@@ -2862,10 +2981,9 @@ public static class PhotoBizApiEndpoints
         {
             var extraPrintUnitPriceCents = TryGetExtraPrintUnitPriceCents(transaction);
             var offerSnapshot = ReadOfferSnapshot(transaction);
-            var isLatestCompletedSession =
-                latestCompletedSessionIdsByBooth.TryGetValue(transaction.BoothId, out var latestTransactionId) &&
-                latestTransactionId == transaction.Id;
-            var hasActiveBoothTransaction = boothIdsWithActiveTransactions.Contains(transaction.BoothId);
+            var isExtraPrintReference =
+                extraPrintReferenceIdsByBooth.TryGetValue(transaction.BoothId, out var referenceTransactionId) &&
+                referenceTransactionId == transaction.Id;
 
             yield return new TransactionSummary(
                 transaction.Id,
@@ -2878,7 +2996,7 @@ public static class PhotoBizApiEndpoints
                 transaction.AmountCents,
                 transaction.ParentTransactionId,
                 transaction.ExtraPrintCount,
-                CanCreateExtraPrintAddOn(transaction, isLatestCompletedSession, hasActiveBoothTransaction, extraPrintUnitPriceCents),
+                CanCreateExtraPrintAddOn(transaction, isExtraPrintReference, extraPrintUnitPriceCents),
                 extraPrintUnitPriceCents,
                 offerSnapshot.OfferName,
                 offerSnapshot.OfferType,
@@ -2895,12 +3013,10 @@ public static class PhotoBizApiEndpoints
 
     private static bool CanCreateExtraPrintAddOn(
         Transaction transaction,
-        bool isLatestCompletedSession,
-        bool hasActiveBoothTransaction,
+        bool isExtraPrintReference,
         int? extraPrintUnitPriceCents)
     {
-        if (!isLatestCompletedSession ||
-            hasActiveBoothTransaction ||
+        if (!isExtraPrintReference ||
             transaction.TransactionType != StatusValues.TransactionType.SessionPurchase ||
             transaction.Status != StatusValues.Transaction.Completed ||
             extraPrintUnitPriceCents is null or <= 0)
@@ -2921,6 +3037,55 @@ public static class PhotoBizApiEndpoints
         {
             return false;
         }
+    }
+
+    private static Guid? ResolveExtraPrintReferenceTransactionId(Transaction[] orderedTransactions)
+    {
+        foreach (var transaction in orderedTransactions)
+        {
+            if (IsTransactionInLumaboothSession(transaction))
+            {
+                return null;
+            }
+
+            if (IsTransactionBeforeLumaboothSession(transaction))
+            {
+                continue;
+            }
+
+            if (!IsSessionTransaction(transaction))
+            {
+                if (!IsTerminalTransactionStatus(transaction.Status))
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            return transaction.Id;
+        }
+
+        return null;
+    }
+
+    private static bool IsTransactionBeforeLumaboothSession(Transaction transaction)
+    {
+        return IsSessionTransaction(transaction) &&
+            transaction.Status is StatusValues.Transaction.Created
+                or StatusValues.Transaction.PendingCash
+                or StatusValues.Transaction.Paid;
+    }
+
+    private static bool IsSessionTransaction(Transaction transaction)
+    {
+        return transaction.TransactionType is StatusValues.TransactionType.SessionPurchase
+            or StatusValues.TransactionType.CoveredPlanSession;
+    }
+
+    private static bool IsTransactionInLumaboothSession(Transaction transaction)
+    {
+        return transaction.Status is StatusValues.Transaction.StartingSession or StatusValues.Transaction.InSession;
     }
 
     private static int? TryGetExtraPrintUnitPriceCents(Transaction transaction)
@@ -3031,8 +3196,7 @@ public static class PhotoBizApiEndpoints
         return new PrintEntitlementSummary(
             entitlement.Id,
             entitlement.ClientAccountId,
-            entitlement.Name,
-            entitlement.Status);
+            entitlement.Name);
     }
 
     private static ReportSummary BuildReportSummary(
@@ -3063,7 +3227,7 @@ public static class PhotoBizApiEndpoints
             .GroupBy(item => item.ClientAccountId)
             .ToDictionary(group => group.Key, group => group.Count());
         var manualMrrCents = latestSubscriptionsByClient.Values.Sum(subscription =>
-            (subscription.Status is StatusValues.Subscription.Active or StatusValues.Subscription.Trial or StatusValues.Subscription.PastDue) &&
+            (subscription.Status is StatusValues.Subscription.Active or StatusValues.Subscription.Trial) &&
             subscriptionPlansById.TryGetValue(subscription.SubscriptionPlanId, out var plan)
                 ? plan.PricePerBoothCents * subscription.ActiveBoothAllowance
                 : 0);
@@ -3078,7 +3242,6 @@ public static class PhotoBizApiEndpoints
                 booths.Count(item => item.CurrentState == StatusValues.Booth.Offline),
                 subscriptions.Count(item => item.Status == StatusValues.Subscription.Trial),
                 subscriptions.Count(item => item.Status == StatusValues.Subscription.Active),
-                subscriptions.Count(item => item.Status == StatusValues.Subscription.PastDue),
                 subscriptions.Count(item => item.Status == StatusValues.Subscription.Suspended),
                 subscriptions.Count(item => item.Status == StatusValues.Subscription.Cancelled),
                 manualMrrCents,
@@ -3545,10 +3708,52 @@ public static class PhotoBizApiEndpoints
                 Id = Guid.NewGuid(),
                 ClientAccountId = clientAccountId,
                 Name = name,
-                Status = StatusValues.PrintEntitlement.Active,
                 CreatedAt = DateTimeOffset.UtcNow
             });
         }
+    }
+
+    private static PaymentResourceSummary[] BuildPaymentResourceSummaries(
+        IReadOnlyCollection<ClientAccount> clients,
+        IReadOnlyCollection<ClientPaymentProviderConfig> paymentProviderConfigs,
+        IReadOnlyCollection<ClientMayaEcrDevice> mayaEcrDevices)
+    {
+        return clients
+            .SelectMany(client =>
+            {
+                var mayaQrStatus =
+                    paymentProviderConfigs
+                        .FirstOrDefault(
+                            config =>
+                                config.ClientAccountId == client.Id &&
+                                config.Provider == StatusValues.PaymentProvider.Maya &&
+                                config.IntegrationType == StatusValues.PaymentMethod.MayaCheckoutQr)
+                        ?.Status ?? StatusValues.PaymentResource.NotConfigured;
+                var mayaEcrStatus =
+                    mayaEcrDevices
+                        .FirstOrDefault(
+                            device =>
+                                device.ClientAccountId == client.Id &&
+                                device.Provider == StatusValues.PaymentProvider.Maya)
+                        ?.Status ?? StatusValues.PaymentResource.NotConfigured;
+
+                return new[]
+                {
+                    new PaymentResourceSummary(client.Id, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified),
+                    ToPaymentResourceSummary(client.Id, StatusValues.PaymentMethod.MayaCheckoutQr, mayaQrStatus),
+                    ToPaymentResourceSummary(client.Id, StatusValues.PaymentMethod.MayaTerminalEcr, mayaEcrStatus)
+                };
+            })
+            .ToArray();
+    }
+
+    private static PaymentResourceSummary ToPaymentResourceSummary(Guid clientAccountId, string paymentMethod, string status)
+    {
+        return new PaymentResourceSummary(
+            clientAccountId,
+            paymentMethod,
+            status is not StatusValues.PaymentResource.NotConfigured and not StatusValues.PaymentResource.Disabled,
+            status);
     }
 
     private static bool IsKnownClientUserRole(string role)
@@ -3606,7 +3811,7 @@ public static class PhotoBizApiEndpoints
 
     private static bool IsKnownSubscriptionStatus(string status)
     {
-        return status is StatusValues.Subscription.Trial or StatusValues.Subscription.Active or StatusValues.Subscription.PastDue or StatusValues.Subscription.Suspended or StatusValues.Subscription.Cancelled;
+        return status is StatusValues.Subscription.Trial or StatusValues.Subscription.Active or StatusValues.Subscription.Suspended or StatusValues.Subscription.Cancelled;
     }
 
     private static bool IsTerminalTransactionStatus(string status)
@@ -3690,7 +3895,7 @@ public sealed record OfferSummary(
     int? ExtraPrintPriceCents,
     string LumaboothSessionMode,
     bool Active);
-public sealed record PrintEntitlementSummary(Guid Id, Guid ClientAccountId, string Name, string Status);
+public sealed record PrintEntitlementSummary(Guid Id, Guid ClientAccountId, string Name);
 public sealed record OfferActivationSummary(
     Guid Id,
     Guid BoothId,
@@ -3700,6 +3905,7 @@ public sealed record OfferActivationSummary(
     DateTimeOffset? EndsAt,
     int? SessionAllowance,
     int SessionsUsed);
+public sealed record PaymentResourceSummary(Guid ClientAccountId, string PaymentMethod, bool Enabled, string Status);
 public sealed record PaymentAssignmentSummary(Guid Id, Guid BoothId, string PaymentMethod, bool RuntimeEnabled, string Status);
 public sealed record BoothAppearanceSummary(
     Guid Id,
@@ -3749,6 +3955,7 @@ public sealed record AdminOverviewResponse(
     IReadOnlyCollection<OfferSummary> Offers,
     IReadOnlyCollection<PrintEntitlementSummary> PrintEntitlements,
     IReadOnlyCollection<OfferActivationSummary> Activations,
+    IReadOnlyCollection<PaymentResourceSummary> PaymentResources,
     IReadOnlyCollection<PaymentAssignmentSummary> PaymentAssignments,
     IReadOnlyCollection<BoothAppearanceSummary> AppearanceConfigs,
     IReadOnlyCollection<TransactionSummary> Transactions,
@@ -3766,7 +3973,6 @@ public sealed record PlatformReportSummary(
     int OfflineBooths,
     int TrialSubscriptions,
     int ActiveSubscriptions,
-    int PastDueSubscriptions,
     int SuspendedSubscriptions,
     int CancelledSubscriptions,
     int ManualMrrCents,
@@ -3797,7 +4003,7 @@ public sealed record TransferClientOwnerRequest(Guid NewOwnerUserId);
 public sealed record CreateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency);
 public sealed record UpdateSubscriptionPlanRequest(string Name, int PricePerBoothCents, string Currency, bool Active);
 public sealed record CreateSubscriptionRequest(Guid ClientAccountId, Guid SubscriptionPlanId, string Status, int ActiveBoothAllowance, string? Notes);
-public sealed record UpdateSubscriptionRequest(string Status, int ActiveBoothAllowance, DateOnly? EndsOn, string? Notes);
+public sealed record UpdateSubscriptionRequest(Guid? SubscriptionPlanId, string Status, int ActiveBoothAllowance, DateOnly? EndsOn, string? Notes);
 public sealed record CreateUserRequest(
     Guid? ClientAccountId,
     Guid? AssignedBoothId,
@@ -3861,6 +4067,7 @@ public sealed record UpdateAppearanceRequest(
     string? PrimaryColor = null,
     string? AccentColor = null,
     string? BackgroundImageUrl = null);
+public sealed record UpdatePaymentResourceRequest(bool Enabled);
 public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool RuntimeEnabled);
 public sealed record BoothClientResponse(string DisplayName, string? LogoUrl);
 public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string? BackgroundImageDataUrl, string FontMode);

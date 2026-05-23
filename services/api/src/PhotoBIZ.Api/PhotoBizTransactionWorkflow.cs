@@ -10,6 +10,7 @@ public sealed class PhotoBizTransactionWorkflow(
 {
     private static readonly TimeSpan PendingCashWindow = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan PostSessionPromptDuration = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan PrintingOrSharingTimeout = TimeSpan.FromSeconds(15);
     private const int MaximumExtraPrintCopies = 5;
     private static readonly string[] TerminalTransactionStatuses =
     [
@@ -371,30 +372,20 @@ public sealed class PhotoBizTransactionWorkflow(
             throw new InvalidOperationException("The booth agent is offline.");
         }
 
+        if (IsBoothInLumaboothSession(booth))
+        {
+            throw new InvalidOperationException("Extra prints are unavailable while the booth is in a LumaBooth session.");
+        }
+
         if (currentUser.IsCashier && currentUser.AssignedBoothId != booth.Id)
         {
             throw new InvalidOperationException("Cashiers can create extra prints only for their assigned booth.");
         }
 
-        if (await HasAnotherActiveTransactionAsync(booth.Id, null, cancellationToken))
+        var referenceTransactionId = await ResolveExtraPrintReferenceTransactionIdAsync(booth.Id, cancellationToken);
+        if (referenceTransactionId != parentTransaction.Id)
         {
-            throw new InvalidOperationException("The booth already has an active transaction.");
-        }
-
-        var latestCompletedSessionId = await dbContext.Transactions
-            .AsNoTracking()
-            .Where(item =>
-                item.BoothId == booth.Id &&
-                item.TransactionType == StatusValues.TransactionType.SessionPurchase &&
-                item.Status == StatusValues.Transaction.Completed)
-            .OrderByDescending(item => item.CompletedAt ?? item.CreatedAt)
-            .ThenByDescending(item => item.CreatedAt)
-            .Select(item => item.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (latestCompletedSessionId != parentTransaction.Id)
-        {
-            throw new InvalidOperationException("Extra prints are available only for the latest completed booth session.");
+            throw new InvalidOperationException("Extra prints are available only for the previous booth transaction.");
         }
 
         using var offerSnapshot = JsonDocument.Parse(parentTransaction.OfferSnapshot);
@@ -774,6 +765,47 @@ public sealed class PhotoBizTransactionWorkflow(
         return resetCount;
     }
 
+    public async Task<int> ResetTimedOutPrintingBoothsToWelcomeAsync(CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.Subtract(PrintingOrSharingTimeout);
+        var timedOutTransactions = await dbContext.Transactions
+            .Where(transaction =>
+                transaction.TransactionType == StatusValues.TransactionType.ExtraPrintAddOn &&
+                transaction.Status == StatusValues.Transaction.StartingSession &&
+                (transaction.PaidAt ?? transaction.CreatedAt) <= cutoff)
+            .ToListAsync(cancellationToken);
+
+        if (timedOutTransactions.Count == 0)
+        {
+            return 0;
+        }
+
+        var boothIds = timedOutTransactions.Select(transaction => transaction.BoothId).Distinct().ToArray();
+        var booths = await dbContext.Booths
+            .Where(booth => boothIds.Contains(booth.Id))
+            .ToDictionaryAsync(booth => booth.Id, cancellationToken);
+        var resetCount = 0;
+
+        foreach (var transaction in timedOutTransactions)
+        {
+            transaction.Status = StatusValues.Transaction.Cancelled;
+            transaction.CancelledAt ??= now;
+            transaction.FailureReason ??= "Extra print workflow timed out before completion.";
+
+            if (booths.TryGetValue(transaction.BoothId, out var booth) &&
+                booth.CurrentState == StatusValues.Booth.PrintingOrSharing)
+            {
+                booth.CurrentState = StatusValues.Booth.Welcome;
+                resetCount += 1;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return resetCount;
+    }
+
     public async Task<ReturnCompletedBoothToWelcomeResult> ReturnCompletedBoothToWelcomeAsync(
         Booth booth,
         DateTimeOffset? completedAtCutoff,
@@ -885,6 +917,77 @@ public sealed class PhotoBizTransactionWorkflow(
                 transaction.Id != excludedTransactionId &&
                 !TerminalTransactionStatuses.Contains(transaction.Status),
             cancellationToken);
+    }
+
+    private async Task<Guid?> ResolveExtraPrintReferenceTransactionIdAsync(
+        Guid boothId,
+        CancellationToken cancellationToken)
+    {
+        var transactions = await dbContext.Transactions
+            .AsNoTracking()
+            .Where(transaction => transaction.BoothId == boothId)
+            .OrderByDescending(transaction => transaction.CreatedAt)
+            .ThenByDescending(transaction => transaction.Id)
+            .Select(transaction => new
+            {
+                transaction.Id,
+                transaction.TransactionType,
+                transaction.Status
+            })
+            .ToListAsync(cancellationToken);
+
+        foreach (var transaction in transactions)
+        {
+            if (IsTransactionInLumaboothSession(transaction.Status))
+            {
+                return null;
+            }
+
+            if (IsTransactionBeforeLumaboothSession(transaction.TransactionType, transaction.Status))
+            {
+                continue;
+            }
+
+            if (!IsSessionTransaction(transaction.TransactionType))
+            {
+                if (!TerminalTransactionStatuses.Contains(transaction.Status))
+                {
+                    return null;
+                }
+
+                continue;
+            }
+
+            return transaction.Id;
+        }
+
+        return null;
+    }
+
+    private static bool IsTransactionBeforeLumaboothSession(string transactionType, string status)
+    {
+        return IsSessionTransaction(transactionType) &&
+            status is StatusValues.Transaction.Created
+                or StatusValues.Transaction.PendingCash
+                or StatusValues.Transaction.Paid;
+    }
+
+    private static bool IsSessionTransaction(string transactionType)
+    {
+        return transactionType is StatusValues.TransactionType.SessionPurchase
+            or StatusValues.TransactionType.CoveredPlanSession;
+    }
+
+    private static bool IsTransactionInLumaboothSession(string status)
+    {
+        return status is StatusValues.Transaction.StartingSession or StatusValues.Transaction.InSession;
+    }
+
+    private static bool IsBoothInLumaboothSession(Booth booth)
+    {
+        return booth.CurrentState is StatusValues.Booth.StartingLumabooth
+            or StatusValues.Booth.InLumaboothSession
+            or StatusValues.Booth.PrintingOrSharing;
     }
 
     private static string? GetSnapshotString(JsonElement snapshot, string propertyName)

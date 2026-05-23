@@ -26,6 +26,11 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
             LogLevel.Information,
             new EventId(1003, nameof(LogCompletedBoothsReset)),
             "Returned {CompletedBooths} completed booths to welcome");
+    private static readonly Action<ILogger, int, Exception?> LogPrintingBoothsReset =
+        LoggerMessage.Define<int>(
+            LogLevel.Information,
+            new EventId(1005, nameof(LogPrintingBoothsReset)),
+            "Returned {PrintingBooths} timed-out printing booths to welcome");
     private static readonly Action<ILogger, int, Exception?> LogExpiredPlanActivations =
         LoggerMessage.Define<int>(
             LogLevel.Information,
@@ -73,6 +78,12 @@ public class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> logger) :
             if (completedBoothsReset > 0)
             {
                 LogCompletedBoothsReset(logger, completedBoothsReset, null);
+            }
+
+            var printingBoothsReset = await workflow.ResetTimedOutPrintingBoothsToWelcomeAsync(stoppingToken);
+            if (printingBoothsReset > 0)
+            {
+                LogPrintingBoothsReset(logger, printingBoothsReset, null);
             }
 
             var expiredPlanActivations = await dbContext.BoothOfferActivations

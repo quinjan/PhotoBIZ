@@ -1,1766 +1,1383 @@
-import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { By } from '@angular/platform-browser';
+import { provideRouter, Router } from '@angular/router';
+import { TestBed } from '@angular/core/testing';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { ICellRendererParams } from 'ag-grid-community';
 import { vi } from 'vitest';
+import { AdminGridComponent } from './admin-grid.component';
+import {
+  ClientsPageComponent,
+  PackagesPageComponent,
+  PrintEntitlementsDialogComponent,
+} from './admin-pages';
+import {
+  AdminWorkspace,
+  BoothSummary,
+  ClientSummary,
+  OfferSummary,
+  OfferActivationSummary,
+  Overview,
+  PaymentAssignmentSummary,
+  PaymentResourceSummary,
+  PrintEntitlementSummary,
+  ReportSummary,
+  Session,
+  SubscriptionPlanSummary,
+  SubscriptionSummary,
+  TransactionSummary,
+  UserSummary,
+} from './admin-workspace.service';
 import { App } from './app';
+import { routes } from './app.routes';
+
+const apiBaseUrl = 'http://localhost:5082';
+
+class ResizeObserverMock {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
 
 describe('App', () => {
+  let snackBar: { open: ReturnType<typeof vi.fn>; dismiss: ReturnType<typeof vi.fn> };
+
   beforeEach(async () => {
+    snackBar = {
+      dismiss: vi.fn(),
+      open: vi.fn(),
+    };
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideHttpClient()],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter(routes),
+        provideNoopAnimations(),
+        { provide: MatSnackBar, useValue: snackBar },
+      ],
     }).compileComponents();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-
-    expect(app).toBeTruthy();
-  });
-
-  it('should paginate grid collections independently', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance as unknown as {
-      pagedItems: <T>(key: string, items: readonly T[]) => readonly T[];
-      pageInfo: (
-        key: string,
-        totalItems: number,
-      ) => {
-        page: number;
-        totalPages: number;
-        start: number;
-        end: number;
-        total: number;
-        hasPrevious: boolean;
-        hasNext: boolean;
-      };
-      nextPage: (key: string, totalItems: number) => void;
-      previousPage: (key: string, totalItems: number) => void;
-    };
-    const items = [1, 2, 3, 4, 5, 6];
-
-    expect(app.pagedItems('dashboard-transactions', items)).toEqual([1, 2, 3, 4, 5]);
-    expect(app.pageInfo('dashboard-transactions', items.length)).toEqual({
-      page: 1,
-      totalPages: 2,
-      start: 1,
-      end: 5,
-      total: 6,
-      hasPrevious: false,
-      hasNext: true,
-    });
-
-    app.nextPage('dashboard-transactions', items.length);
-
-    expect(app.pagedItems('dashboard-transactions', items)).toEqual([6]);
-    expect(app.pageInfo('dashboard-transactions', items.length).page).toBe(2);
-    expect(app.pageInfo('dashboard-booths', items.length).page).toBe(1);
-
-    app.previousPage('dashboard-transactions', items.length);
-
-    expect(app.pageInfo('dashboard-transactions', items.length).page).toBe(1);
-  });
-
-  it('should render the sign in screen', async () => {
-    const fixture = TestBed.createComponent(App);
-
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('PhotoBIZ');
-    expect(compiled.querySelector('h1')?.textContent).toContain('Sign in');
-  });
-
-  it('should limit application owner navigation to platform management views', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      viewBooth: (value: unknown) => void;
-      setBoothDetailTab: (value: string) => void;
-    };
-    const session = {
-      userId: 'owner-id',
-      name: 'Platform Owner',
-      email: 'platform@photobiz.local',
-      role: 'APPLICATION_OWNER',
-      clientAccountId: null,
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-
-    const navLabels = Array.from(compiled.querySelectorAll('.nav-item')).map((item) =>
-      item.textContent?.trim(),
-    );
-
-    expect(navLabels).toEqual(['-Dashboard', '-Subscriptions', '-Clients', '-Audit Log']);
-  });
-
-  it('should expose client owner operations navigation', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      viewBooth: (value: unknown) => void;
-      setBoothDetailTab: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const navLabels = Array.from(compiled.querySelectorAll('.nav-item')).map((item) =>
-      item.textContent?.trim(),
-    );
-
-    expect(navLabels).toEqual([
-      '-Dashboard',
-      '-Users',
-      '-Locations',
-      '-Booths',
-      '-Packages',
-      '-Transactions',
-      '-Cashier POS',
-      '-Reports',
-      '-Settings',
-      '-Audit Log',
-    ]);
-    expect(compiled.textContent).toContain('The Memory Box / Client Owner');
-  });
-
-  it('should show add user action on the users view for client owners', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('users');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('+ Add User');
-    expect(compiled.textContent).not.toContain('+ Add Cashier');
-  });
-
-  it('should show default password guidance without password fields in creation modals', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      openClientModal: () => void;
-      closeClientModal: () => void;
-      openUserModal: () => void;
-    };
-    const platformSession = {
-      userId: 'owner-id',
-      name: 'Platform Owner',
-      email: 'platform@photobiz.local',
-      role: 'APPLICATION_OWNER',
-      clientAccountId: null,
-      assignedBoothId: null,
-      mustChangePassword: false,
-    };
-
-    app.session.set(platformSession);
-    app.overview.set({
-      session: platformSession,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      printEntitlements: [],
-      activations: [],
-      paymentAssignments: [],
-      appearanceConfigs: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('clients');
-    app.openClientModal();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    let compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Default password will be set to PhotoBIZ!123');
-    expect(compiled.querySelector('input[name="ownerPassword"]')).toBeNull();
-
-    app.closeClientModal();
-    const clientSession = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-      mustChangePassword: false,
-    };
-    app.session.set(clientSession);
-    app.overview.set({
-      session: clientSession,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      printEntitlements: [],
-      activations: [],
-      paymentAssignments: [],
-      appearanceConfigs: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('users');
-    app.openUserModal();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Default password will be set to PhotoBIZ!123');
-    expect(compiled.querySelector('input[name="cashierPassword"]')).toBeNull();
-  });
-
-  it('should render the forced password update screen before the admin shell', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-    };
-    app.session.set({
-      userId: 'forced-id',
-      name: 'Forced User',
-      email: 'forced@photobiz.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-      mustChangePassword: true,
-    });
-    app.overview.set(null);
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Update password');
-    expect(compiled.textContent).toContain('CURRENT PASSWORD');
-    expect(compiled.querySelector('.admin-shell')).toBeNull();
-  });
-
-  it('should expose account password management for every signed-in role', async () => {
-    for (const role of ['APPLICATION_OWNER', 'CLIENT_OWNER', 'CLIENT_ADMIN', 'CASHIER']) {
-      const fixture = TestBed.createComponent(App);
-      await fixture.whenStable();
-
-      const app = fixture.componentInstance as unknown as {
-        session: { set: (value: unknown) => void };
-        overview: { set: (value: unknown) => void };
-        setView: (value: string) => void;
-      };
-      const session = {
-        userId: `${role}-id`,
-        name: role,
-        email: `${role.toLowerCase()}@photobiz.local`,
-        role,
-        clientAccountId: role === 'APPLICATION_OWNER' ? null : 'client-id',
-        assignedBoothId: role === 'CASHIER' ? 'booth-id' : null,
-        mustChangePassword: false,
-        canApproveCash: role === 'CASHIER',
-        canReturnBoothToWelcome: role === 'CASHIER',
-        canCancelTransaction: role === 'CASHIER',
-      };
-
-      app.session.set(session);
-      app.overview.set({
-        session,
-        clients:
-          role === 'APPLICATION_OWNER'
-            ? []
-            : [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-        subscriptionPlans: [],
-        subscriptions: [],
-        users: [],
-        locations: [],
-        booths: [],
-        offers: [],
-        printEntitlements: [],
-        activations: [],
-        paymentAssignments: [],
-        appearanceConfigs: [],
-        transactions: [],
-        reports: emptyReports(),
-        auditLogs: [],
-      });
-      app.setView('account');
-      fixture.detectChanges();
-      await fixture.whenStable();
-
-      const compiled = fixture.nativeElement as HTMLElement;
-      expect(compiled.textContent).toContain('Account');
-      expect(compiled.textContent).toContain('Account Information');
-      expect(compiled.textContent).toContain('Change Password');
-      expect(compiled.textContent).not.toContain('Signed In');
-      expect(compiled.textContent).not.toContain('CURRENT PASSWORD');
-
-      const changePasswordButton = Array.from(compiled.querySelectorAll('button')).find(
-        (button) => button.textContent?.trim() === 'Change Password',
-      ) as HTMLButtonElement;
-      changePasswordButton.click();
-      fixture.detectChanges();
-      await fixture.whenStable();
-
-      expect(compiled.textContent).toContain('CURRENT PASSWORD');
+    try {
+      TestBed.inject(HttpTestingController).verify({ ignoreCancelled: true });
+    } finally {
+      TestBed.resetTestingModule();
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
     }
   });
 
-  it('should manage users from a detail view instead of inline status actions', async () => {
+  it('renders the sign in screen when no session is restored', async () => {
     const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+
     await fixture.whenStable();
+    fixture.detectChanges();
 
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      viewUser: (value: unknown) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-    const cashier = {
-      id: 'cashier-id',
-      clientAccountId: 'client-id',
-      name: 'Cashier One',
-      email: 'cashier@memorybox.local',
-      role: 'CASHIER',
-      status: 'ACTIVE',
-      assignedBoothId: 'booth-id',
-      canApproveCash: true,
-      canReturnBoothToWelcome: false,
-      canCancelTransaction: true,
-    };
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('PhotoBIZ');
+    expect(compiled.textContent).toContain('Sign in');
+    expect(compiled.querySelector('.admin-shell')).toBeNull();
+  });
 
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [cashier],
-      locations: [],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'OFFLINE',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
+  it('keeps users with forced password changes in the password flow', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+
+    workspace.session.set(makeSession({ mustChangePassword: true }));
+    fixture.detectChanges();
+
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('Update password');
+    expect(compiled.querySelector('.admin-shell')).toBeNull();
+  });
+
+  it('limits application owner navigation to platform management pages', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session));
+    fixture.detectChanges();
+
+    expect(navLabels(fixture.nativeElement)).toEqual([
+      'Dashboard',
+      'Subscriptions',
+      'Clients',
+      'Audit Log',
+    ]);
+  });
+
+  it('shows operational client pages as routed AG Grid views', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+    const client = makeClient();
+    const subscription = makeSubscription({
+      clientAccountId: client.id,
+      status: 'TRIAL',
     });
-    app.setView('users');
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        clients: [client],
+        subscriptions: [subscription],
+        users: [
+          makeUser({
+            clientAccountId: client.id,
+            email: 'owner@example.test',
+            id: 'owner-1',
+            name: 'Client Owner',
+            role: 'CLIENT_OWNER',
+          }),
+        ],
+      }),
+    );
+
+    await router.navigateByUrl('/clients');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const grid = fixture.debugElement.query(By.directive(AdminGridComponent));
+    expect(grid).toBeTruthy();
+    expect((grid.componentInstance as AdminGridComponent<ClientSummary>).rowData).toEqual([client]);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('New Client');
+    expect(root.textContent).not.toContain('Search clients');
+
+    const page = fixture.debugElement.query(By.directive(ClientsPageComponent))
+      .componentInstance as ClientsPageComponent;
+    const subscriptionColumn = page.columns.find((column) => column.headerName === 'Subscription');
+    const subscriptionChip = subscriptionColumn?.cellRenderer?.({
+      value: subscription.status,
+    } as ICellRendererParams<ClientSummary>) as HTMLElement;
+
+    expect(subscriptionChip.classList.contains('status-chip')).toBe(true);
+    expect(subscriptionChip.classList.contains('subscription-status-chip')).toBe(true);
+    expect(subscriptionChip.classList.contains('trial')).toBe(true);
+  });
+
+  it('keeps grid action buttons connected to existing workflows', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+    const client = makeClient();
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { clients: [client] }));
+
+    await router.navigateByUrl('/clients');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.debugElement.query(By.directive(ClientsPageComponent))
+      .componentInstance as ClientsPageComponent;
+    const actionColumn = page.columns.find((column) => column.headerName === 'Actions');
+    const viewClient = vi.spyOn(workspace, 'viewClient');
+    const actionButton = actionColumn?.cellRenderer?.({
+      data: client,
+    } as ICellRendererParams<ClientSummary>) as HTMLElement;
+
+    actionButton.click();
+
+    expect(viewClient).toHaveBeenCalledWith(client);
+  });
+
+  it('renders dashboard recent activity as a paginated activity grid', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [makeBooth({ id: 'booth-1', name: 'Booth A' })],
+        transactions: [
+          makeTransaction({
+            id: 'session-1',
+            offerName: 'Per Session',
+            status: 'COMPLETED',
+            transactionType: 'SESSION_PURCHASE',
+          }),
+          makeTransaction({
+            id: 'extra-print-1',
+            extraPrintCount: 2,
+            offerName: 'Extra Prints',
+            status: 'COMPLETED',
+            transactionType: 'EXTRA_PRINT_ADD_ON',
+          }),
+        ],
+      }),
+    );
+
+    await router.navigateByUrl('/dashboard');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const activityCard = fixture.nativeElement.querySelector(
+      '.dashboard-activity-card',
+    ) as HTMLElement;
+    const activityGrid = fixture.debugElement.query(By.directive(AdminGridComponent))
+      .componentInstance as AdminGridComponent<TransactionSummary>;
+
+    expect(workspace.dashboardActivityFilter()).toBe('ALL');
+    expect(activityCard.textContent).toContain('Recent Activity');
+    expect(activityCard.querySelector('.filter-row')).toBeNull();
+    expect(activityGrid.rowData).toEqual([
+      expect.objectContaining({ id: 'session-1' }),
+      expect.objectContaining({ id: 'extra-print-1' }),
+    ]);
+    expect(activityGrid.paginationPageSize).toBe(5);
+    expect(activityGrid.columnDefs.map((column) => column.headerName)).toEqual([
+      'Transaction',
+      'Activity',
+      'Details',
+      'Status',
+      'Amount',
+      'Created',
+    ]);
+  });
+
+  it('opens subscription assignment from the client detail page', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+    const client = makeClient({ name: 'The Memory Box' });
+    const plan = makeSubscriptionPlan({ name: 'Per Booth MVP' });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        clients: [client],
+        subscriptionPlans: [plan],
+        subscriptions: [
+          makeSubscription({
+            activeBoothAllowance: 2,
+            clientAccountId: client.id,
+            status: 'ACTIVE',
+            subscriptionPlanId: plan.id,
+          }),
+        ],
+        users: [
+          makeUser({
+            clientAccountId: client.id,
+            email: 'owner@memorybox.local',
+            id: 'owner-1',
+            name: 'Client Owner',
+            role: 'CLIENT_OWNER',
+          }),
+        ],
+      }),
+    );
+
+    await router.navigateByUrl('/clients/detail');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const subscriptionSummary = root.querySelector('.inline-status-row')?.textContent ?? '';
+
+    expect(root.querySelectorAll('.client-detail-card')).toHaveLength(1);
+    expect(root.querySelector('.detail-action-card')).toBeNull();
+    expect(subscriptionSummary).toContain('Per Booth MVP');
+    expect(subscriptionSummary).toContain('ACTIVE');
+
+    const assignButton = Array.from(root.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Assign Subscription',
+    ) as HTMLButtonElement;
+
+    assignButton.click();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    let compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Manage');
-    expect(compiled.textContent).not.toContain('Deactivate');
+    expect(document.body.querySelector('mat-dialog-container')).toBeTruthy();
+    expect(document.body.textContent).toContain('Assign Subscription');
+  });
 
-    app.viewUser(cashier);
-    fixture.detectChanges();
-    await fixture.whenStable();
+  it('updates the current client subscription instead of creating a duplicate assignment', async () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const http = TestBed.inject(HttpTestingController);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+    const client = makeClient({ name: 'The Memory Box' });
+    const currentPlan = makeSubscriptionPlan({ id: 'plan-1', name: 'Per Booth MVP' });
+    const newPlan = makeSubscriptionPlan({ id: 'plan-2', name: 'Growth Plan' });
+    const subscription = makeSubscription({
+      activeBoothAllowance: 2,
+      clientAccountId: client.id,
+      id: 'subscription-1',
+      status: 'TRIAL',
+      subscriptionPlanId: currentPlan.id,
+    });
 
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('User Details');
-    expect(compiled.textContent).toContain('Deactivate');
-    expect(compiled.textContent).toContain('Approve cash');
-    expect(compiled.querySelectorAll('[role="switch"]').length).toBe(3);
-    expect(compiled.querySelectorAll('[role="switch"]')[1].getAttribute('aria-checked')).toBe(
-      'false',
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        clients: [client],
+        subscriptionPlans: [currentPlan, newPlan],
+        subscriptions: [subscription],
+      }),
+    );
+
+    workspace.openSubscriptionModal(client.id);
+
+    expect(workspace.subscriptionPlanId()).toBe(currentPlan.id);
+    expect(workspace.subscriptionStatus()).toBe('TRIAL');
+    expect(workspace.subscriptionAllowance()).toBe(2);
+
+    workspace.subscriptionPlanId.set(newPlan.id);
+    workspace.subscriptionStatus.set('SUSPENDED');
+    workspace.subscriptionAllowance.set(3);
+    const save = workspace.assignSubscription();
+
+    const update = http.expectOne(`${apiBaseUrl}/api/admin/subscriptions/${subscription.id}`);
+    expect(update.request.method).toBe('PUT');
+    expect(update.request.body).toEqual(
+      expect.objectContaining({
+        activeBoothAllowance: 3,
+        status: 'SUSPENDED',
+        subscriptionPlanId: newPlan.id,
+      }),
+    );
+    update.flush({});
+
+    await Promise.resolve();
+    http.expectOne(`${apiBaseUrl}/api/admin/overview`).flush(
+      makeOverview(session, {
+        clients: [client],
+        subscriptionPlans: [currentPlan, newPlan],
+        subscriptions: [
+          makeSubscription({
+            activeBoothAllowance: 3,
+            clientAccountId: client.id,
+            id: subscription.id,
+            status: 'SUSPENDED',
+            subscriptionPlanId: newPlan.id,
+          }),
+        ],
+      }),
+    );
+    await save;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Client subscription updated.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
     );
   });
 
-  it('should manage locations through add and manage modals', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
+  it('toggles booth cash payment assignment through the existing payment endpoints', async () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const http = TestBed.inject(HttpTestingController);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const booth = makeBooth();
+    const enabledAssignment = makePaymentAssignment({ boothId: booth.id, runtimeEnabled: true });
 
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { booths: [booth] }));
 
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Manila',
-          address: null,
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('locations');
-    fixture.detectChanges();
-    await fixture.whenStable();
+    const enable = workspace.setCashPaymentEnabled(booth.id, true);
+    const enableRequest = http.expectOne(
+      `${apiBaseUrl}/api/admin/booths/${booth.id}/payment-options`,
+    );
+    expect(enableRequest.request.method).toBe('POST');
+    expect(enableRequest.request.body).toEqual({ paymentMethod: 'CASH', runtimeEnabled: true });
+    enableRequest.flush(enabledAssignment);
 
-    let compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('+ Add Location');
-    expect(compiled.textContent).toContain('Manage');
-    expect(compiled.textContent).not.toContain('+ Register Booth');
-    expect(compiled.textContent).not.toContain('Quick Add');
+    await Promise.resolve();
+    http
+      .expectOne(`${apiBaseUrl}/api/admin/overview`)
+      .flush(makeOverview(session, { booths: [booth], paymentAssignments: [enabledAssignment] }));
+    await enable;
 
-    const addLocationButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === '+ Add Location',
-    ) as HTMLButtonElement;
-    addLocationButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Add Location');
-    expect(compiled.textContent).toContain('LOCATION NAME');
-
-    const closeButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Close',
-    ) as HTMLButtonElement;
-    closeButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    const manageButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Manage',
-    ) as HTMLButtonElement;
-    manageButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Manage Location');
-    expect(compiled.textContent).toContain('Deactivate');
-    expect(
-      (compiled.querySelector('input[name="locationDetailName"]') as HTMLInputElement).value,
-    ).toBe('SM Manila');
-  });
-
-  it('should render booth offline state from the overview API', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      viewBooth: (value: unknown) => void;
-      setBoothDetailTab: (value: string) => void;
-      setBoothPreviewScreen: (value: string) => void;
-      openBoothModal: (locationId?: string) => void;
-      closeBoothModal: () => void;
-      boothSecret: { set: (value: unknown) => void };
-    };
-    const session = {
-      userId: 'user-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [
-        {
-          id: 'cashier-id',
-          clientAccountId: 'client-id',
-          name: 'Cashier',
-          email: 'cashier@memorybox.local',
-          role: 'CASHIER',
-          status: 'ACTIVE',
-          assignedBoothId: 'booth-id',
-          canApproveCash: true,
-          canReturnBoothToWelcome: true,
-          canCancelTransaction: true,
-        },
-      ],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Manila',
-          address: null,
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'OFFLINE',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'Per Session',
-          description: 'Standard booth session',
-          offerType: 'PER_SESSION',
-          priceCents: 25000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2',
-          durationHours: null,
-          sessionAllowance: null,
-          allowsExtraPrintAddOn: true,
-          extraPrintPriceCents: 5000,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      printEntitlements: [],
-      activations: [
-        {
-          id: 'activation-id',
-          boothId: 'booth-id',
-          boothOfferId: 'offer-id',
-          status: 'ACTIVE',
-          startsAt: null,
-          endsAt: null,
-          sessionAllowance: null,
-          sessionsUsed: 0,
-        },
-      ],
-      paymentAssignments: [
-        {
-          id: 'cash-id',
-          boothId: 'booth-id',
-          paymentMethod: 'CASH',
-          runtimeEnabled: true,
-          status: 'ASSIGNED',
-        },
-      ],
-      appearanceConfigs: [
-        {
-          id: 'appearance-id',
-          boothId: 'booth-id',
-          themePreset: 'VINTAGE_FILM',
-          primaryColor: '#2f6868',
-          accentColor: '#f5d27e',
-          backgroundImageUrl: null,
-          backgroundImageDataUrl: null,
-          sessionLabel: 'Vintage Pop-Up',
-          defaultWelcomeHeadline: 'Step Into The Memory Box',
-          defaultWelcomeSubtitle: 'Pay at the counter, then strike your best pose.',
-        },
-      ],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('booths');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    let compiled = fixture.nativeElement as HTMLElement;
-
-    expect(compiled.textContent).toContain('Booth A');
-    expect(compiled.textContent).toContain('Agent State');
-    expect(compiled.textContent).toContain('Per Session');
-    expect(compiled.textContent).toContain('Cash');
-    expect(compiled.textContent).toContain('Manage');
-    expect(compiled.textContent).toContain('OFFLINE');
-
-    app.openBoothModal('location-id');
-    app.boothSecret.set({
-      boothId: 'booth-id',
-      boothName: 'Booth A',
-      boothCode: 'SMA-001',
-      kioskToken: 'kiosk-token',
-      agentCredential: 'agent-credential',
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Register Booth');
-    expect(compiled.textContent).not.toContain('KIOSK TOKEN');
-    expect(compiled.textContent).not.toContain('AGENT CREDENTIAL');
-
-    app.closeBoothModal();
-    app.viewBooth({
-      id: 'booth-id',
-      clientAccountId: 'client-id',
-      locationId: 'location-id',
-      name: 'Booth A',
-      code: 'SMA-001',
-      status: 'ACTIVE',
-      currentState: 'OFFLINE',
-      lastHeartbeatAt: null,
-    });
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Booth Credentials');
-    expect(compiled.textContent).toContain('KIOSK TOKEN');
-    expect(compiled.textContent).toContain('AGENT CREDENTIAL');
-    expect(compiled.textContent).toContain('Save Booth Details');
-    expect(compiled.textContent).not.toContain('Save Booth Record');
-    expect(compiled.textContent).not.toContain('Save Package And Payment');
-
-    app.setBoothDetailTab('session');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Booth Flow Preview');
-    expect(compiled.textContent).toContain('Welcome');
-    expect(compiled.textContent).toContain('Payment');
-    expect(compiled.textContent).toContain('Cash Waiting');
-    expect(compiled.textContent).toContain('Payment Failed');
-    expect(compiled.textContent).toContain('Step Into The Memory Box');
-
-    app.setBoothPreviewScreen('cash-waiting');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Cashier Approval');
-    expect(compiled.textContent).toContain('Please wait while the cashier confirms payment.');
-  });
-
-  it('should expose the cashier POS view', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'user-id',
-      name: 'Cashier',
-      email: 'cashier@memorybox.local',
-      role: 'CASHIER',
-      clientAccountId: 'client-id',
-      assignedBoothId: 'booth-id',
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'PAYMENT_PENDING',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'Event Package',
-          description: 'Five included sessions',
-          offerType: 'SESSION_COUNT',
-          priceCents: 150000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2',
-          durationHours: null,
-          sessionAllowance: 5,
-          allowsExtraPrintAddOn: false,
-          extraPrintPriceCents: null,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      activations: [
-        {
-          id: 'activation-id',
-          boothId: 'booth-id',
-          boothOfferId: 'offer-id',
-          status: 'ACTIVE',
-          startsAt: null,
-          endsAt: null,
-          sessionAllowance: 5,
-          sessionsUsed: 2,
-        },
-      ],
-      paymentAssignments: [],
-      transactions: [
-        {
-          id: 'transaction-id',
-          boothId: 'booth-id',
-          boothOfferActivationId: null,
-          transactionNumber: 'TXN-1',
-          transactionType: 'SESSION_PURCHASE',
-          status: 'PENDING_CASH',
-          paymentMethod: 'CASH',
-          amountCents: 25000,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: false,
-          extraPrintUnitPriceCents: null,
-          offerName: 'Per Session',
-          offerType: 'PER_SESSION',
-          includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
-          sessionAllowance: null,
-          coveredSessionSequence: null,
-          createdAt: new Date().toISOString(),
-          paidAt: null,
-          completedAt: null,
-        },
-      ],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('pos');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-
-    expect(compiled.textContent).toContain('Cashier POS');
-    expect(compiled.textContent).toContain('Current Payment Request');
-    expect(compiled.textContent).toContain('Event Package / 2 of 5 used');
-    expect(compiled.textContent).toContain('Assigned Booth Activity');
-    expect(compiled.textContent).toContain('Approve Cash');
-  });
-
-  it('should show covered booth sessions as included activity instead of zero amount', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      setDashboardActivityFilter: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Southmall',
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'WELCOME',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [
-        {
-          id: 'covered-session-id',
-          boothId: 'booth-id',
-          boothOfferActivationId: 'activation-id',
-          transactionNumber: 'TXN-COVERED',
-          transactionType: 'COVERED_PLAN_SESSION',
-          status: 'COMPLETED',
-          paymentMethod: 'CASH',
-          amountCents: 0,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: false,
-          extraPrintUnitPriceCents: null,
-          offerName: 'Five Session Pass',
-          offerType: 'SESSION_COUNT',
-          includedPrintEntitlement: '2 pcs 6x2',
-          sessionAllowance: 5,
-          coveredSessionSequence: 1,
-          createdAt: new Date().toISOString(),
-          paidAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-        },
-      ],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('dashboard');
-    app.setDashboardActivityFilter('SESSIONS');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const activityCard = Array.from(compiled.querySelectorAll('article.card')).find((card) =>
-      card.textContent?.includes('Recent Booth Activity'),
+    workspace.overview.set(
+      makeOverview(session, { booths: [booth], paymentAssignments: [enabledAssignment] }),
     );
 
-    expect(activityCard?.textContent).toContain('Recent Booth Activity');
-    expect(activityCard?.textContent).toContain('Covered session');
-    expect(activityCard?.textContent).toContain('1 of 5 used');
-    expect(activityCard?.textContent).toContain('Included');
-    expect(activityCard?.textContent).not.toContain('PHP 0');
+    const disable = workspace.setCashPaymentEnabled(booth.id, false);
+    const disableRequest = http.expectOne(
+      `${apiBaseUrl}/api/admin/booths/${booth.id}/payment-options/CASH`,
+    );
+    expect(disableRequest.request.method).toBe('DELETE');
+    disableRequest.flush({ ...enabledAssignment, runtimeEnabled: false, status: 'DISABLED' });
+
+    await Promise.resolve();
+    http.expectOne(`${apiBaseUrl}/api/admin/overview`).flush(
+      makeOverview(session, {
+        booths: [booth],
+        paymentAssignments: [
+          makePaymentAssignment({ boothId: booth.id, runtimeEnabled: false, status: 'DISABLED' }),
+        ],
+      }),
+    );
+    await disable;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Payment assignment disabled.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
+    );
   });
 
-  it('should show package activation as a sale and hide it from session activity', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
+  it('only shows pending cash transactions as the current POS payment request', () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const session = makeSession({ assignedBoothId: 'booth-1', role: 'CLIENT_OWNER' });
+    const booth = makeBooth({ currentState: 'IN_LUMABOOTH_SESSION' });
 
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-      setDashboardActivityFilter: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'WELCOME',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [
-        {
-          id: 'plan-activation-id',
-          boothId: 'booth-id',
-          boothOfferActivationId: 'activation-id',
-          transactionNumber: 'TXN-PLAN',
-          transactionType: 'PLAN_ACTIVATION',
-          status: 'COMPLETED',
-          paymentMethod: 'CASH',
-          amountCents: 150000,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: false,
-          extraPrintUnitPriceCents: null,
-          offerName: 'One Hour Unlimited',
-          offerType: 'TIME_UNLIMITED',
-          includedPrintEntitlement: '2 pcs 6x2',
-          sessionAllowance: null,
-          coveredSessionSequence: null,
-          createdAt: new Date().toISOString(),
-          paidAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-        },
-      ],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('dashboard');
-    app.setDashboardActivityFilter('SALES');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    let compiled = fixture.nativeElement as HTMLElement;
-
-    expect(compiled.textContent).toContain('Package activation');
-    expect(compiled.textContent).toContain('PHP 1,500');
-
-    app.setDashboardActivityFilter('SESSIONS');
-    fixture.detectChanges();
-    await fixture.whenStable();
-    compiled = fixture.nativeElement as HTMLElement;
-
-    expect(compiled.textContent).not.toContain('Package activation');
-  });
-
-  it('should show session-count package progress in booth status from latest completed session', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Southmall',
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'WELCOME',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'Event Package',
-          description: 'Five sessions',
-          offerType: 'SESSION_COUNT',
-          priceCents: 150000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2',
-          durationHours: null,
-          sessionAllowance: 5,
-          allowsExtraPrintAddOn: false,
-          extraPrintPriceCents: null,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      activations: [
-        {
-          id: 'activation-id',
-          boothId: 'booth-id',
-          boothOfferId: 'offer-id',
-          status: 'ACTIVE',
-          startsAt: null,
-          endsAt: null,
-          sessionAllowance: 5,
-          sessionsUsed: 2,
-        },
-      ],
-      paymentAssignments: [],
-      transactions: [
-        {
-          id: 'covered-session-2',
-          boothId: 'booth-id',
-          boothOfferActivationId: 'activation-id',
-          transactionNumber: 'TXN-COVERED-2',
-          transactionType: 'COVERED_PLAN_SESSION',
-          status: 'COMPLETED',
-          paymentMethod: 'CASH',
-          amountCents: 0,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: false,
-          extraPrintUnitPriceCents: null,
-          offerName: 'Event Package',
-          offerType: 'SESSION_COUNT',
-          includedPrintEntitlement: '2 pcs 6x2',
-          sessionAllowance: 5,
-          coveredSessionSequence: 2,
-          createdAt: '2026-05-18T11:20:00Z',
-          paidAt: '2026-05-18T11:20:00Z',
-          completedAt: '2026-05-18T11:30:00Z',
-        },
-        {
-          id: 'covered-session-1',
-          boothId: 'booth-id',
-          boothOfferActivationId: 'activation-id',
-          transactionNumber: 'TXN-COVERED-1',
-          transactionType: 'COVERED_PLAN_SESSION',
-          status: 'COMPLETED',
-          paymentMethod: 'CASH',
-          amountCents: 0,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: false,
-          extraPrintUnitPriceCents: null,
-          offerName: 'Event Package',
-          offerType: 'SESSION_COUNT',
-          includedPrintEntitlement: '2 pcs 6x2',
-          sessionAllowance: 5,
-          coveredSessionSequence: 1,
-          createdAt: '2026-05-18T10:20:00Z',
-          paidAt: '2026-05-18T10:20:00Z',
-          completedAt: '2026-05-18T10:30:00Z',
-        },
-      ],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('dashboard');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const boothStatusCard = Array.from(compiled.querySelectorAll('article.card')).find((card) =>
-      card.textContent?.includes('Booth Status'),
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        transactions: [
+          makeTransaction({ id: 'paid-transaction', status: 'PAID' }),
+          makeTransaction({ id: 'starting-transaction', status: 'STARTING_SESSION' }),
+          makeTransaction({ id: 'in-session-transaction', status: 'IN_SESSION' }),
+        ],
+      }),
     );
 
-    expect(boothStatusCard?.textContent).toContain('Event Package / 2 of 5 used');
-  });
+    expect(workspace.cashierTransaction()).toBeNull();
 
-  it('should show timed package minutes and PH expiration in booth status', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-05-18T04:30:00Z').getTime());
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Southmall',
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'WELCOME',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'One Hour Pass',
-          description: 'Timed event',
-          offerType: 'TIME_UNLIMITED',
-          priceCents: 150000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2',
-          durationHours: 1,
-          sessionAllowance: null,
-          allowsExtraPrintAddOn: false,
-          extraPrintPriceCents: null,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      activations: [
-        {
-          id: 'activation-id',
-          boothId: 'booth-id',
-          boothOfferId: 'offer-id',
-          status: 'ACTIVE',
-          startsAt: '2026-05-18T04:00:00Z',
-          endsAt: '2026-05-18T05:00:00Z',
-          sessionAllowance: null,
-          sessionsUsed: 0,
-        },
-      ],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('dashboard');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const boothStatusCard = Array.from(compiled.querySelectorAll('article.card')).find((card) =>
-      card.textContent?.includes('Booth Status'),
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        transactions: [makeTransaction({ id: 'pending-transaction', status: 'PENDING_CASH' })],
+      }),
     );
 
-    expect(boothStatusCard?.textContent).toContain('One Hour Pass / 30 mins left of 60 mins');
-    expect(boothStatusCard?.textContent).toContain('expires May 18, 2026');
-    expect(boothStatusCard?.textContent).toContain('PH time');
-    vi.restoreAllMocks();
+    expect(workspace.cashierTransaction()?.id).toBe('pending-transaction');
   });
 
-  it('should hide completed package context from live booth status', async () => {
+  it('renders assigned POS booth details with package, payment, and booth state chip styling', async () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ assignedBoothId: 'booth-1', role: 'CLIENT_OWNER' });
+    const booth = makeBooth({ currentState: 'IN_LUMABOOTH_SESSION' });
+    const offer = makeOffer({ id: 'offer-1', name: 'Per Session', offerType: 'PER_SESSION' });
+    const activation = makeActivation({ boothId: booth.id, boothOfferId: offer.id });
 
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [
-        {
-          id: 'location-id',
-          clientAccountId: 'client-id',
-          name: 'SM Southmall',
-          status: 'ACTIVE',
-        },
-      ],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'WELCOME',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'By Time',
-          description: 'Timed event',
-          offerType: 'TIME_UNLIMITED',
-          priceCents: 150000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2',
-          durationHours: 1,
-          sessionAllowance: null,
-          allowsExtraPrintAddOn: false,
-          extraPrintPriceCents: null,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      activations: [
-        {
-          id: 'activation-id',
-          boothId: 'booth-id',
-          boothOfferId: 'offer-id',
-          status: 'COMPLETED',
-          startsAt: '2026-05-18T04:00:00Z',
-          endsAt: '2026-05-18T05:00:00Z',
-          sessionAllowance: null,
-          sessionsUsed: 0,
-        },
-      ],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
-    });
-    app.setView('dashboard');
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const compiled = fixture.nativeElement as HTMLElement;
-    const boothStatusCard = Array.from(compiled.querySelectorAll('article.card')).find((card) =>
-      card.textContent?.includes('Booth Status'),
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        activations: [activation],
+        booths: [booth],
+        offers: [offer],
+        paymentAssignments: [makePaymentAssignment({ boothId: booth.id })],
+      }),
     );
 
-    expect(boothStatusCard?.textContent).toContain('Booth A');
-    expect(boothStatusCard?.textContent).not.toContain('By Time');
-    expect(boothStatusCard?.textContent).not.toContain('mins left');
+    await router.navigateByUrl('/pos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const summary = root.querySelector('.pos-booth-summary') as HTMLElement;
+
+    expect(summary.textContent).toContain('Booth A');
+    expect(summary.textContent).toContain('IN_LUMABOOTH_SESSION');
+    expect(summary.textContent).toContain('Per Session');
+    expect(summary.textContent).toContain('Pay per session');
+    expect(summary.textContent).toContain('Cash');
+    expect(summary.querySelector('.status-chip')?.classList.contains('in-lumabooth-session')).toBe(
+      true,
+    );
+    expect(summary.querySelectorAll('.pos-booth-actions button')).toHaveLength(2);
   });
 
-  it('should show extra print controls for latest eligible completed session', async () => {
+  it('opens eligible extra prints for the previous booth transaction', async () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'user-id',
-      name: 'Cashier',
-      email: 'cashier@memorybox.local',
-      role: 'CASHIER',
-      clientAccountId: 'client-id',
-      assignedBoothId: 'booth-id',
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [
-        {
-          id: 'booth-id',
-          clientAccountId: 'client-id',
-          locationId: 'location-id',
-          name: 'Booth A',
-          code: 'SMA-001',
-          status: 'ACTIVE',
-          currentState: 'COMPLETED',
-          lastHeartbeatAt: null,
-        },
-      ],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [
-        {
-          id: 'transaction-id',
-          boothId: 'booth-id',
-          boothOfferActivationId: null,
-          transactionNumber: 'TXN-1',
-          transactionType: 'SESSION_PURCHASE',
-          status: 'COMPLETED',
-          paymentMethod: 'CASH',
-          amountCents: 25000,
-          parentTransactionId: null,
-          extraPrintCount: 0,
-          canCreateExtraPrintAddOn: true,
-          extraPrintUnitPriceCents: 5000,
-          offerName: 'Per Session',
-          offerType: 'PER_SESSION',
-          includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
-          sessionAllowance: null,
-          coveredSessionSequence: null,
-          createdAt: new Date().toISOString(),
-          paidAt: new Date().toISOString(),
-          completedAt: new Date().toISOString(),
-        },
-      ],
-      reports: emptyReports(),
-      auditLogs: [],
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ assignedBoothId: 'booth-1', role: 'CLIENT_OWNER' });
+    const booth = makeBooth({ id: 'booth-1', name: 'Booth A' });
+    const extraPrintCandidate = makeTransaction({
+      boothId: booth.id,
+      canCreateExtraPrintAddOn: true,
+      createdAt: '2026-05-23T00:01:00Z',
+      extraPrintUnitPriceCents: 5000,
+      id: 'session-1',
+      includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
+      offerName: 'Per Session',
+      status: 'COMPLETED',
+      transactionNumber: 'TXN-EXTRA-1',
+      transactionType: 'SESSION_PURCHASE',
     });
-    app.setView('pos');
+    const currentPendingSession = makeTransaction({
+      boothId: booth.id,
+      createdAt: '2026-05-23T00:02:00Z',
+      id: 'current-session',
+      status: 'PENDING_CASH',
+      transactionNumber: 'TXN-CURRENT',
+    });
+    const completedExtraPrint = makeTransaction({
+      boothId: booth.id,
+      createdAt: '2026-05-23T00:01:30Z',
+      extraPrintCount: 2,
+      id: 'extra-print-1',
+      status: 'COMPLETED',
+      transactionNumber: 'TXN-EXTRA-PRINT',
+      transactionType: 'EXTRA_PRINT_ADD_ON',
+    });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        transactions: [currentPendingSession, completedExtraPrint, extraPrintCandidate],
+      }),
+    );
+
+    await router.navigateByUrl('/pos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).not.toContain('Extra PrintsCopies');
+    const extraPrintButton = Array.from(root.querySelectorAll('.pos-booth-actions button')).find(
+      (button) => button.textContent?.trim() === 'Extra Print',
+    ) as HTMLButtonElement;
+
+    extraPrintButton.click();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    const compiled = fixture.nativeElement as HTMLElement;
+    const dialog = document.body.querySelector('admin-extra-print-dialog') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain('TXN-EXTRA-1');
+    expect(dialog.textContent).toContain('Booth A / Per Session / 2 pcs 6x2 or 1 pc 6x4');
+    expect(dialog.textContent).toContain('PHP 50');
+    expect(dialog.textContent).toContain('Total PHP 50');
 
-    expect(compiled.textContent).toContain('Extra Prints');
-    expect(compiled.textContent).toContain('Total PHP 50');
-    expect(compiled.textContent).toContain('Create Extra Prints');
+    const createButton = Array.from(dialog.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Create Extra Prints',
+    ) as HTMLButtonElement;
+    createButton.click();
+
+    const request = http.expectOne(`${apiBaseUrl}/api/cashier/transactions/session-1/extra-prints`);
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ copyCount: 1 });
+    request.flush({});
+
+    await Promise.resolve();
+    http.expectOne(`${apiBaseUrl}/api/admin/overview`).flush(
+      makeOverview(session, {
+        booths: [booth],
+        transactions: [currentPendingSession, completedExtraPrint, extraPrintCandidate],
+      }),
+    );
+    await fixture.whenStable();
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Extra print add-on created. Collect cash, then approve.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
+    );
   });
 
-  it('should keep package creation and editing on a separate detail view', async () => {
+  it('does not scan older history when the previous transaction cannot receive extra prints', async () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'client-owner-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [{ id: 'client-id', name: 'The Memory Box', status: 'ACTIVE' }],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [
-        {
-          id: 'offer-id',
-          clientAccountId: 'client-id',
-          name: 'Per Session',
-          description: 'Standard booth session',
-          offerType: 'PER_SESSION',
-          priceCents: 25000,
-          currency: 'PHP',
-          includedPrintEntitlement: '2 pcs 6x2 or 1 pc 6x4',
-          durationHours: null,
-          sessionAllowance: null,
-          allowsExtraPrintAddOn: true,
-          extraPrintPriceCents: 5000,
-          lumaboothSessionMode: 'PRINT',
-          active: true,
-        },
-      ],
-      printEntitlements: [
-        {
-          id: 'entitlement-id',
-          clientAccountId: 'client-id',
-          name: '2 pcs 6x2 or 1 pc 6x4',
-          status: 'ACTIVE',
-        },
-        {
-          id: 'unused-entitlement-id',
-          clientAccountId: 'client-id',
-          name: '4 pcs 2x6',
-          status: 'ACTIVE',
-        },
-      ],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: emptyReports(),
-      auditLogs: [],
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const http = TestBed.inject(HttpTestingController);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ assignedBoothId: 'booth-1', role: 'CLIENT_OWNER' });
+    const booth = makeBooth({ id: 'booth-1', name: 'Booth A' });
+    const currentPendingSession = makeTransaction({
+      boothId: booth.id,
+      createdAt: '2026-05-23T00:03:00Z',
+      id: 'current-session',
+      status: 'PENDING_CASH',
     });
-    app.setView('packages');
-    fixture.detectChanges();
+    const previousCoveredSession = makeTransaction({
+      boothId: booth.id,
+      createdAt: '2026-05-23T00:02:00Z',
+      id: 'covered-session',
+      status: 'COMPLETED',
+      transactionNumber: 'TXN-COVERED',
+      transactionType: 'COVERED_PLAN_SESSION',
+    });
+    const olderEligibleSession = makeTransaction({
+      boothId: booth.id,
+      canCreateExtraPrintAddOn: true,
+      createdAt: '2026-05-23T00:01:00Z',
+      extraPrintUnitPriceCents: 5000,
+      id: 'older-session',
+      status: 'COMPLETED',
+      transactionNumber: 'TXN-OLDER',
+    });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        transactions: [currentPendingSession, previousCoveredSession, olderEligibleSession],
+      }),
+    );
+
+    await router.navigateByUrl('/pos');
     await fixture.whenStable();
+    fixture.detectChanges();
 
-    let compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Packages');
-    expect(compiled.textContent).toContain('Add-On Print Price');
-    expect(compiled.textContent).toContain('Print Entitlements');
-    expect(compiled.textContent).toContain('Manage');
-    expect(compiled.textContent).not.toContain('Config');
-    expect(compiled.textContent).not.toContain('Per paid session');
-    expect(compiled.textContent).not.toContain('Configurable Packages');
-    expect(compiled.textContent).not.toContain('One selected per booth');
-    expect(compiled.textContent).not.toContain('PACKAGE NAME');
-    expect(compiled.textContent).not.toContain('Print Entitlement Detail');
-    expect(compiled.textContent).not.toContain('+ New Entitlement');
-
-    const printEntitlementsButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Print Entitlements',
+    const root = fixture.nativeElement as HTMLElement;
+    const extraPrintButton = Array.from(root.querySelectorAll('.pos-booth-actions button')).find(
+      (button) => button.textContent?.trim() === 'Extra Print',
     ) as HTMLButtonElement;
-    printEntitlementsButton.click();
+    expect(extraPrintButton.disabled).toBe(false);
+
+    extraPrintButton.click();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('+ New Entitlement');
-    expect(compiled.textContent).toContain('In Use');
-    expect(compiled.textContent).toContain('Not Used');
-    expect(compiled.textContent).not.toContain('New Print Entitlement');
-    expect(compiled.textContent).not.toContain('PRINT ENTITLEMENT');
-    expect(compiled.querySelectorAll('.modal-backdrop').length).toBe(1);
+    const dialog = document.body.querySelector('admin-extra-print-dialog') as HTMLElement;
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain('No eligible transaction for extra print.');
+    expect(dialog.textContent).toContain('TXN-COVERED');
+    expect(dialog.textContent).not.toContain('TXN-OLDER');
 
-    const entitlementListModal = compiled.querySelector('.modal-backdrop') as HTMLElement;
-    expect(entitlementListModal.textContent).not.toContain('ACTIVE');
-    expect(entitlementListModal.textContent).not.toContain('INACTIVE');
-    expect(entitlementListModal.textContent).not.toContain('Deactivate');
-    expect(entitlementListModal.textContent).not.toContain('Activate');
-    const newEntitlementButton = Array.from(entitlementListModal.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === '+ New Entitlement',
+    const createButton = Array.from(dialog.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Create Extra Prints',
     ) as HTMLButtonElement;
-    newEntitlementButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
+    expect(createButton.disabled).toBe(true);
+    http.expectNone(`${apiBaseUrl}/api/cashier/transactions/older-session/extra-prints`);
 
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelectorAll('.modal-backdrop').length).toBe(2);
-    expect(compiled.textContent).toContain('New Print Entitlement');
-    expect(compiled.textContent).toContain('PRINT ENTITLEMENT');
-
-    const addCancelButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Cancel',
-    ) as HTMLButtonElement;
-    addCancelButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    const manageEntitlementButton = Array.from(
-      (compiled.querySelector('.modal-backdrop') as HTMLElement).querySelectorAll('button'),
-    ).find((button) => button.textContent?.trim() === 'Manage') as HTMLButtonElement;
-    manageEntitlementButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Manage Print Entitlement');
-    const manageDetailModal = Array.from(compiled.querySelectorAll('.modal-backdrop'))[1] as
-      | HTMLElement
-      | undefined;
-    expect(manageDetailModal?.textContent).toContain('PRINT ENTITLEMENT');
-    expect(manageDetailModal?.textContent).not.toContain('Deactivate');
-    expect(manageDetailModal?.textContent).not.toContain('Activate');
-
-    const manageCancelButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Cancel',
-    ) as HTMLButtonElement;
-    manageCancelButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    const closeEntitlementButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Close',
-    ) as HTMLButtonElement;
-    closeEntitlementButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    const newPackageButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === '+ New Package',
-    ) as HTMLButtonElement;
-    newPackageButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Package Definition');
-    expect(compiled.textContent).toContain('PACKAGE NAME');
-    expect(compiled.textContent).toContain('DESCRIPTION');
-    expect(compiled.textContent).toContain('TYPE');
-    expect(compiled.textContent).toContain('PRINT ENTITLEMENT');
-    expect(compiled.textContent).toContain('ADD-ON PRINT PRICE');
-    expect(compiled.querySelector('select[name="packageStatus"]')).toBeNull();
-
-    const cancelButton = Array.from(compiled.querySelectorAll('button')).find(
+    const cancelButton = Array.from(dialog.querySelectorAll('button')).find(
       (button) => button.textContent?.trim() === 'Cancel',
     ) as HTMLButtonElement;
     cancelButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    const manageButton = Array.from(compiled.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Manage',
-    ) as HTMLButtonElement;
-    manageButton.click();
-    fixture.detectChanges();
-    await fixture.whenStable();
-
-    compiled = fixture.nativeElement as HTMLElement;
-    expect((compiled.querySelector('input[name="packageName"]') as HTMLInputElement).value).toBe(
-      'Per Session',
-    );
-    expect((compiled.querySelector('input[name="packagePrice"]') as HTMLInputElement).value).toBe(
-      '250',
-    );
-    expect(compiled.textContent).toContain('Deactivate');
-    expect(compiled.querySelector('select[name="packageStatus"]')).toBeNull();
   });
 
-  it('should render reports and audit log views', async () => {
+  it('shows assigned booth session activity on Cashier POS', async () => {
     const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ assignedBoothId: 'booth-1', role: 'CLIENT_OWNER' });
+    const booth = makeBooth({ id: 'booth-1', name: 'Booth A' });
+    const otherBooth = makeBooth({ id: 'booth-2', name: 'Booth B' });
 
-    const app = fixture.componentInstance as unknown as {
-      session: { set: (value: unknown) => void };
-      overview: { set: (value: unknown) => void };
-      setView: (value: string) => void;
-    };
-    const session = {
-      userId: 'user-id',
-      name: 'Client Owner',
-      email: 'owner@memorybox.local',
-      role: 'CLIENT_OWNER',
-      clientAccountId: 'client-id',
-      assignedBoothId: null,
-    };
-
-    app.session.set(session);
-    app.overview.set({
-      session,
-      clients: [],
-      subscriptionPlans: [],
-      subscriptions: [],
-      users: [],
-      locations: [],
-      booths: [],
-      offers: [],
-      activations: [],
-      paymentAssignments: [],
-      transactions: [],
-      reports: {
-        ...emptyReports(),
-        sales: {
-          todayGrossSalesCents: 50000,
-          todayCompletedSessions: 2,
-          todayCashSalesCents: 50000,
-          pendingCashCount: 0,
-          failedOrExpiredCount: 0,
-        },
-        boothSales: [
-          {
-            boothId: 'booth-id',
-            boothName: 'Booth A',
-            completedSessions: 2,
-            grossSalesCents: 50000,
-          },
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth, otherBooth],
+        transactions: [
+          makeTransaction({
+            boothId: booth.id,
+            coveredSessionSequence: 2,
+            id: 'covered-session-1',
+            offerName: 'Session Pack',
+            offerType: 'SESSION_COUNT',
+            sessionAllowance: 5,
+            status: 'COMPLETED',
+            transactionType: 'COVERED_PLAN_SESSION',
+          }),
+          makeTransaction({
+            boothId: booth.id,
+            extraPrintCount: 2,
+            id: 'extra-print-1',
+            offerName: 'Extra Prints',
+            status: 'COMPLETED',
+            transactionType: 'EXTRA_PRINT_ADD_ON',
+          }),
+          makeTransaction({
+            boothId: otherBooth.id,
+            id: 'other-booth-session',
+            offerName: 'Other Booth Package',
+            status: 'COMPLETED',
+          }),
         ],
-      },
-      auditLogs: [
-        {
-          id: 'audit-id',
-          clientAccountId: 'client-id',
-          userId: 'user-id',
-          action: 'transaction.cash_approved',
-          entityType: 'Transaction',
-          entityId: 'transaction-id',
-          metadata: '{}',
-          createdAt: new Date().toISOString(),
-        },
-      ],
+      }),
+    );
+
+    await router.navigateByUrl('/pos');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const activityCard = fixture.nativeElement.querySelector('.pos-activity-card') as HTMLElement;
+    const activityGrid = fixture.debugElement.query(By.directive(AdminGridComponent))
+      .componentInstance as AdminGridComponent<TransactionSummary>;
+
+    expect(workspace.cashierActivityFilter()).toBe('ALL');
+    expect(activityCard.textContent).toContain('Recent Session Activity');
+    expect(activityCard.querySelector('.filter-row')).toBeNull();
+    expect(activityGrid.rowData).toEqual([
+      expect.objectContaining({
+        id: 'covered-session-1',
+        transactionType: 'COVERED_PLAN_SESSION',
+      }),
+      expect.objectContaining({
+        id: 'extra-print-1',
+        transactionType: 'EXTRA_PRINT_ADD_ON',
+      }),
+    ]);
+    expect(activityGrid.paginationPageSize).toBe(5);
+    expect(activityGrid.columnDefs.map((column) => column.headerName)).toEqual([
+      'Transaction',
+      'Activity',
+      'Details',
+      'Status',
+      'Amount',
+      'Created',
+    ]);
+  });
+
+  it('shows tenant information and staged payment resources in settings', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const client = makeClient({ id: 'client-1', name: 'The Memory Box', status: 'ACTIVE' });
+    const session = makeSession({ clientAccountId: client.id, role: 'CLIENT_OWNER' });
+    const plan = makeSubscriptionPlan({ id: 'plan-1', name: 'Per Booth MVP' });
+    const subscription = makeSubscription({
+      activeBoothAllowance: 2,
+      clientAccountId: client.id,
+      status: 'TRIAL',
+      subscriptionPlanId: plan.id,
     });
 
-    app.setView('reports');
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [
+          makeBooth({ clientAccountId: client.id, id: 'booth-1', status: 'ACTIVE' }),
+          makeBooth({ clientAccountId: client.id, id: 'booth-2', status: 'INACTIVE' }),
+        ],
+        clients: [client],
+        subscriptionPlans: [plan],
+        subscriptions: [subscription],
+        users: [
+          makeUser({
+            clientAccountId: client.id,
+            email: 'owner@memorybox.local',
+            id: 'owner-1',
+            name: 'Client Owner',
+            role: 'CLIENT_OWNER',
+          }),
+        ],
+      }),
+    );
+
+    await router.navigateByUrl('/settings');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const text = root.textContent ?? '';
+    const resourceRows = Array.from(root.querySelectorAll('.payment-resource-row'));
+    const toggles = Array.from(root.querySelectorAll('mat-slide-toggle'));
+    const ownerFields = Array.from(
+      root.querySelectorAll('.tenant-owner-form input'),
+    ) as HTMLInputElement[];
+
+    expect(text).toContain('The Memory Box');
+    expect(ownerFields.map((field) => field.readOnly)).toEqual([true, true]);
+    expect(ownerFields.map((field) => field.value)).toEqual([
+      'Client Owner',
+      'owner@memorybox.local',
+    ]);
+    expect(text).toContain('Per Booth MVP');
+    expect(text).toContain('1 of 2 active booths used');
+    expect(resourceRows.map((row) => row.textContent?.trim())).toEqual([
+      expect.stringContaining('Cash'),
+      expect.stringContaining('Maya Checkout QR'),
+      expect.stringContaining('Maya Terminal ECR'),
+    ]);
+    expect(root.querySelector('.payment-resource-icon')?.textContent?.trim()).toBe('PHP');
+    expect(toggles).toHaveLength(3);
+    expect(toggles[0].textContent).toContain('Enabled');
+    expect(toggles[1].textContent).toContain('Disabled');
+    expect(toggles[2].textContent).toContain('Disabled');
+  });
+
+  it('updates tenant payment resources through the settings toggle', async () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const http = TestBed.inject(HttpTestingController);
+    const client = makeClient({ id: 'client-1' });
+    const session = makeSession({ clientAccountId: client.id, role: 'CLIENT_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        clients: [client],
+        paymentResources: [
+          makePaymentResource({
+            clientAccountId: client.id,
+            enabled: false,
+            paymentMethod: 'MAYA_CHECKOUT_QR',
+            status: 'NOT_CONFIGURED',
+          }),
+        ],
+      }),
+    );
+
+    const update = workspace.setPaymentResourceEnabled('MAYA_CHECKOUT_QR', true);
+    const request = http.expectOne(`${apiBaseUrl}/api/admin/payment-resources/MAYA_CHECKOUT_QR`);
+    expect(request.request.method).toBe('PUT');
+    expect(request.request.body).toEqual({ enabled: true });
+    request.flush(
+      makePaymentResource({
+        clientAccountId: client.id,
+        enabled: true,
+        paymentMethod: 'MAYA_CHECKOUT_QR',
+        status: 'DRAFT',
+      }),
+    );
+
+    await Promise.resolve();
+    http.expectOne(`${apiBaseUrl}/api/admin/overview`).flush(
+      makeOverview(session, {
+        clients: [client],
+        paymentResources: [
+          makePaymentResource({
+            clientAccountId: client.id,
+            enabled: true,
+            paymentMethod: 'MAYA_CHECKOUT_QR',
+            status: 'DRAFT',
+          }),
+        ],
+      }),
+    );
+    await update;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Payment resource enabled.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
+    );
+  });
+
+  it('shows account actions and opens password changes in a dialog', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session));
+
+    await router.navigateByUrl('/account');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Account Information');
+    expect(root.textContent).toContain('Account Actions');
+    expect(root.textContent).toContain('Change the password for the signed-in account.');
+    expect(root.textContent).not.toContain('Current password');
+    const readonlyFields = Array.from(
+      root.querySelectorAll('.account-readonly-form input'),
+    ) as HTMLInputElement[];
+    expect(readonlyFields.map((field) => field.readOnly)).toEqual([true, true, true]);
+    expect(readonlyFields.map((field) => field.value)).toEqual([
+      session.name,
+      session.email,
+      'Client Owner',
+    ]);
+
+    const changePasswordButton = Array.from(root.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Change Password',
+    ) as HTMLButtonElement;
+
+    changePasswordButton.click();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    let compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Today sales');
-    expect(compiled.textContent).toContain('Booth A');
-    expect(compiled.textContent).not.toContain('Manual MRR');
+    const dialog = document.body.querySelector('admin-change-password-dialog');
+    expect(dialog).toBeTruthy();
+    expect(document.body.textContent).toContain('Current password');
+    expect(document.body.textContent).toContain('New password');
+    expect(document.body.textContent).toContain('Confirm new password');
+  });
 
-    app.setView('audit');
+  it('shows friendly package type names in the packages grid', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const packageOffer = makeOffer({ offerType: 'PER_SESSION' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { offers: [packageOffer] }));
+
+    await router.navigateByUrl('/packages');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const page = fixture.debugElement.query(By.directive(PackagesPageComponent))
+      .componentInstance as PackagesPageComponent;
+    const typeColumn = page.columns.find((column) => column.headerName === 'Type');
+
+    expect(typeof typeColumn?.valueGetter).toBe('function');
+    expect(
+      typeof typeColumn?.valueGetter === 'function'
+        ? typeColumn.valueGetter({ data: packageOffer } as never)
+        : null,
+    ).toBe('Per Session');
+  });
+
+  it('renders package detail status and currency affordances', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const packageOffer = makeOffer({ active: true, currency: 'PHP', offerType: 'PER_SESSION' });
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { offers: [packageOffer] }));
+    workspace.viewPackage(packageOffer);
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const statusChip = root.querySelector('.package-detail-status-chip');
+    const prefixes = Array.from(root.querySelectorAll('[mattextprefix]')).map((prefix) =>
+      prefix.textContent?.trim(),
+    );
+    const actionBar = root.querySelector('.package-detail-actions');
+
+    expect(statusChip?.textContent?.trim()).toBe('ACTIVE');
+    expect(statusChip?.classList.contains('status-chip')).toBe(true);
+    expect(statusChip?.classList.contains('active')).toBe(true);
+    expect(prefixes).toEqual(['PHP', 'PHP']);
+    expect(actionBar?.textContent?.trim().startsWith('Deactivate')).toBe(true);
+    expect(root.querySelector('.danger-flat-button')?.textContent?.trim()).toBe('Deactivate');
+  });
+
+  it('keeps the new package detail header title on the left', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session));
+    workspace.startNewPackage();
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const header = root.querySelector('.package-detail-header') as HTMLElement | null;
+    const title = root.querySelector('.package-detail-title');
+
+    expect(header).not.toBeNull();
+    expect(title?.textContent?.trim()).toBe('Package Definition');
+    expect(title?.parentElement).toBe(header);
+    expect(root.querySelector('.package-detail-status-chip')).toBeNull();
+  });
+
+  it('opens tenant print entitlements as a grid modal from packages', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const router = TestBed.inject(Router);
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const inUse = makePrintEntitlement({
+      id: 'print-1',
+      name: '2 pcs 6x2 or 1 pc 6x4',
+    });
+    const notUsed = makePrintEntitlement({ id: 'print-2', name: '1 pc 6x4' });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        offers: [makeOffer({ includedPrintEntitlement: inUse.name })],
+        printEntitlements: [inUse, notUsed],
+      }),
+    );
+
+    await router.navigateByUrl('/packages');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const printEntitlementButtons = Array.from(root.querySelectorAll('button')).filter(
+      (button) => button.textContent?.trim() === 'Print Entitlements',
+    );
+
+    expect(printEntitlementButtons).toHaveLength(1);
+    const cardTitles = Array.from(root.querySelectorAll('mat-card-title')).map((title) =>
+      title.textContent?.trim(),
+    );
+    expect(cardTitles).not.toContain('Print Entitlements');
+    expect(root.textContent).not.toContain('New Print Entitlement');
+
+    (printEntitlementButtons[0] as HTMLButtonElement).click();
     fixture.detectChanges();
     await fixture.whenStable();
 
-    compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.textContent).toContain('Recent Audit Events');
-    expect(compiled.textContent).toContain('transaction.cash_approved');
+    const dialog = document.body.querySelector('admin-print-entitlements-dialog');
+    expect(dialog).toBeTruthy();
+    expect(document.body.textContent).toContain('New Print Entitlement');
+
+    const grid = TestBed.createComponent(PrintEntitlementsDialogComponent);
+    grid.detectChanges();
+    const gridComponent = grid.debugElement.query(By.directive(AdminGridComponent));
+    expect(
+      (gridComponent.componentInstance as AdminGridComponent<PrintEntitlementSummary>).rowData,
+    ).toEqual([inUse, notUsed]);
+  });
+
+  it('wraps failed login calls with busy state and snackbar feedback', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+
+    workspace.loginEmail.set('owner@example.test');
+    workspace.loginPassword.set('bad-password');
+    const login = workspace.login();
+
+    expect(workspace.loading()).toBe(true);
+    TestBed.inject(HttpTestingController)
+      .expectOne(`${apiBaseUrl}/api/auth/login`)
+      .flush({ title: 'Invalid credentials' }, { status: 401, statusText: 'Unauthorized' });
+    await login;
+
+    expect(workspace.loading()).toBe(false);
+    expect(workspace.error()).toBe('Login failed.');
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Login failed.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-error'] }),
+    );
+  });
+
+  it('shows success snackbar feedback for client creation', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'APPLICATION_OWNER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session));
+    workspace.clientName.set('New Client');
+
+    const createClient = workspace.createClient();
+
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne(`${apiBaseUrl}/api/admin/clients`).flush({});
+    await Promise.resolve();
+    http
+      .expectOne(`${apiBaseUrl}/api/admin/overview`)
+      .flush(makeOverview(session, { clients: [makeClient({ name: 'New Client' })] }));
+    await createClient;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Client account created.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
+    );
+  });
+
+  it('shows error snackbar feedback for deactivate failures', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_OWNER', userId: 'owner-1' });
+    const user = makeUser({ id: 'cashier-1', role: 'CASHIER' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session, { users: [user] }));
+
+    const deactivate = workspace.updateUserStatus(user, 'INACTIVE');
+
+    TestBed.inject(HttpTestingController)
+      .expectOne(`${apiBaseUrl}/api/admin/users/${user.id}`)
+      .flush(
+        { detail: 'The user is assigned to an active booth.' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+    await deactivate;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'User deactivation failed. The user is assigned to an active booth.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-error'] }),
+    );
+  });
+
+  it('uses print entitlement usage state instead of active/inactive lifecycle text', () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const inUse = makePrintEntitlement({ id: 'print-1', name: '2 pcs 6x2' });
+    const notUsed = makePrintEntitlement({ id: 'print-2', name: '1 pc 6x4' });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        offers: [makeOffer({ includedPrintEntitlement: inUse.name })],
+        printEntitlements: [inUse, notUsed],
+      }),
+    );
+
+    expect(workspace.printEntitlementUsageStatus(inUse)).toBe('In Use');
+    expect(workspace.printEntitlementUsageStatus(notUsed)).toBe('Not Used');
+    expect(workspace.canDeletePrintEntitlement(inUse)).toBe(false);
+    expect(workspace.canDeletePrintEntitlement(notUsed)).toBe(true);
   });
 });
 
-function emptyReports() {
+function createWorkspaceWithRejectedSession(): AdminWorkspace {
+  const workspace = TestBed.inject(AdminWorkspace);
+  rejectSessionRestore();
+  return workspace;
+}
+
+function rejectSessionRestore(): void {
+  TestBed.inject(HttpTestingController)
+    .expectOne(`${apiBaseUrl}/api/auth/session`)
+    .flush({}, { status: 401, statusText: 'Unauthorized' });
+}
+
+function navLabels(root: HTMLElement): string[] {
+  return Array.from(root.querySelectorAll('.nav-item')).map(
+    (item) => item.textContent?.trim() ?? '',
+  );
+}
+
+function makeSession(overrides: Partial<Session> = {}): Session {
   return {
-    platform: {
-      activeClients: 0,
-      activeBooths: 0,
-      offlineBooths: 0,
-      trialSubscriptions: 0,
-      activeSubscriptions: 0,
-      pastDueSubscriptions: 0,
-      suspendedSubscriptions: 0,
-      cancelledSubscriptions: 0,
-      manualMrrCents: 0,
-      clientsOverAllowance: 0,
-    },
-    sales: {
-      todayGrossSalesCents: 0,
-      todayCompletedSessions: 0,
-      todayCashSalesCents: 0,
-      pendingCashCount: 0,
-      failedOrExpiredCount: 0,
-    },
+    assignedBoothId: null,
+    canApproveCash: true,
+    canCancelTransaction: true,
+    canReturnBoothToWelcome: true,
+    clientAccountId: overrides.role === 'APPLICATION_OWNER' ? null : 'client-1',
+    email: 'user@example.test',
+    mustChangePassword: false,
+    name: 'Test User',
+    role: 'CLIENT_OWNER',
+    userId: 'user-1',
+    ...overrides,
+  };
+}
+
+function makeOverview(session: Session, overrides: Partial<Overview> = {}): Overview {
+  return {
+    activations: [],
+    appearanceConfigs: [],
+    auditLogs: [],
+    booths: [],
+    clients: [],
+    locations: [],
+    offers: [],
+    paymentAssignments: [],
+    paymentResources: [],
+    printEntitlements: [],
+    reports: makeReports(),
+    session,
+    subscriptionPlans: [],
+    subscriptions: [],
+    transactions: [],
+    users: [],
+    ...overrides,
+  };
+}
+
+function makeReports(): ReportSummary {
+  return {
     boothSales: [],
     locationSales: [],
     offerSales: [],
+    platform: {
+      activeBooths: 0,
+      activeClients: 0,
+      activeSubscriptions: 0,
+      cancelledSubscriptions: 0,
+      clientsOverAllowance: 0,
+      manualMrrCents: 0,
+      offlineBooths: 0,
+      suspendedSubscriptions: 0,
+      trialSubscriptions: 0,
+    },
+    sales: {
+      failedOrExpiredCount: 0,
+      pendingCashCount: 0,
+      todayCashSalesCents: 0,
+      todayCompletedSessions: 0,
+      todayGrossSalesCents: 0,
+    },
+  };
+}
+
+function makeClient(overrides: Partial<ClientSummary> = {}): ClientSummary {
+  return {
+    id: 'client-1',
+    name: 'Acme Events',
+    status: 'ACTIVE',
+    ...overrides,
+  };
+}
+
+function makeSubscriptionPlan(
+  overrides: Partial<SubscriptionPlanSummary> = {},
+): SubscriptionPlanSummary {
+  return {
+    active: true,
+    currency: 'PHP',
+    id: 'plan-1',
+    name: 'Per Booth MVP',
+    pricePerBoothCents: 200000,
+    ...overrides,
+  };
+}
+
+function makeSubscription(overrides: Partial<SubscriptionSummary> = {}): SubscriptionSummary {
+  return {
+    activeBoothAllowance: 2,
+    clientAccountId: 'client-1',
+    id: 'subscription-1',
+    status: 'ACTIVE',
+    subscriptionPlanId: 'plan-1',
+    ...overrides,
+  };
+}
+
+function makeUser(overrides: Partial<UserSummary> = {}): UserSummary {
+  return {
+    assignedBoothId: null,
+    canApproveCash: true,
+    canCancelTransaction: true,
+    canReturnBoothToWelcome: true,
+    clientAccountId: 'client-1',
+    email: 'cashier@example.test',
+    id: 'user-2',
+    name: 'Cashier User',
+    role: 'CASHIER',
+    status: 'ACTIVE',
+    ...overrides,
+  };
+}
+
+function makeBooth(overrides: Partial<BoothSummary> = {}): BoothSummary {
+  return {
+    clientAccountId: 'client-1',
+    code: 'SMA-001',
+    currentState: 'OFFLINE',
+    id: 'booth-1',
+    lastHeartbeatAt: null,
+    locationId: 'location-1',
+    name: 'Booth A',
+    status: 'ACTIVE',
+    ...overrides,
+  };
+}
+
+function makePaymentAssignment(
+  overrides: Partial<PaymentAssignmentSummary> = {},
+): PaymentAssignmentSummary {
+  return {
+    boothId: 'booth-1',
+    id: 'payment-assignment-1',
+    paymentMethod: 'CASH',
+    runtimeEnabled: true,
+    status: 'ASSIGNED',
+    ...overrides,
+  };
+}
+
+function makePaymentResource(
+  overrides: Partial<PaymentResourceSummary> = {},
+): PaymentResourceSummary {
+  return {
+    clientAccountId: 'client-1',
+    enabled: true,
+    paymentMethod: 'CASH',
+    status: 'VERIFIED',
+    ...overrides,
+  };
+}
+
+function makeTransaction(overrides: Partial<TransactionSummary> = {}): TransactionSummary {
+  return {
+    amountCents: 25000,
+    boothId: 'booth-1',
+    boothOfferActivationId: null,
+    canCreateExtraPrintAddOn: false,
+    completedAt: null,
+    coveredSessionSequence: null,
+    createdAt: '2026-05-23T00:00:00Z',
+    extraPrintCount: 0,
+    extraPrintUnitPriceCents: null,
+    id: 'transaction-1',
+    includedPrintEntitlement: null,
+    offerName: 'Per Session',
+    offerType: 'PER_SESSION',
+    paidAt: null,
+    parentTransactionId: null,
+    paymentMethod: 'CASH',
+    sessionAllowance: null,
+    status: 'PENDING_CASH',
+    transactionNumber: 'TXN-001',
+    transactionType: 'SESSION_PURCHASE',
+    ...overrides,
+  };
+}
+
+function makePrintEntitlement(
+  overrides: Partial<PrintEntitlementSummary> = {},
+): PrintEntitlementSummary {
+  return {
+    clientAccountId: 'client-1',
+    id: 'print-1',
+    name: '2 pcs 6x2',
+    ...overrides,
+  };
+}
+
+function makeOffer(overrides: Partial<OfferSummary> = {}): OfferSummary {
+  return {
+    active: true,
+    allowsExtraPrintAddOn: true,
+    clientAccountId: 'client-1',
+    currency: 'PHP',
+    description: null,
+    durationHours: null,
+    extraPrintPriceCents: 5000,
+    id: 'offer-1',
+    includedPrintEntitlement: '2 pcs 6x2',
+    lumaboothSessionMode: 'PRINT',
+    name: 'Three Sessions',
+    offerType: 'SESSION_COUNT',
+    priceCents: 100000,
+    sessionAllowance: 3,
+    ...overrides,
+  };
+}
+
+function makeActivation(overrides: Partial<OfferActivationSummary> = {}): OfferActivationSummary {
+  return {
+    boothId: 'booth-1',
+    boothOfferId: 'offer-1',
+    endsAt: null,
+    id: 'activation-1',
+    sessionAllowance: null,
+    sessionsUsed: 0,
+    startsAt: null,
+    status: 'ACTIVE',
+    ...overrides,
   };
 }

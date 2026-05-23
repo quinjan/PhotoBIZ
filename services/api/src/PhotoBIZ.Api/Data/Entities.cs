@@ -193,7 +193,6 @@ public sealed class PrintEntitlement
     public Guid Id { get; set; }
     public Guid ClientAccountId { get; set; }
     public string Name { get; set; } = string.Empty;
-    public string Status { get; set; } = StatusValues.PrintEntitlement.Active;
     public DateTimeOffset CreatedAt { get; set; }
 
     public ClientAccount? ClientAccount { get; set; }

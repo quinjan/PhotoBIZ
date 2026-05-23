@@ -62,6 +62,7 @@ public sealed class PhotoBizManagementApiTests
         var overview = await client.GetFromJsonAsync<AdminOverviewResponse>("/api/admin/overview");
 
         Assert.NotNull(overview);
+        Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Name == StatusValues.PrintEntitlement.TwoBySixOrOneByFour);
         Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Name == StatusValues.PrintEntitlement.TwoBySix);
         Assert.Contains(overview.PrintEntitlements, entitlement => entitlement.Name == StatusValues.PrintEntitlement.OneByFour);
     }
@@ -88,7 +89,6 @@ public sealed class PhotoBizManagementApiTests
 
         Assert.NotNull(created);
         Assert.Equal("4 pcs 2x6", created.Name);
-        Assert.Equal(StatusValues.PrintEntitlement.Active, created.Status);
 
         var updateResponse = await client.PutAsJsonAsync($"/api/admin/print-entitlements/{created.Id}", new
         {
@@ -100,7 +100,6 @@ public sealed class PhotoBizManagementApiTests
 
         Assert.NotNull(updated);
         Assert.Equal("4 pcs 2x6 premium", updated.Name);
-        Assert.Equal(StatusValues.PrintEntitlement.Active, updated.Status);
     }
 
     [Fact]
@@ -804,6 +803,17 @@ public sealed class PhotoBizManagementApiTests
             existingActiveBooths: 1);
         await LoginAsync(client, ownerEmail);
 
+        var planResponse = await client.PostAsJsonAsync("/api/admin/subscription-plans", new
+        {
+            name = "Growth Plan",
+            pricePerBoothCents = 350000,
+            currency = "PHP"
+        });
+        planResponse.EnsureSuccessStatusCode();
+        var plan = await planResponse.Content.ReadFromJsonAsync<SubscriptionPlanSummary>();
+
+        Assert.NotNull(plan);
+
         var clientResponse = await client.PutAsJsonAsync($"/api/admin/clients/{seed.ClientAccountId}", new
         {
             name = "Updated Client",
@@ -811,13 +821,15 @@ public sealed class PhotoBizManagementApiTests
         });
         var subscriptionResponse = await client.PutAsJsonAsync($"/api/admin/subscriptions/{seed.SubscriptionId}", new
         {
-            status = StatusValues.Subscription.PastDue,
+            subscriptionPlanId = plan.Id,
+            status = StatusValues.Subscription.Suspended,
             activeBoothAllowance = 1,
             endsOn = (DateOnly?)null,
             notes = "Manual lifecycle update"
         });
         var tooLowAllowanceResponse = await client.PutAsJsonAsync($"/api/admin/subscriptions/{seed.SubscriptionId}", new
         {
+            subscriptionPlanId = plan.Id,
             status = StatusValues.Subscription.Active,
             activeBoothAllowance = 0,
             endsOn = (DateOnly?)null,
@@ -834,7 +846,8 @@ public sealed class PhotoBizManagementApiTests
         Assert.NotNull(updatedClient);
         Assert.Equal(StatusValues.ClientAccount.Suspended, updatedClient.Status);
         Assert.NotNull(updatedSubscription);
-        Assert.Equal(StatusValues.Subscription.PastDue, updatedSubscription.Status);
+        Assert.Equal(StatusValues.Subscription.Suspended, updatedSubscription.Status);
+        Assert.Equal(plan.Id, updatedSubscription.SubscriptionPlanId);
         Assert.Equal(1, updatedSubscription.ActiveBoothAllowance);
     }
 
@@ -1537,6 +1550,83 @@ public sealed class PhotoBizManagementApiTests
 
         Assert.Equal(HttpStatusCode.BadRequest, nonLatestResponse.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, invalidCopyResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExtraPrintAddOnAllowsPreviousSessionBeforeCurrentSessionReachesLumabooth()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-extra-print-current-pending@photobiz.test");
+        var previousTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.BackdateCompletedTransactionAsync(previousTransactionId, TimeSpan.FromMinutes(5));
+        var completedAddOnId = await factory.SeedBoothTransactionAsync(
+            seed,
+            StatusValues.TransactionType.ExtraPrintAddOn,
+            StatusValues.Transaction.Completed,
+            previousTransactionId);
+        await factory.BackdateCompletedTransactionAsync(completedAddOnId, TimeSpan.FromMinutes(3));
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PendingCash, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(client, cashierEmail);
+
+        var response = await client.PostAsJsonAsync($"/api/cashier/transactions/{previousTransactionId}/extra-prints", new
+        {
+            copyCount = 1
+        });
+
+        response.EnsureSuccessStatusCode();
+        var addOn = await response.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(addOn);
+        Assert.Equal(previousTransactionId, addOn.ParentTransactionId);
+        Assert.Equal(StatusValues.TransactionType.ExtraPrintAddOn, addOn.TransactionType);
+    }
+
+    [Fact]
+    public async Task ExtraPrintAddOnRejectsOlderEligibleSessionWhenPreviousTransactionIsIneligible()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeFreshHeartbeat: true);
+        var cashierEmail = await factory.SeedCashierAsync(seed, "cashier-extra-print-previous-ineligible@photobiz.test");
+        var olderEligibleTransactionId = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.Completed, StatusValues.LumaboothSessionMode.Print);
+        await factory.BackdateCompletedTransactionAsync(olderEligibleTransactionId, TimeSpan.FromMinutes(10));
+        var previousCoveredTransactionId = await factory.SeedSessionTransactionAsync(
+            seed,
+            StatusValues.Transaction.Completed,
+            StatusValues.LumaboothSessionMode.Print,
+            StatusValues.OfferType.SessionCount,
+            StatusValues.TransactionType.CoveredPlanSession);
+        await factory.BackdateCompletedTransactionAsync(previousCoveredTransactionId, TimeSpan.FromMinutes(5));
+        _ = await factory.SeedSessionTransactionAsync(seed, StatusValues.Transaction.PendingCash, StatusValues.LumaboothSessionMode.Print);
+        await LoginAsync(client, cashierEmail);
+
+        var response = await client.PostAsJsonAsync($"/api/cashier/transactions/{olderEligibleTransactionId}/extra-prints", new
+        {
+            copyCount = 1
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("Extra prints are available only for the previous booth transaction.", body, StringComparison.Ordinal);
     }
 
     [Theory]

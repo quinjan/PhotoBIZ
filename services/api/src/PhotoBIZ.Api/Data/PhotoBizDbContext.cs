@@ -270,14 +270,12 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.ToTable("print_entitlements");
             entity.HasKey(entitlement => entitlement.Id);
             entity.Property(entitlement => entitlement.Name).HasMaxLength(120);
-            entity.Property(entitlement => entitlement.Status).HasMaxLength(40);
             entity.Property(entitlement => entitlement.CreatedAt).HasDefaultValueSql("now()");
             entity.HasOne(entitlement => entitlement.ClientAccount)
                 .WithMany(client => client.PrintEntitlements)
                 .HasForeignKey(entitlement => entitlement.ClientAccountId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(entitlement => new { entitlement.ClientAccountId, entitlement.Name }).IsUnique();
-            entity.HasIndex(entitlement => new { entitlement.ClientAccountId, entitlement.Status });
         });
 
         modelBuilder.Entity<BoothOfferActivation>(entity =>

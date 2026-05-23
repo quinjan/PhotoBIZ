@@ -90,7 +90,7 @@ sequenceDiagram
   L-->>A: Session events
   A-->>API: Session started / completed
   API-->>B: Show 15-second completed prompt
-  POS->>API: Optional extra print add-on for latest session
+  POS->>API: Optional extra print add-on for previous eligible session
   API->>A: Print extra copies after cash approval
   A->>L: GET /api/print?count={count}
   A-->>API: Print completed / failed
@@ -228,13 +228,14 @@ Agent configuration keys:
 - `PhotoBIZ:Display:LaunchBoothUiOnStartup`
 - `PhotoBIZ:Display:KioskMode`
 
-Payment setup has two levels:
+Payment setup has two levels plus the built-in cash resource:
 
-- Client-level resources register one Maya Checkout QR configuration and multiple Maya Terminal ECR device configurations.
+- Cash is a built-in client payment resource. It is always enabled/verified for every client tenant and cannot be disabled at the tenant level.
+- Admin Web Settings exposes tenant payment resources. Client Owner and Client Admin users can toggle Maya Checkout QR and Maya Terminal ECR resources to create or enable draft setup records, or disable those resources before they are usable.
+- Client-level provider resources register one Maya Checkout QR configuration and Maya Terminal ECR device/configuration records. A draft resource is setup state only and is not runtime-ready.
 - Booth-level assignments choose which registered payment resources are allowed on each booth.
-- Maya Checkout QR assignment requires the client Maya QR resource to exist and be active or verified.
-- Maya Terminal ECR assignment requires selecting a specific active client ECR `deviceId`.
-- Future payment option values are `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`, but they remain locked until the provider integrations are enabled in a future phase.
+- Runtime exposure requires every gate: usable/verified client payment resource where provider-backed, booth assignment `ASSIGNED`, `RuntimeEnabled == true`, and live provider feature availability.
+- Future payment option values are `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`, but they remain locked from Booth UI and Cashier POS runtime payment until the provider integrations are enabled in a future phase.
 
 ## Cash Payment State Flow
 
@@ -245,20 +246,21 @@ stateDiagram-v2
   PAYMENT_PENDING --> WELCOME: Cashier approves PLAN_ACTIVATION
   WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
   WELCOME --> PAID: Customer starts COVERED_PLAN_SESSION
-  OFFER_CONFIRMED --> PENDING_CASH: Customer chooses cash
+  OFFER_CONFIRMED --> PAYMENT_PENDING: Customer chooses cash
   OFFER_CONFIRMED --> CANCELLED: Cashier return-to-welcome recovery
-  PENDING_CASH --> PAID: Cashier approves cash
-  PENDING_CASH --> EXPIRED: Timeout
-  PENDING_CASH --> CANCELLED: Cashier cancels
+  PAYMENT_PENDING --> PAID: Cashier approves cash
+  PAYMENT_PENDING --> EXPIRED: Timeout
+  PAYMENT_PENDING --> CANCELLED: Cashier cancels
   PAID --> STARTING_SESSION: Backend commands agent
   PAID --> CANCELLED: Cashier return-to-welcome recovery
   STARTING_SESSION --> IN_SESSION: LumaBooth starts
   IN_SESSION --> COMPLETED: LumaBooth session ends
-  COMPLETED --> PAYMENT_PENDING: Cashier creates latest-session extra print add-on
+  COMPLETED --> PAYMENT_PENDING: Cashier creates previous-session extra print add-on
   PAYMENT_PENDING --> PAID: Cashier approves add-on cash
   PAID --> PRINTING_OR_SHARING: Backend commands print copies
   PRINTING_OR_SHARING --> COMPLETED: Agent reports print-completed
   PRINTING_OR_SHARING --> SESSION_FAILED: Agent reports print-failed
+  PRINTING_OR_SHARING --> WELCOME: Timeout
   STARTING_SESSION --> SESSION_FAILED: Agent/LumaBooth error
   IN_SESSION --> SESSION_FAILED: Agent/LumaBooth error
   STARTING_SESSION --> CANCELLED: Cashier return-to-welcome recovery
@@ -322,6 +324,7 @@ Stack:
 - Angular 21.
 - TypeScript.
 - Angular Material.
+- AG Grid Community for Admin Web operational data grids.
 
 Responsibilities:
 
@@ -600,7 +603,6 @@ erDiagram
     uuid id
     uuid client_account_id
     string name
-    string status
     datetime created_at
   }
 
@@ -701,14 +703,14 @@ Rules:
 - Booth UI cannot mark transactions as paid.
 - A booth may have at most one non-terminal session transaction at a time.
 - Cashier `return-to-welcome` recovery cancels the booth's active non-terminal transaction so the booth can accept a new session purchase.
-- Payment method selection must be validated against booth-level payment option assignments and runtime provider availability.
-- Client-level Maya configuration alone cannot expose a payment method to Booth UI or Cashier POS.
+- Payment method selection must be validated against booth-level payment option assignments, client-level provider resource status when provider-backed, and runtime provider availability.
+- Tenant-level payment resource setup alone cannot expose a payment method to Booth UI or Cashier POS.
 - `CASH` is the only runtime-enabled payment method in MVP.
 - Cashiers can approve only transactions for their assigned booth.
 - Application Owner can manage clients/subscriptions but does not normally approve client booth transactions.
 - Expired transactions release the booth.
 - Session transactions snapshot the active booth offer and active offer assignment.
-- Extra print add-on transactions must reference the latest completed `PER_SESSION` parent transaction for the same booth and do not start a new capture session.
+- Extra print add-on transactions must reference the immediately previous booth session transaction when that previous session is an eligible completed `PER_SESSION` session purchase. Extra-print add-on transactions are add-ons, not sessions, so completed add-ons are skipped when resolving the previous session reference. If a newer current booth session exists but is still before the LumaBooth handoff/session states, POS may still create the extra-print add-on for the previous eligible session. If the previous session transaction is ineligible, the API rejects older session history instead of scanning back to a prior eligible session.
 - Extra print add-ons are cashier/POS-only, cash-only in MVP, and support 1 to 5 copies.
 - Paid extra print add-ons dispatch `PRINT_COPIES` to the Windows Agent and must not create a `BOOTH_SESSION` row.
 - Extra print add-ons are rejected for `TIME_UNLIMITED` and `SESSION_COUNT` offer transactions.
@@ -797,7 +799,7 @@ flowchart TB
 - Frontend workspace: one Angular workspace containing two separate applications: `admin-web` and `booth-ui`.
 - Shared frontend code lives in Angular workspace libraries for API clients, DTOs, validation helpers, constants, and reusable UI primitives.
 - The Booth UI stage renderer is a shared Angular presentation component consumed by both `admin-web` preview and `booth-ui` kiosk rendering to prevent visual drift.
-- Admin Web: Angular 21 + TypeScript + Angular Material.
+- Admin Web: Angular 21 + TypeScript + Angular Material + AG Grid Community. Bootstrap and ng-bootstrap are intentionally not part of the admin stack.
 - Booth UI: Angular 21 + TypeScript, optimized for kiosk browser use.
 - Backend API: ASP.NET Core on .NET 10 LTS.
 - Database: PostgreSQL.
@@ -857,7 +859,7 @@ Each booth is paired to exactly one environment.
 - Active booth offer assignment.
 - Minimal tenant Booth UI theme management.
 - Booth-level cash payment assignment.
-- Client-level draft Maya QR and Maya ECR setup records.
+- Tenant-level payment resource settings with cash always enabled and draft Maya QR/ECR setup records.
 
 ### Phase 2: Transaction And POS
 

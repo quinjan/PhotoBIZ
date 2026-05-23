@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">PhotoBIZ app icon</title>
+  <desc id="desc">Square PhotoBIZ app icon with a simple camera lens accent.</desc>
+  <defs>
+    <linearGradient id="app-bg" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#155eef" />
+      <stop offset="1" stop-color="#0b6b78" />
+    </linearGradient>
+  </defs>
+
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#app-bg)" />
+  <g transform="translate(91 76) scale(2.55)">
+    <path d="M34 50c0-8 6-14 14-14h18l9-9h24l9 9h2c8 0 14 6 14 14v48c0 8-6 14-14 14H48c-8 0-14-6-14-14V50Z" fill="#ffffff" opacity="0.96" />
+    <circle cx="79" cy="75" r="29" fill="#17202a" />
+    <circle cx="79" cy="75" r="17" fill="#155eef" />
+    <circle cx="86" cy="68" r="5" fill="#ffffff" opacity="0.92" />
+    <path d="M37 20l7 15 16 5-15 7-5 16-7-15-16-5 15-7 5-16Z" fill="#f8d67d" />
+  </g>
+  <text x="72" y="405" fill="#ffffff" font-family="Segoe UI, Inter, Arial, sans-serif" font-size="72" font-weight="900">PhotoBIZ</text>
+</svg>

@@ -925,21 +925,12 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("character varying(120)")
                         .HasColumnName("name");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("character varying(40)")
-                        .HasColumnName("status");
-
                     b.HasKey("Id")
                         .HasName("pk_print_entitlements");
 
                     b.HasIndex("ClientAccountId", "Name")
                         .IsUnique()
                         .HasDatabaseName("ix_print_entitlements_client_account_id_name");
-
-                    b.HasIndex("ClientAccountId", "Status")
-                        .HasDatabaseName("ix_print_entitlements_client_account_id_status");
 
                     b.ToTable("print_entitlements", (string)null);
                 });
