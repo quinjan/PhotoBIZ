@@ -21,7 +21,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore backend
-        run: dotnet restore PhotoBIZ.slnx
+        run: dotnet restore PhotoBIZ.slnx -p:EnableWindowsTargeting=true
 
       - name: Test backend
         run: dotnet test PhotoBIZ.slnx --configuration Release --verbosity minimal -p:EnableWindowsTargeting=true
