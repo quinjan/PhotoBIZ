@@ -24,7 +24,7 @@ jobs:
         run: dotnet restore PhotoBIZ.slnx
 
       - name: Test backend
-        run: dotnet test PhotoBIZ.slnx --configuration Release --verbosity minimal
+        run: dotnet test PhotoBIZ.slnx --configuration Release --verbosity minimal -p:EnableWindowsTargeting=true
 
       - name: Setup Node
         uses: actions/setup-node@v4

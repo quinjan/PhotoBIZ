@@ -475,6 +475,35 @@ C:\Users\<you>\.ssh\photobiz_pilot_ed25519
 
 This private key is also the value that will later go into the GitHub secret `PHOTOBIZ_DEPLOY_SSH_KEY`.
 
+For GitHub Actions, use a dedicated deploy key with no passphrase. When `ssh-keygen` asks:
+
+```text
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+```
+
+Press `Enter` for both prompts. This should be a deploy-only key, not your personal everyday SSH key. Your personal key can and should keep its passphrase.
+
+If you already created the Droplet with a passphrase-protected personal key, create a second deploy key now:
+
+```powershell
+ssh-keygen -t ed25519 -C "photobiz-github-actions-deploy" -f "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519"
+Get-Content "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519.pub"
+```
+
+Press `Enter` twice for no passphrase. Then add the new public key to the Droplet:
+
+```powershell
+$deployPublicKey = Get-Content "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519.pub" -Raw
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> "mkdir -p /home/photobiz/.ssh && echo '$deployPublicKey' >> /home/photobiz/.ssh/authorized_keys && chown -R photobiz:photobiz /home/photobiz/.ssh && chmod 700 /home/photobiz/.ssh && chmod 600 /home/photobiz/.ssh/authorized_keys"
+```
+
+Use the new private key for `PHOTOBIZ_DEPLOY_SSH_KEY`:
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519" -Raw
+```
+
 ### 2. Create The DigitalOcean Droplet
 
 In DigitalOcean:
@@ -605,6 +634,18 @@ To print the private key for copying:
 ```powershell
 Get-Content "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" -Raw
 ```
+
+The `PHOTOBIZ_DEPLOY_SSH_KEY` secret must contain the whole private key file, including the first and last lines. Use your real generated key, not this fake example:
+
+```text
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABGZha2UAAAAIZmFrZS1vbmx5LWZvci1kb2NzAAAA
+ZmFrZS1leGFtcGxlLWRvLW5vdC11c2UtdGhpcy1rZXktZm9yLXJlYWwtZGVwbG95
+bWVudHMAAAAgZmFrZS1waG90b2Jpei1waWxvdC1kZXBsb3kta2V5LWV4YW1wbGU=
+-----END OPENSSH PRIVATE KEY-----
+```
+
+For this workflow, `PHOTOBIZ_DEPLOY_SSH_KEY` must be a deploy-only private key without a passphrase. If your existing key has a passphrase, do not put that personal key into GitHub. Create the separate deploy key described in step 1 and use that instead.
 
 Add this optional environment variable if the path differs from the default:
 
