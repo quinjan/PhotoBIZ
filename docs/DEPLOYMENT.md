@@ -817,6 +817,50 @@ If GitHub deploy cannot SSH:
 - Confirm `PHOTOBIZ_DEPLOY_SSH_KEY` contains the full private key, including the `BEGIN OPENSSH PRIVATE KEY` and `END OPENSSH PRIVATE KEY` lines.
 - Confirm the deploy user can SSH manually from your machine.
 
+The exact GitHub error usually looks like:
+
+```text
+Permission denied (publickey).
+rsync: connection unexpectedly closed
+```
+
+Fix it with these checks.
+
+First confirm the `photobiz` Linux user exists:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> "id photobiz"
+```
+
+If that says the user does not exist, the provisioning script did not finish. Run the provisioning step again.
+
+Next test the same deploy key that GitHub Actions uses:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519" photobiz@<droplet-ip> "whoami"
+```
+
+Expected output:
+
+```text
+photobiz
+```
+
+If this fails, add the deploy public key to the `photobiz` user's authorized keys. This command uses your root-capable key to install the GitHub deploy key:
+
+```powershell
+scp -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519.pub" root@<droplet-ip>:/tmp/photobiz_github_actions_ed25519.pub
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> "mkdir -p /home/photobiz/.ssh && cat /tmp/photobiz_github_actions_ed25519.pub >> /home/photobiz/.ssh/authorized_keys && chown -R photobiz:photobiz /home/photobiz/.ssh && chmod 700 /home/photobiz/.ssh && chmod 600 /home/photobiz/.ssh/authorized_keys"
+```
+
+Retest:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519" photobiz@<droplet-ip> "whoami"
+```
+
+Only rerun GitHub Actions after the local deploy-key test succeeds.
+
 If containers fail:
 
 ```bash

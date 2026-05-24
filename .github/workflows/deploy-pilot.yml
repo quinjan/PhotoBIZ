@@ -84,6 +84,13 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
+      - name: Verify SSH access
+        env:
+          DEPLOY_HOST: ${{ secrets.PHOTOBIZ_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.PHOTOBIZ_DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "${DEPLOY_USER}@${DEPLOY_HOST}" "whoami"
+
       - name: Sync repository to Droplet
         env:
           DEPLOY_HOST: ${{ secrets.PHOTOBIZ_DEPLOY_HOST }}
@@ -91,6 +98,7 @@ jobs:
           DEPLOY_PATH: ${{ vars.PHOTOBIZ_DEPLOY_PATH || '/opt/photobiz' }}
         run: |
           rsync -az --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
             --exclude '.git/' \
             --exclude '.github/' \
             --exclude '.env' \
@@ -112,7 +120,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.PHOTOBIZ_DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.PHOTOBIZ_DEPLOY_PATH || '/opt/photobiz' }}
         run: |
-          ssh "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'REMOTE'
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "${DEPLOY_USER}@${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "${DEPLOY_PATH}"
           test -f .env
