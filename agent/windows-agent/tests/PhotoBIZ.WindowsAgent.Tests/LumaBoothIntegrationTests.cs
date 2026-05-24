@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using PhotoBIZ.WindowsAgent;
 
@@ -100,6 +101,50 @@ public sealed class LumaBoothIntegrationTests
     }
 
     [Fact]
+    public async Task LumaBoothConnectionTesterTreatsAnyHttpResponseAsReachable()
+    {
+        var handler = new CapturingHandler(statusCode: HttpStatusCode.NotFound);
+        var tester = new LumaBoothConnectionTester(
+            new HttpClient(handler),
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
+            {
+                LumaBooth = new LumaBoothOptions
+                {
+                    Mode = LumaBoothIntegrationMode.Api,
+                    ApiBaseUrl = "http://localhost:1500",
+                    StartTimeoutSeconds = 5
+                }
+            }));
+
+        var result = await tester.TestAsync(CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Equal("/", handler.RequestUri?.PathAndQuery);
+    }
+
+    [Fact]
+    public async Task LumaBoothConnectionTesterSkipsHttpCallInSimulatorMode()
+    {
+        var handler = new CapturingHandler();
+        var tester = new LumaBoothConnectionTester(
+            new HttpClient(handler),
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions
+            {
+                LumaBooth = new LumaBoothOptions
+                {
+                    Mode = LumaBoothIntegrationMode.Simulator,
+                    ApiBaseUrl = "http://localhost:1500",
+                    StartTimeoutSeconds = 5
+                }
+            }));
+
+        var result = await tester.TestAsync(CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Null(handler.RequestUri);
+    }
+
+    [Fact]
     public async Task TriggerHandlerReportsSessionStartAndCompletion()
     {
         var session = CreateSession("PRINT");
@@ -171,6 +216,23 @@ public sealed class LumaBoothIntegrationTests
     }
 
     [Fact]
+    public async Task AgentApiClientMapsUnauthorizedToRePairRequiredException()
+    {
+        var handler = new CapturingHandler(statusCode: HttpStatusCode.Unauthorized);
+        var client = new PhotoBizAgentApiClient(
+            new HttpClient(handler),
+            new StaticAgentRuntimeOptionsProvider(new PhotoBizAgentOptions()));
+
+        var exception = await Assert.ThrowsAsync<AgentCredentialUnauthorizedException>(() => client.PairAsync(
+            "http://localhost:5082",
+            "SMA-001",
+            "bad-agent-secret",
+            CancellationToken.None));
+
+        Assert.Contains("Re-pair", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ChromeLauncherBuildsBoothUiTokenRoute()
     {
         var url = ChromeBoothUiLauncher.BuildBoothUiUrl("http://localhost:4201/", "abc 123");
@@ -206,6 +268,32 @@ public sealed class LumaBoothIntegrationTests
         Assert.DoesNotContain("--user-data-dir", arguments);
     }
 
+    [Fact]
+    public void ChromeLauncherUsesConfiguredExecutablePath()
+    {
+        var path = ChromeBoothUiLauncher.ResolveChromePath(@"C:\Chrome\chrome.exe");
+
+        Assert.Equal(@"C:\Chrome\chrome.exe", path);
+    }
+
+    [Fact]
+    public async Task BoothUiLaunchStateStorePersistsAndClearsOwnedProcessState()
+    {
+        using var workspace = TempAgentWorkspace.Create();
+        var store = new FileBoothUiLaunchStateStore(new TestAgentDataPaths(workspace.RootDirectory));
+        var state = new BoothUiLaunchState(
+            ProcessId: 1234,
+            DateTimeOffset.Parse("2026-05-24T00:00:00Z", CultureInfo.InvariantCulture),
+            "http://localhost:4201/kiosk-token");
+
+        await store.SaveAsync(state, CancellationToken.None);
+        var loaded = store.Load();
+        await store.ClearAsync(CancellationToken.None);
+
+        Assert.Equal(state, loaded);
+        Assert.Null(store.Load());
+    }
+
     private static ActiveLumaBoothSession CreateSession(string mode)
     {
         return new ActiveLumaBoothSession(
@@ -217,7 +305,9 @@ public sealed class LumaBoothIntegrationTests
             DateTimeOffset.UtcNow);
     }
 
-    private sealed class CapturingHandler(string? responseBody = null) : HttpMessageHandler
+    private sealed class CapturingHandler(
+        string? responseBody = null,
+        HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
     {
         private readonly List<Uri> requestUris = [];
 
@@ -233,7 +323,7 @@ public sealed class LumaBoothIntegrationTests
                 ? values.SingleOrDefault()
                 : null;
 
-            var response = new HttpResponseMessage(HttpStatusCode.OK);
+            var response = new HttpResponseMessage(statusCode);
             if (responseBody is not null)
             {
                 response.Content = new StringContent(responseBody, Encoding.UTF8, "application/json");
@@ -346,5 +436,37 @@ public sealed class LumaBoothIntegrationTests
             ShowBoothUiCalled = true;
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class TempAgentWorkspace : IDisposable
+    {
+        private TempAgentWorkspace(string rootDirectory)
+        {
+            RootDirectory = rootDirectory;
+        }
+
+        public string RootDirectory { get; }
+
+        public static TempAgentWorkspace Create()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "PhotoBIZ-Agent-Tests", Guid.NewGuid().ToString("N"));
+            return new TempAgentWorkspace(root);
+        }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(RootDirectory))
+            {
+                Directory.Delete(RootDirectory, recursive: true);
+            }
+        }
+    }
+
+    private sealed class TestAgentDataPaths(string rootDirectory) : IAgentDataPaths
+    {
+        public string RootDirectory { get; } = rootDirectory;
+        public string ConfigurationFilePath => Path.Combine(RootDirectory, "config.json");
+        public string ActiveSessionFilePath => Path.Combine(RootDirectory, "active-session.json");
+        public string BoothUiLaunchStateFilePath => Path.Combine(RootDirectory, "booth-ui-launch.json");
     }
 }

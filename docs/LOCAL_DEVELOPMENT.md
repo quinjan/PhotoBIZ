@@ -11,7 +11,7 @@ PhotoBIZ is currently an MVP vertical slice in progress:
 - Worker expires pending cash transactions, returns completed booths to welcome after the 15-second extra-print prompt, and marks stale idle booths offline.
 - Angular `admin-web` and `booth-ui` apps run the current setup, cashier, and kiosk flows.
 - Windows Agent can run in simulator mode or local dslrBooth/LumaBooth API mode.
-- Reporting, real booth hardware smoke validation, and real Maya runtime payments remain incomplete.
+- Reporting, real booth hardware smoke validation, and live PayMongo production validation remain incomplete.
 
 Recent validation baseline is recorded in `docs/MVP_PROGRESS.md`.
 
@@ -113,10 +113,38 @@ dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter
 
 The production Agent shape is a logged-in Windows user-session Control Center. The WPF shell can pair/re-pair with Admin Web-issued credentials, start/stop the booth runtime, launch Chrome, heartbeat, and poll commands only while the local booth runtime is intentionally started.
 
+While the booth runtime is online, closing the Control Center window minimizes it to the tray instead of exiting. Use `Stop Booth` or the tray `Exit` action when you want to stop the runtime and close the app. Daily staff operation stays on the default staff-mode tabs; enable `Technician` mode in the header to expose Pair/Re-pair, Kiosk/Display, and LumaBooth settings. Use `Relaunch Booth` from the Dashboard or tray when you want to close and reopen the PhotoBIZ-launched kiosk runtime with a fresh token.
+
 For fast headless debugging, the worker/dev host is still available:
 
 ```powershell
 dotnet run --project agent/windows-agent/src/PhotoBIZ.WindowsAgent/PhotoBIZ.WindowsAgent.csproj
+```
+
+To validate the release binary locally:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File agent/windows-agent/scripts/publish-control-center.ps1 -Version 0.1.0-local -SkipTests
+```
+
+The ZIP and manifest are written under:
+
+```text
+artifacts/windows-agent/packages
+```
+
+The release ZIP excludes `appsettings.Development.json`, so it behaves like a production/lab build instead of picking up development booth credentials from launch settings.
+
+The release ZIP also includes install/uninstall scripts. From an extracted release ZIP:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-PhotoBIZAgent.ps1
+```
+
+This installs to `C:\Program Files\PhotoBIZ\Windows Agent`, creates `C:\ProgramData\PhotoBIZ\Agent`, and adds current-user login auto-start. To uninstall:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\PhotoBIZ\Windows Agent\Uninstall-PhotoBIZAgent.ps1"
 ```
 
 ## 7) Configure Windows Agent LumaBooth Settings
@@ -134,7 +162,7 @@ agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/appsettings.Developm
 agent/windows-agent/src/PhotoBIZ.WindowsAgent/appsettings.Development.json
 ```
 
-Use the Control Center Pair/Re-pair screen for booth code and Agent credential. Until the editable LumaBooth settings screen is finished, use user secrets for local API-mode settings that should not land in git:
+Use the Control Center Pair/Re-pair screen for booth code and Agent credential. Kiosk/Display and LumaBooth settings can be edited from their Control Center tabs. The LumaBooth tab includes a `Test API` action that checks whether the configured local API base URL responds without starting a session. Diagnostics can be exported from the Diagnostics tab and are written under `%ProgramData%\PhotoBIZ\Agent\diagnostics` with secrets redacted. If you prefer local user secrets for API-mode settings that should not land in git, these keys are still supported:
 
 ```powershell
 dotnet user-secrets set "PhotoBIZ:LumaBooth:ApiPassword" "<local-lumabooth-api-password>" --project agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj

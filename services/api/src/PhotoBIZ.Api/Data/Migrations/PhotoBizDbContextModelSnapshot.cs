@@ -774,11 +774,21 @@ namespace PhotoBIZ.Api.Data.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("encrypted_secret_key");
 
+                    b.Property<string>("EncryptedWebhookSecret")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("encrypted_webhook_secret");
+
                     b.Property<string>("IntegrationType")
                         .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)")
                         .HasColumnName("integration_type");
+
+                    b.Property<string>("PaymentMode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("payment_mode");
 
                     b.Property<string>("Provider")
                         .IsRequired()

@@ -6,7 +6,7 @@ using PhotoBIZ.WindowsAgent;
 
 namespace PhotoBIZ.WindowsAgent.ControlCenter;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private IHost? host;
 
@@ -34,14 +34,18 @@ public partial class App : Application
                     services.Configure<PhotoBizAgentOptions>(context.Configuration.GetSection("PhotoBIZ"));
                     services.AddHttpClient<IPhotoBizAgentApiClient, PhotoBizAgentApiClient>();
                     services.AddHttpClient<DslrBoothApiClient>();
+                    services.AddHttpClient<ILumaBoothConnectionTester, LumaBoothConnectionTester>();
                     services.AddSingleton<IAgentDataPaths, AgentDataPaths>();
                     services.AddSingleton<IAgentSecretProtector, WindowsDpapiAgentSecretProtector>();
                     services.AddSingleton<IAgentConfigurationStore, FileAgentConfigurationStore>();
                     services.AddSingleton<IAgentRuntimeOptionsProvider, AgentRuntimeOptionsProvider>();
+                    services.AddSingleton<IAgentDiagnosticsSanitizer, AgentDiagnosticsSanitizer>();
+                    services.AddSingleton<IAgentDiagnosticsExporter, AgentDiagnosticsExporter>();
                     services.AddSingleton<SimulatorLumaBoothClient>();
                     services.AddTransient<ILumaBoothClient, ConfiguredLumaBoothClient>();
                     services.AddSingleton<IActiveLumaBoothSessionStore, FileActiveLumaBoothSessionStore>();
                     services.AddSingleton<IWindowFocusService, WindowFocusService>();
+                    services.AddSingleton<IBoothUiLaunchStateStore, FileBoothUiLaunchStateStore>();
                     services.AddSingleton<IBoothUiLauncher, ChromeBoothUiLauncher>();
                     services.AddSingleton<ILumaBoothTriggerListener, LumaBoothTriggerListenerService>();
                     services.AddSingleton<LumaBoothTriggerHandler>();
@@ -58,7 +62,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            MessageBox.Show(
+            System.Windows.MessageBox.Show(
                 ex.Message,
                 "PhotoBIZ Agent",
                 MessageBoxButton.OK,

@@ -65,6 +65,7 @@ public sealed class AgentPairingService(
         return new AgentConfigurationUpdate(
             request.ApiBaseUrl,
             pair.BoothCode,
+            pair.BoothName,
             request.AgentCredential,
             current.PollIntervalSeconds,
             current.SimulatedSessionDurationSeconds,

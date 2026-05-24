@@ -80,7 +80,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Use policy-based authorization for role and tenant-sensitive behavior.
 - Return consistent validation and problem responses. Do not leak internal exception details to clients.
 - Keep API routes resource and workflow oriented. Use verbs in route names only for true commands such as payment approval, booth pairing, or session recovery.
-- All sensitive state changes must be auditable, including subscription changes, user status changes, booth credential changes, payment approvals, Maya configuration changes, and manual recovery actions.
+- All sensitive state changes must be auditable, including subscription changes, user status changes, booth credential changes, payment approvals, PayMongo configuration changes, provider webhook payment events, and manual recovery actions.
 
 ## EF Core And Data Rules
 
@@ -211,7 +211,7 @@ Use warnings or documented exceptions during early scaffolding when strict enfor
 - Do not bypass tenant filters for convenience.
 - Do not let Booth UI or Admin Web mark transactions as paid without backend authorization.
 - Do not start LumaBooth from browser code.
-- Do not expose agent credentials, kiosk tokens, password hashes, Maya secrets, or raw sensitive provider payloads.
+- Do not expose agent credentials, kiosk tokens, password hashes, PayMongo/provider secrets, or raw sensitive provider payloads.
 - Do not introduce arbitrary tenant CSS, scripts, SQL, command strings, or local file paths.
 - Do not return EF entities directly from API endpoints.
 - Do not hide failed checks or test gaps.

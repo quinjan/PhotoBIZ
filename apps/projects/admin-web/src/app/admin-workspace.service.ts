@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { BoothStageConfig, BoothStageScreenState } from '@photobiz/booth-stage';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { resolvePhotoBizApiBaseUrl } from '../../../shared/runtime-config';
 import { firstValueFrom, interval } from 'rxjs';
 
 export type Session = {
@@ -113,6 +114,13 @@ export type PaymentResourceSummary = {
   readonly paymentMethod: string;
   readonly enabled: boolean;
   readonly status: string;
+  readonly resourceId?: string | null;
+  readonly paymentMode?: string | null;
+  readonly businessAccountName?: string | null;
+  readonly publicKeyMasked?: string | null;
+  readonly webhookUrl?: string | null;
+  readonly hasSecretKey?: boolean;
+  readonly hasWebhookSecret?: boolean;
 };
 export type TenantPaymentResourceDisplay = {
   readonly method: string;
@@ -123,6 +131,13 @@ export type TenantPaymentResourceDisplay = {
   readonly locked: boolean;
   readonly status: string;
   readonly statusLabel: string;
+  readonly resourceId: string | null;
+  readonly paymentMode: string | null;
+  readonly businessAccountName: string | null;
+  readonly publicKeyMasked: string | null;
+  readonly webhookUrl: string | null;
+  readonly hasSecretKey: boolean;
+  readonly hasWebhookSecret: boolean;
 };
 export type PaymentAssignmentSummary = {
   readonly id: string;
@@ -324,6 +339,7 @@ export type ViewKey =
   | 'package-detail'
   | 'transactions'
   | 'settings'
+  | 'paymongo-settings'
   | 'account'
   | 'pos'
   | 'reports'
@@ -331,7 +347,7 @@ export type ViewKey =
 
 @Injectable({ providedIn: 'root' })
 export class AdminWorkspace {
-  private static readonly apiBaseUrl = 'http://localhost:5082';
+  private static readonly apiBaseUrl = resolvePhotoBizApiBaseUrl();
   private static readonly boothThemeDefaults = {
     VINTAGE: {
       sessionLabel: 'Self Photo Booth',
@@ -368,16 +384,10 @@ export class AdminWorkspace {
       icon: 'PHP',
     },
     {
-      method: 'MAYA_CHECKOUT_QR',
-      label: 'Maya Checkout QR',
-      description: 'Enable tenant setup for QR checkout resources.',
+      method: 'PAYMONGO_QRPH',
+      label: 'PayMongo QR Ph',
+      description: 'Dynamic QR Ph checkout through the tenant PayMongo account.',
       icon: 'QR',
-    },
-    {
-      method: 'MAYA_TERMINAL_ECR',
-      label: 'Maya Terminal ECR',
-      description: 'Enable tenant setup for card terminal ECR resources.',
-      icon: 'ECR',
     },
   ] as const;
   readonly boothSecret = signal<BoothSecret | null>(null);
@@ -431,6 +441,12 @@ export class AdminWorkspace {
   readonly selectedPrintEntitlementDetailId = signal<string | null>(null);
   readonly printEntitlementName = signal('');
   readonly extraPrintCopies = signal(1);
+  readonly payMongoMode = signal<'test' | 'live'>('test');
+  readonly payMongoBusinessAccountName = signal('');
+  readonly payMongoPublicKey = signal('');
+  readonly payMongoSecretKey = signal('');
+  readonly payMongoWebhookSecret = signal('');
+  private readonly payMongoFormDirty = signal(false);
   readonly clientModalOpen = signal(false);
   readonly selectedClientDetailId = signal<string | null>(null);
   readonly subscriptionModalOpen = signal(false);
@@ -785,17 +801,29 @@ export class AdminWorkspace {
       );
       const status =
         definition.method === 'CASH' ? 'VERIFIED' : (resource?.status ?? 'NOT_CONFIGURED');
-      const enabled = definition.method === 'CASH' ? true : (resource?.enabled ?? false);
+      const providerVerified = definition.method !== 'PAYMONGO_QRPH' || status === 'VERIFIED';
+      const enabled =
+        definition.method === 'CASH' ? true : providerVerified && (resource?.enabled ?? false);
 
       return {
         ...definition,
         enabled,
-        locked: definition.method === 'CASH',
+        locked: definition.method === 'CASH' || !providerVerified,
         status,
         statusLabel: this.paymentResourceStatusLabel(status),
+        resourceId: resource?.resourceId ?? null,
+        paymentMode: resource?.paymentMode ?? null,
+        businessAccountName: resource?.businessAccountName ?? null,
+        publicKeyMasked: resource?.publicKeyMasked ?? null,
+        webhookUrl: resource?.webhookUrl ?? null,
+        hasSecretKey: resource?.hasSecretKey ?? false,
+        hasWebhookSecret: resource?.hasWebhookSecret ?? false,
       };
     });
   });
+  readonly payMongoResource = computed(
+    () => this.tenantPaymentResources().find((item) => item.method === 'PAYMONGO_QRPH') ?? null,
+  );
   readonly clientOwners = computed(
     () => this.overview()?.users.filter((user) => user.role === 'CLIENT_OWNER') ?? [],
   );
@@ -876,6 +904,7 @@ export class AdminWorkspace {
     const location = this.overview()?.locations.find((item) => item.id === booth.locationId);
     const offer = this.activeOffers().find((item) => item.id === this.boothDetailOfferId()) ?? null;
     const cashAssignment = this.cashAssignmentFor(booth.id);
+    const payMongoAssignment = this.payMongoAssignmentFor(booth.id);
 
     return {
       client: { displayName: client.name, logoUrl: null },
@@ -917,8 +946,8 @@ export class AdminWorkspace {
             sessionsUsed: this.selectedActivationFor(booth.id)?.sessionsUsed ?? 0,
           }
         : null,
-      paymentOptions:
-        cashAssignment?.status === 'ASSIGNED'
+      paymentOptions: [
+        ...(cashAssignment?.status === 'ASSIGNED'
           ? [
               {
                 method: 'CASH',
@@ -926,7 +955,17 @@ export class AdminWorkspace {
                 runtimeEnabled: cashAssignment.runtimeEnabled,
               },
             ]
-          : [],
+          : []),
+        ...(payMongoAssignment?.status === 'ASSIGNED'
+          ? [
+              {
+                method: 'PAYMONGO_QRPH',
+                label: 'PayMongo QR Ph',
+                runtimeEnabled: payMongoAssignment.runtimeEnabled,
+              },
+            ]
+          : []),
+      ],
       activeTransaction: null,
       recentTransaction: null,
     };
@@ -1046,6 +1085,7 @@ export class AdminWorkspace {
     'package-detail': '/packages/detail',
     transactions: '/transactions',
     settings: '/settings',
+    'paymongo-settings': '/settings/paymongo',
     account: '/account',
     pos: '/pos',
     reports: '/reports',
@@ -1178,6 +1218,11 @@ export class AdminWorkspace {
     }
 
     this.activeView.set(view);
+  }
+
+  openPayMongoSettings(): void {
+    this.hydratePayMongoFormFromResource();
+    this.setView('paymongo-settings');
   }
 
   pagedItems<T>(key: string, items: readonly T[] | null | undefined): readonly T[] {
@@ -2246,6 +2291,88 @@ export class AdminWorkspace {
     );
   }
 
+  async savePayMongoResource(verify = false): Promise<void> {
+    await this.run(
+      async () => {
+        await firstValueFrom(
+          this.http.put(
+            `${AdminWorkspace.apiBaseUrl}/api/admin/payment-resources/PAYMONGO_QRPH`,
+            {
+              enabled: true,
+              paymentMode: this.payMongoMode(),
+              businessAccountName: this.payMongoBusinessAccountName(),
+              publicKey: this.payMongoPublicKey(),
+              secretKey: this.payMongoSecretKey(),
+              webhookSecret: this.payMongoWebhookSecret(),
+              verify,
+            },
+            { withCredentials: true },
+          ),
+        );
+        this.payMongoPublicKey.set('');
+        this.payMongoSecretKey.set('');
+        this.payMongoWebhookSecret.set('');
+        this.payMongoFormDirty.set(false);
+        await this.loadOverview();
+        this.succeed(verify ? 'PayMongo setup verified.' : 'PayMongo setup saved.');
+      },
+      { errorMessage: verify ? 'PayMongo verification failed.' : 'PayMongo setup save failed.' },
+    );
+  }
+
+  setPayMongoMode(value: 'test' | 'live'): void {
+    this.payMongoFormDirty.set(true);
+    this.payMongoMode.set(value);
+  }
+
+  setPayMongoBusinessAccountName(value: string): void {
+    this.payMongoFormDirty.set(true);
+    this.payMongoBusinessAccountName.set(value);
+  }
+
+  setPayMongoPublicKey(value: string): void {
+    this.payMongoFormDirty.set(true);
+    this.payMongoPublicKey.set(value);
+  }
+
+  setPayMongoSecretKey(value: string): void {
+    this.payMongoFormDirty.set(true);
+    this.payMongoSecretKey.set(value);
+  }
+
+  setPayMongoWebhookSecret(value: string): void {
+    this.payMongoFormDirty.set(true);
+    this.payMongoWebhookSecret.set(value);
+  }
+
+  async setPayMongoPaymentEnabled(boothId: string, enabled: boolean): Promise<void> {
+    if (enabled) {
+      await this.run(
+        async () => {
+          await firstValueFrom(
+            this.http.post(
+              `${AdminWorkspace.apiBaseUrl}/api/admin/booths/${boothId}/payment-options`,
+              { paymentMethod: 'PAYMONGO_QRPH', runtimeEnabled: true },
+              { withCredentials: true },
+            ),
+          );
+          await this.loadOverview();
+          this.succeed('PayMongo QR Ph enabled for booth.');
+        },
+        { errorMessage: 'PayMongo QR Ph assignment failed.' },
+      );
+      return;
+    }
+
+    const assignment = this.payMongoAssignmentFor(boothId);
+    if (!assignment) {
+      this.succeed('PayMongo QR Ph already disabled for booth.');
+      return;
+    }
+
+    await this.disablePayment(assignment);
+  }
+
   async disablePayment(assignment: PaymentAssignmentSummary): Promise<void> {
     await this.run(
       async () => {
@@ -2766,14 +2893,32 @@ export class AdminWorkspace {
     );
   }
 
-  paymentLabelFor(boothId: string): string {
-    const assignment = this.cashAssignmentFor(boothId);
+  payMongoAssignmentFor(boothId: string): PaymentAssignmentSummary | null {
+    return (
+      this.overview()?.paymentAssignments.find(
+        (assignment) =>
+          assignment.boothId === boothId && assignment.paymentMethod === 'PAYMONGO_QRPH',
+      ) ?? null
+    );
+  }
 
-    if (!assignment) {
+  paymentLabelFor(boothId: string): string {
+    const enabledAssignments = [
+      this.cashAssignmentFor(boothId),
+      this.payMongoAssignmentFor(boothId),
+    ]
+      .filter((assignment): assignment is PaymentAssignmentSummary => !!assignment)
+      .filter((assignment) => assignment.runtimeEnabled && assignment.status === 'ASSIGNED');
+
+    if (enabledAssignments.length === 0) {
       return 'None';
     }
 
-    return assignment.runtimeEnabled ? 'Cash' : 'Cash disabled';
+    return enabledAssignments
+      .map((assignment) =>
+        assignment.paymentMethod === 'PAYMONGO_QRPH' ? 'PayMongo QR Ph' : 'Cash',
+      )
+      .join(', ');
   }
 
   formatMoney(cents: number): string {
@@ -2939,6 +3084,8 @@ export class AdminWorkspace {
         return 'Reports';
       case 'settings':
         return 'Payment Resources';
+      case 'paymongo-settings':
+        return 'PayMongo QR Ph Setup';
       case 'account':
         return 'Account';
       case 'audit':
@@ -2984,6 +3131,7 @@ export class AdminWorkspace {
         view === 'pos' ||
         view === 'reports' ||
         view === 'settings' ||
+        view === 'paymongo-settings' ||
         view === 'audit'
       );
     }
@@ -3327,10 +3475,21 @@ export class AdminWorkspace {
     );
     this.overview.set(overview);
     this.session.set(overview.session);
+    this.hydratePayMongoFormFromResource();
 
     if (!this.canAccessView(this.activeView())) {
       this.setView('dashboard');
     }
+  }
+
+  private hydratePayMongoFormFromResource(): void {
+    if (this.payMongoFormDirty()) {
+      return;
+    }
+
+    const payMongo = this.payMongoResource();
+    this.payMongoMode.set(payMongo?.paymentMode === 'live' ? 'live' : 'test');
+    this.payMongoBusinessAccountName.set(payMongo?.businessAccountName ?? '');
   }
 
   dismissToast(id: number): void {
@@ -3407,7 +3566,7 @@ export class AdminWorkspace {
     }
   }
 
-  private fail(message: string): void {
+  fail(message: string): void {
     this.error.set(message);
     this.showToast('error', message);
   }

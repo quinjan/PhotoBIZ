@@ -102,8 +102,10 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(config => config.IntegrationType).HasMaxLength(80);
             entity.Property(config => config.Status).HasMaxLength(40);
             entity.Property(config => config.BusinessAccountName).HasMaxLength(200);
+            entity.Property(config => config.PaymentMode).HasMaxLength(20);
             entity.Property(config => config.PublicKeyMasked).HasMaxLength(200);
             entity.Property(config => config.EncryptedSecretKey).HasMaxLength(2000);
+            entity.Property(config => config.EncryptedWebhookSecret).HasMaxLength(2000);
             entity.Property(config => config.WebhookUrl).HasMaxLength(1000);
             entity.HasOne(config => config.ClientAccount)
                 .WithMany(client => client.PaymentProviderConfigs)

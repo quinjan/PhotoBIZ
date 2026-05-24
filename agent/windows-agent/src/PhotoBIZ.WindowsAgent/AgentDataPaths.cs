@@ -7,6 +7,7 @@ public interface IAgentDataPaths
     string RootDirectory { get; }
     string ConfigurationFilePath { get; }
     string ActiveSessionFilePath { get; }
+    string BoothUiLaunchStateFilePath { get; }
 }
 
 public sealed class AgentDataPaths(IOptions<PhotoBizAgentOptions> options) : IAgentDataPaths
@@ -18,6 +19,8 @@ public sealed class AgentDataPaths(IOptions<PhotoBizAgentOptions> options) : IAg
     public string ConfigurationFilePath => Path.Combine(RootDirectory, "config.json");
 
     public string ActiveSessionFilePath => Path.Combine(RootDirectory, "active-session.json");
+
+    public string BoothUiLaunchStateFilePath => Path.Combine(RootDirectory, "booth-ui-launch.json");
 
     public static string ResolveRootDirectory(string configuredBaseDirectory)
     {

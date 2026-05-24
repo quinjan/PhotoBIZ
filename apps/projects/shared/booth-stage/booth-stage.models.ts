@@ -68,6 +68,12 @@ export type BoothStageConfig = {
     readonly currency: string;
     readonly createdAt?: string;
     readonly expiresAt: string;
+    readonly qrPayment?: {
+      readonly provider: string;
+      readonly providerReference: string | null;
+      readonly imageUrl: string | null;
+      readonly expiresAt: string;
+    } | null;
   } | null;
   readonly recentTransaction?: {
     readonly id: string;
@@ -86,6 +92,7 @@ export type BoothStageAction =
   | 'connect'
   | 'confirm-offer'
   | 'cash'
+  | 'paymongo-qrph'
   | 'refresh'
   | 'return-welcome'
   | 'cancel-transaction'

@@ -1862,7 +1862,7 @@
             <div class="nav-item"><span class="nav-icon">-</span>Transactions</div>
             <div class="nav-item active"><span class="nav-icon">-</span>Settings</div>
           </nav>
-          <div class="side-footer">Settings<br>Client resources, booth assignment, cash MVP.</div>
+          <div class="side-footer">Settings<br>Client resources, booth assignment, PayMongo QR Ph.</div>
         </aside>
         <section class="main">
           <div class="topbar">
@@ -1871,18 +1871,16 @@
           </div>
           <div class="admin-grid-2">
             <div class="card form-card">
-              <div class="section-head"><h2 class="section-title">Client Payment Resources</h2><span class="status green"><span class="dot"></span>Cash MVP</span></div>
+              <div class="section-head"><h2 class="section-title">Client Payment Resources</h2><span class="status green"><span class="dot"></span>Cash + QR Ph</span></div>
               <div class="booth-row"><div><div class="booth-name">Cash Approval</div><div class="booth-meta">Built in · assign per booth · cashier approves after collecting cash</div></div><span class="toggle"></span></div>
-              <div class="booth-row"><div><div class="booth-name">Maya Checkout QR</div><div class="booth-meta">One client QR config · webhook and API keys saved here</div></div><span class="status amber"><span class="dot"></span>Draft</span></div>
-              <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-001</div><div class="booth-meta">Front counter terminal · assign by deviceId at booth level</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
-              <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-002</div><div class="booth-meta">Backup terminal · not assigned to any booth</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
-              <div class="callout" style="margin-top: 12px;">Client resources do not automatically appear on Booth UI. Each booth chooses from active client resources; cash is the only runtime-enabled MVP method.</div>
+              <div class="booth-row"><div><div class="booth-name">PayMongo QR Ph</div><div class="booth-meta">One client QR config · webhook and API keys saved here</div></div><span class="status green"><span class="dot"></span>Verified</span></div>
+              <div class="callout" style="margin-top: 12px;">Client resources do not automatically appear on Booth UI. Each booth chooses from active client resources; cash is always available and PayMongo QR Ph requires verified setup.</div>
             </div>
             <div class="card form-card">
               <div class="section-head"><h2 class="section-title">Timeouts & Recovery</h2></div>
               <div class="form-row">
                 <div class="field"><label>CASH PAYMENT EXPIRY</label><div class="input">5 minutes</div></div>
-                <div class="field"><label>CASHLESS PAYMENT EXPIRY</label><div class="input">Coming soon</div></div>
+                <div class="field"><label>QR PAYMENT EXPIRY</label><div class="input">Provider-driven</div></div>
               </div>
               <div class="form-row">
                 <div class="field"><label>PAID BUT NOT STARTED ALERT</label><div class="input">30 seconds</div></div>
@@ -1914,7 +1912,7 @@
       </div>
     </section>
 
-    <section class="shot" id="maya-checkout-registration" aria-label="Maya Checkout registration">
+    <section class="shot" id="paymongo-qrph-registration" aria-label="PayMongo QR Ph registration">
       <div class="admin-shell">
         <aside class="side">
           <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
@@ -1923,46 +1921,46 @@
             <div class="nav-item active"><span class="nav-icon">-</span>Payments</div>
             <div class="nav-item"><span class="nav-icon">-</span>Settings</div>
           </nav>
-          <div class="side-footer">Coming soon<br>Client-owned Maya Checkout setup.</div>
+          <div class="side-footer">Payments<br>Client-owned PayMongo QR Ph setup.</div>
         </aside>
         <section class="main">
           <div class="topbar">
-            <div><div class="eyebrow">Payments · MAYA_CHECKOUT_QR</div><h1 class="admin-title">Maya Checkout Registration</h1></div>
-            <div class="top-actions"><span class="status amber"><span class="dot"></span>Coming soon</span><button class="button">Save Draft</button></div>
+            <div><div class="eyebrow">Payments · PAYMONGO_QRPH</div><h1 class="admin-title">PayMongo QR Ph Registration</h1></div>
+            <div class="top-actions"><span class="status green"><span class="dot"></span>Verified</span><button class="button">Save</button></div>
           </div>
           <div class="admin-grid-3">
-            <div class="card"><div class="metric-label">Configuration</div><div class="metric-value" style="font-size: 24px;">Not configured</div><div class="metric-note">Cash remains the only live method</div></div>
-            <div class="card"><div class="metric-label">Webhook</div><div class="metric-value" style="font-size: 24px;">Waiting</div><div class="metric-note">Register URL in Maya Business Manager</div></div>
-            <div class="card"><div class="metric-label">Future status</div><div class="metric-value" style="font-size: 24px;">Ready for enablement</div><div class="metric-note">After verification is supported</div></div>
+            <div class="card"><div class="metric-label">Configuration</div><div class="metric-value" style="font-size: 24px;">Verified</div><div class="metric-note">Ready for assigned booths</div></div>
+            <div class="card"><div class="metric-label">Webhook</div><div class="metric-value" style="font-size: 24px;">Configured</div><div class="metric-note">Registered in PayMongo Dashboard</div></div>
+            <div class="card"><div class="metric-label">Mode</div><div class="metric-value" style="font-size: 24px;">Test</div><div class="metric-note">Live mode processes real payments</div></div>
           </div>
           <div class="split" style="margin-top: 18px;">
             <div class="card form-card">
-              <div class="section-head"><h2 class="section-title">Client Maya Business Details</h2><span class="status amber"><span class="dot"></span>Draft</span></div>
+              <div class="section-head"><h2 class="section-title">Client PayMongo Details</h2><span class="status green"><span class="dot"></span>Verified</span></div>
               <div class="timeline">
                 <div class="timeline-row"><span class="step-dot now"></span><span>Business Account</span><strong>Current</strong></div>
                 <div class="timeline-row"><span class="step-dot"></span><span>API Keys</span><strong>Next</strong></div>
                 <div class="timeline-row"><span class="step-dot"></span><span>Webhook</span><strong>Next</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>Verification</span><strong>Future</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>Ready</span><strong>Future</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Verification</span><strong>Done</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Ready</span><strong>Done</strong></div>
               </div>
               <div class="form-row" style="margin-top: 16px;">
-                <div class="field"><label>MAYA BUSINESS ACCOUNT NAME</label><div class="input">The Memory Box PH</div></div>
-                <div class="field"><label>ENVIRONMENT</label><div class="select">Production</div></div>
+                <div class="field"><label>PAYMONGO BUSINESS ACCOUNT NAME</label><div class="input">The Memory Box PH</div></div>
+                <div class="field"><label>MODE</label><div class="select">Test</div></div>
               </div>
               <div class="form-row">
-                <div class="field"><label>PUBLIC API KEY</label><div class="input">pk-prod-******************82d4</div></div>
-                <div class="field"><label>SECRET API KEY</label><div class="input">sk-prod-****************** hidden</div></div>
+                <div class="field"><label>PUBLIC API KEY</label><div class="input">pk_test_******************82d4</div></div>
+                <div class="field"><label>SECRET API KEY</label><div class="input">Saved and hidden</div></div>
               </div>
-              <div class="callout"><strong>Client-owned settlement:</strong> the client owns the Maya account, API keys, transaction settlement, and Maya business relationship. PhotoBIZ stores secrets encrypted and uses them only from the backend.</div>
+              <div class="callout"><strong>Client-owned settlement:</strong> the client owns the PayMongo account, API keys, transaction settlement, and PayMongo business relationship. PhotoBIZ stores secrets encrypted and uses them only from the backend.</div>
             </div>
             <div class="card form-card">
               <div class="section-head"><h2 class="section-title">Webhook Setup</h2></div>
-              <div class="field"><label>PHOTOBOOTH WEBHOOK URL</label><div class="input">https://api.photobiz.ph/webhooks/maya/checkout</div></div>
-              <div class="field"><label>EVENTS TO REGISTER</label><div class="textarea">PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_EXPIRED, PAYMENT_CANCELLED</div></div>
+              <div class="field"><label>PHOTOBOOTH WEBHOOK URL</label><div class="input">https://api.photobiz.ph/api/payments/paymongo/webhooks/{configId}</div></div>
+              <div class="field"><label>EVENTS TO REGISTER</label><div class="textarea">payment.paid, payment.failed, qrph.expired</div></div>
               <div class="booth-list">
-                <div class="booth-row"><div><div class="booth-name">Copy webhook URL</div><div class="booth-meta">Client pastes this in Maya Business Manager</div></div><button class="button">Copy</button></div>
-                <div class="booth-row"><div><div class="booth-name">Test webhook reachability</div><div class="booth-meta">Future verification action</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
-                <div class="booth-row"><div><div class="booth-name">Enable MAYA_CHECKOUT_QR</div><div class="booth-meta">Hidden from Booth UI until verified</div></div><span class="status red"><span class="dot"></span>Locked</span></div>
+                <div class="booth-row"><div><div class="booth-name">Copy webhook URL</div><div class="booth-meta">Client pastes this in PayMongo Dashboard</div></div><button class="button">Copy</button></div>
+                <div class="booth-row"><div><div class="booth-name">Verify PayMongo Setup</div><div class="booth-meta">Safe backend credential check</div></div><span class="status green"><span class="dot"></span>Ready</span></div>
+                <div class="booth-row"><div><div class="booth-name">Enable PAYMONGO_QRPH</div><div class="booth-meta">Shown only after verified setup and booth assignment</div></div><span class="status green"><span class="dot"></span>Available</span></div>
               </div>
             </div>
           </div>
@@ -1970,59 +1968,59 @@
       </div>
     </section>
 
-    <section class="shot" id="maya-ecr-registration" aria-label="Maya Terminal ECR registration">
+    <section class="shot" id="paymongo-webhook-checklist" aria-label="PayMongo webhook checklist">
       <div class="admin-shell">
         <aside class="side">
           <div class="brand"><div class="brand-mark">PB</div><span>PhotoBIZ</span></div>
           <nav class="nav">
-            <div class="nav-item"><span class="nav-icon">-</span>Payments</div>
-            <div class="nav-item active"><span class="nav-icon">-</span>Terminals</div>
+            <div class="nav-item active"><span class="nav-icon">-</span>Payments</div>
+            <div class="nav-item"><span class="nav-icon">-</span>Webhooks</div>
             <div class="nav-item"><span class="nav-icon">-</span>Booths</div>
           </nav>
-          <div class="side-footer">Coming soon<br>Client ECR devices assigned per booth later.</div>
+          <div class="side-footer">PayMongo<br>Webhook and key-mode checklist.</div>
         </aside>
         <section class="main">
           <div class="topbar">
-            <div><div class="eyebrow">Payments · MAYA_TERMINAL_ECR</div><h1 class="admin-title">Maya Terminal ECR Registration</h1></div>
-            <div class="top-actions"><span class="status amber"><span class="dot"></span>Coming soon</span><button class="button">Save Draft</button></div>
+            <div><div class="eyebrow">Payments · PayMongo setup</div><h1 class="admin-title">Webhook Checklist</h1></div>
+            <div class="top-actions"><span class="status green"><span class="dot"></span>Configured</span><button class="button">Verify</button></div>
           </div>
           <div class="admin-grid-3">
-            <div class="card"><div class="metric-label">Terminal</div><div class="metric-value" style="font-size: 24px;">Not connected</div><div class="metric-note">Client orders/activates hardware with Maya</div></div>
-            <div class="card"><div class="metric-label">Booth Agent</div><div class="metric-value" style="font-size: 24px;">Required</div><div class="metric-note">ECR runs through booth laptop</div></div>
-            <div class="card"><div class="metric-label">Payment method</div><div class="metric-value" style="font-size: 24px;">Locked</div><div class="metric-note">Not shown to customers in MVP</div></div>
+            <div class="card"><div class="metric-label">API keys</div><div class="metric-value" style="font-size: 24px;">Matched</div><div class="metric-note">Mode prefixes match PhotoBIZ</div></div>
+            <div class="card"><div class="metric-label">Webhook</div><div class="metric-value" style="font-size: 24px;">Signed</div><div class="metric-note">Secret stored encrypted</div></div>
+            <div class="card"><div class="metric-label">Payment method</div><div class="metric-value" style="font-size: 24px;">Available</div><div class="metric-note">Shown only on assigned booths</div></div>
           </div>
           <div class="split" style="margin-top: 18px;">
             <div class="card form-card">
-              <div class="section-head"><h2 class="section-title">Terminal Setup Checklist</h2></div>
+              <div class="section-head"><h2 class="section-title">PayMongo Setup Checklist</h2></div>
               <div class="timeline">
-                <div class="timeline-row"><span class="step-dot now"></span><span>Terminal Ordered</span><strong>Client</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>ECR Kit Received</span><strong>Maya</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>Device Registered</span><strong>PhotoBIZ</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>COM Port Set</span><strong>Agent</strong></div>
-                <div class="timeline-row"><span class="step-dot"></span><span>Connection Test</span><strong>Future</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Dashboard login</span><strong>Client</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>API keys copied</span><strong>Client</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Webhook registered</span><strong>PayMongo</strong></div>
+                <div class="timeline-row"><span class="step-dot done"></span><span>Signing secret saved</span><strong>PhotoBIZ</strong></div>
+                <div class="timeline-row"><span class="step-dot now"></span><span>Booth assignment</span><strong>Admin</strong></div>
               </div>
               <div class="form-row" style="margin-top: 16px;">
-                <div class="field"><label>TERMINAL NAME</label><div class="input">SM Manila Front Counter</div></div>
-                <div class="field"><label>DEVICE ID</label><div class="input">DEVICE-MNL-001</div></div>
+                <div class="field"><label>WEBHOOK URL</label><div class="input">/api/payments/paymongo/webhooks/{configId}</div></div>
+                <div class="field"><label>SUBSCRIBED EVENTS</label><div class="input">payment.paid, payment.failed, qrph.expired</div></div>
               </div>
               <div class="form-row">
-                <div class="field"><label>TERMINAL MODEL</label><div class="select">PAX A920</div></div>
-                <div class="field"><label>TERMINAL REFERENCE</label><div class="input">MAYA-TERM-00027</div></div>
+                <div class="field"><label>PUBLIC KEY PREFIX</label><div class="select">pk_test_</div></div>
+                <div class="field"><label>SECRET KEY PREFIX</label><div class="input">sk_test_</div></div>
               </div>
               <div class="form-row">
-                <div class="field"><label>SERIAL / ASSET TAG</label><div class="input">PX920-PH-1149</div></div>
-                <div class="field"><label>WINDOWS COM PORT</label><div class="input">COM11</div></div>
+                <div class="field"><label>WEBHOOK MODE</label><div class="input">Test</div></div>
+                <div class="field"><label>SIGNING SECRET</label><div class="input">Saved and hidden</div></div>
               </div>
             </div>
             <div class="card form-card">
-              <div class="section-head"><h2 class="section-title">Connection Status</h2><span class="status red"><span class="dot"></span>Not connected</span></div>
+              <div class="section-head"><h2 class="section-title">Connection Status</h2><span class="status green"><span class="dot"></span>Verified</span></div>
               <div class="booth-list">
-                <div class="booth-row"><div><div class="booth-name">Maya Business account</div><div class="booth-meta">Must be verified before ECR payments</div></div><span class="status amber"><span class="dot"></span>Needed</span></div>
-                <div class="booth-row"><div><div class="booth-name">ECR Integration Kit</div><div class="booth-meta">Required from Maya for terminal protocol</div></div><span class="status amber"><span class="dot"></span>Needed</span></div>
-                <div class="booth-row"><div><div class="booth-name">Booth Agent ECR module</div><div class="booth-meta">Sends sale command through local terminal port</div></div><span class="status amber"><span class="dot"></span>Coming soon</span></div>
-                <div class="booth-row"><div><div class="booth-name">Enable MAYA_TERMINAL_ECR</div><div class="booth-meta">Hidden from Booth UI until verified</div></div><span class="status red"><span class="dot"></span>Locked</span></div>
+                <div class="booth-row"><div><div class="booth-name">PayMongo account</div><div class="booth-meta">Client-owned account selected in the dashboard</div></div><span class="status green"><span class="dot"></span>Done</span></div>
+                <div class="booth-row"><div><div class="booth-name">API key mode</div><div class="booth-meta">Public and secret key prefixes match PhotoBIZ mode</div></div><span class="status green"><span class="dot"></span>Done</span></div>
+                <div class="booth-row"><div><div class="booth-name">Webhook subscriptions</div><div class="booth-meta">payment.paid, payment.failed, qrph.expired</div></div><span class="status green"><span class="dot"></span>Done</span></div>
+                <div class="booth-row"><div><div class="booth-name">Enable PAYMONGO_QRPH</div><div class="booth-meta">Available after verified setup and booth assignment</div></div><span class="status green"><span class="dot"></span>Ready</span></div>
               </div>
-              <div class="callout"><strong>Assigned later per booth:</strong> ECR devices are registered at client level, then selected by deviceId inside each booth's payment options.</div>
+              <div class="callout"><strong>Assigned per booth:</strong> PayMongo QR Ph is configured at client level, then enabled only for booths that should accept dynamic QR payments.</div>
             </div>
           </div>
         </section>
@@ -2071,11 +2069,10 @@
                 <button class="large-action blue">Return To<br>Welcome</button>
               </div>
               <div class="card" style="margin-bottom: 16px;">
-                <div class="section-head"><h2 class="section-title">Booth Payment Options</h2><span class="status green"><span class="dot"></span>MVP cash only</span></div>
+                <div class="section-head"><h2 class="section-title">Booth Payment Options</h2><span class="status green"><span class="dot"></span>Cash + QR Ph</span></div>
                 <div class="booth-list">
                   <div class="booth-row"><div><div class="booth-name">Cash</div><div class="booth-meta">Assigned to SM Manila B01 · runtime enabled</div></div><span class="status green"><span class="dot"></span>Active</span></div>
-                  <div class="booth-row"><div><div class="booth-name">Maya Checkout QR</div><div class="booth-meta">Client resource drafted · not assigned for runtime</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
-                  <div class="booth-row"><div><div class="booth-name">Maya ECR · DEVICE-MNL-001</div><div class="booth-meta">Assigned by deviceId · provider integration coming soon</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+                  <div class="booth-row"><div><div class="booth-name">PayMongo QR Ph</div><div class="booth-meta">Verified client resource · runtime enabled</div></div><span class="status green"><span class="dot"></span>Active</span></div>
                 </div>
               </div>
               <div class="card">
@@ -2147,9 +2144,8 @@
                 </div>
                 <div class="field"><label>BOOTH PAYMENT OPTIONS</label>
                   <div class="package-list">
-                    <div class="package-row"><div><strong>Cash</strong><div class="booth-meta">Runtime enabled for MVP · cashier approval required</div></div><span class="toggle"></span></div>
-                    <div class="package-row"><div><strong>Maya Checkout QR</strong><div class="booth-meta">Client QR config exists · locked until provider integration</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
-                    <div class="package-row"><div><strong>Maya ECR · DEVICE-MNL-001</strong><div class="booth-meta">Selected from client ECR devices by deviceId · locked</div></div><span class="status amber"><span class="dot"></span>Locked</span></div>
+                    <div class="package-row"><div><strong>Cash</strong><div class="booth-meta">Runtime enabled · cashier approval required</div></div><span class="toggle"></span></div>
+                    <div class="package-row"><div><strong>PayMongo QR Ph</strong><div class="booth-meta">Verified client QR config · dynamic QR payment</div></div><span class="toggle"></span></div>
                   </div>
                 </div>
               </div>
@@ -2292,21 +2288,13 @@
                   <p class="package-detail">Pay the cashier. Your session starts once payment is approved.</p>
                 </div>
               </article>
-              <article class="method-card" style="opacity: 0.58;">
+              <article class="method-card">
                 <div class="method-icon">QR</div>
                 <div>
-                  <h2 class="package-name">Maya Checkout QR</h2>
-                  <p class="package-detail">Assigned from client QR config later; locked until provider integration.</p>
+                  <h2 class="package-name">PayMongo QR Ph</h2>
+                  <p class="package-detail">Scan the dynamic QR and wait for backend confirmation.</p>
                 </div>
-                <span class="status amber"><span class="dot"></span>Locked</span>
-              </article>
-              <article class="method-card" style="opacity: 0.58;">
-                <div class="method-icon">ECR</div>
-                <div>
-                  <h2 class="package-name">Maya Terminal ECR</h2>
-                  <p class="package-detail">Assigned by ECR deviceId later; locked until provider integration.</p>
-                </div>
-                <span class="status amber"><span class="dot"></span>Locked</span>
+                <span class="status green"><span class="dot"></span>Available</span>
               </article>
             </div>
           </div>

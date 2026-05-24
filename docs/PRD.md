@@ -18,8 +18,8 @@ The booth workflow remains: customer reviews the booth's active offer, chooses a
 - Subscription unit: per active booth.
 - Initial booth environment: mall or staffed retail location.
 - Initial staffing model: one cashier per booth.
-- Initial payment model: cash approval only for real transactions.
-- Coming soon payment model: `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`.
+- Initial payment model: cashier-approved cash plus client-owned PayMongo QR Ph.
+- Cashless payment model: `PAYMONGO_QRPH` dynamic QR payments confirmed only by verified PayMongo webhooks.
 - Payment setup model: tenant-level payment resources are managed in Settings, then assigned per booth before they can appear in runtime payment choices. Cash is always enabled for every tenant during MVP.
 - Photo booth software: LumaBooth on Windows.
 - Digital delivery: LumaBooth/Fotoshare.
@@ -62,7 +62,7 @@ PhotoBIZ MVP must respect the current LumaBooth operating model.
 - No client self-signup or automated trial onboarding.
 - No automated invoice collection.
 - No bill reader or coin acceptor integration.
-- No real Maya production integration yet.
+- No physical terminal or ECR payment integration in the first PayMongo feature.
 - No custom digital photo gallery, because LumaBooth/Fotoshare handles digital delivery.
 - No custom camera, printer, template, or capture engine.
 - No customer accounts.
@@ -349,11 +349,11 @@ Guardrails:
 1. Client Owner or Client Admin opens Settings > Payment Resources.
 2. Settings shows tenant information and the tenant-level payment resources for the client account.
 3. Cash is the MVP runtime payment method. It is always enabled for the tenant and cannot be disabled.
-4. Client can enable or disable Maya Checkout QR and Maya Terminal ECR setup at the tenant level. Enabling a Maya resource creates or re-enables draft setup state only.
-5. Client can later complete one Maya Checkout QR configuration and multiple Maya Terminal ECR device configurations, each with a client-visible terminal name and required `deviceId`.
+4. Client can configure one PayMongo QR Ph resource at the tenant level with mode, business account name, public key metadata, encrypted secret key, encrypted webhook secret, webhook URL, setup status, and verification timestamp.
+5. The PayMongo setup panel explains how to copy API keys from `Settings > Developers`, create a same-mode webhook in `Developers > Webhooks`, subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`, paste the webhook secret, save, and verify the setup.
 6. Client assigns payment options per booth from usable tenant resources.
 7. Provider-backed runtime payment requires a verified client resource, a booth assignment, runtime enablement, and the provider feature to be live.
-8. Maya QR and Maya ECR remain locked for runtime payment until PhotoBIZ enables the future provider integrations.
+8. PayMongo QR Ph can appear at runtime only after the tenant setup is verified, assigned to the booth, runtime-enabled, and all backend transaction gates pass.
 
 ### Workflow E: Cash Payment
 
@@ -376,14 +376,14 @@ Guardrails:
 
 For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the package. The selected package is saved as `PENDING_PAYMENT` and is not usable until the assigned cashier clicks `Activate Package` in POS, creating one cash `PLAN_ACTIVATION` transaction for the package price. Cash approval completes that payment transaction, starts the timed window or session allowance, and marks the activation `ACTIVE`. Once a timed or session-count offer is active and paid, Booth UI creates zero-amount `COVERED_PLAN_SESSION` transactions, skips payment selection, and follows welcome, LumaBooth handoff, and return-to-welcome states. Completed covered sessions must not show the extra-print prompt because extra print add-ons are not available for those package types. `PLAN_ACTIVATION` transactions never command the Windows Agent.
 
-### Workflow F: Coming Soon Maya Setup
+### Workflow F: PayMongo QR Ph Setup
 
 1. Client Owner or Client Admin opens Settings > Payment Resources.
-2. Client sees `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR` as tenant-level setup options that are not runtime-enabled yet.
-3. Client can toggle Maya Checkout QR and Maya Terminal ECR setup on or off for the tenant. Toggling on creates or re-enables draft setup state.
-4. Future setup can collect Maya Business credentials, one Maya Checkout QR configuration, and multiple Maya Terminal ECR device records with `deviceId` values.
-5. Client Owner or Client Admin assigns verified payment resources per booth when the provider flow supports assignment.
-6. Cashless payment methods remain unavailable to customers and cashiers until PhotoBIZ enables real Maya integration in a future phase.
+2. Client sees cash plus a PayMongo QR Ph setup card.
+3. Client selects test or live mode and enters business account name, public API key, secret API key, and webhook secret. Live mode warns that it processes real payments.
+4. The form shows the PhotoBIZ webhook URL after the resource exists, and the instruction panel tells the client to create a same-mode PayMongo webhook for `payment.paid`, `payment.failed`, and `qrph.expired`.
+5. Save stores secrets encrypted and returns only masked metadata. Verify PayMongo Setup performs a safe backend credential check before marking the resource verified.
+6. Client Owner or Client Admin assigns verified PayMongo QR Ph per booth and enables runtime exposure where the booth should accept QR payments.
 
 ### Workflow G: Transaction Expiration
 
@@ -608,7 +608,7 @@ Future reports:
 - `Cancel Transaction` action.
 - `Activate Package` action when the assigned booth has a selected `TIME_UNLIMITED` or `SESSION_COUNT` package in `PENDING_PAYMENT` and no other non-terminal transaction.
 - Cash-only plan activation checkout for `TIME_UNLIMITED` and `SESSION_COUNT` during MVP; approval activates the package but does not start LumaBooth.
-- Future Maya QR/ECR methods visible only as locked assigned options until provider integration is enabled.
+- PayMongo QR Ph pending payments appear as backend-driven waiting states; cashier recovery actions remain permission-gated.
 - Today's sales.
 - Today's completed sessions.
 - Assigned booth activity. Payment actions stay transaction-oriented; history uses activity wording, includes extra-print add-on transactions, and session-count rows show the historical used-session sequence.
@@ -623,54 +623,41 @@ Payment configuration has two levels plus the built-in cash resource:
 1. Tenant-level resources define what the client account has registered or started configuring.
 2. Booth-level assignments define which of those resources a booth may use when the method is runtime-enabled.
 
-Admin Web Settings is the tenant-level payment resource surface. Cash is built in, always enabled/verified, and cannot be disabled at the tenant level. Maya resource toggles create or enable `DRAFT` tenant setup records; `DRAFT` means setup has started, not that the method is runtime-usable.
+Admin Web Settings is the tenant-level payment resource surface. Cash is built in, always enabled/verified, and cannot be disabled at the tenant level. PayMongo QR Ph setup stores client-owned credentials and webhook configuration; stored secrets are encrypted and never returned after save.
 
 Backend payment validation must check booth-level assignment, provider/resource status, and runtime feature availability. Tenant-level setup alone is never enough to expose a payment method in Booth UI or Cashier POS.
 
-### Cash MVP
+### Cash
 
 Cash is approved manually by the cashier.
 
 Requirements:
 
-- Cash is the only real MVP payment method.
 - Cash is always available as a tenant resource and cannot be disabled in Settings.
-- Cash can be assigned per booth and is the only payment option that can be runtime-enabled in MVP.
+- Cash can be assigned per booth and remains available alongside verified provider-backed methods.
 - Payment approval requires an authenticated cashier, Client Admin, or Client Owner assigned to the booth.
 - Cash approval is blocked when the assigned booth's agent is offline, so staff do not collect cash for a session the agent cannot start.
 - Approval must write an audit log.
 - Approval must include timestamp and approving user ID.
 - Cash transaction must expire if not approved in time.
 
-### Coming Soon Maya Checkout QR
+### PayMongo QR Ph
 
-`MAYA_CHECKOUT_QR` is a future cashless payment method. It requires client-owned Maya Business credentials.
+`PAYMONGO_QRPH` is a client-owned dynamic QR Ph payment method backed by PayMongo Payment Intents and verified PayMongo webhooks.
 
-Future requirements:
+Requirements:
 
-- Client account can have one Maya Checkout QR configuration.
-- Client Owner supplies Maya Business account name.
-- Client Owner supplies Maya public API key.
-- Client Owner supplies Maya secret API key, stored encrypted and never returned to frontend clients.
-- PhotoBIZ provides a webhook URL for the client to register in Maya Business Manager.
-- Booths can assign Maya Checkout QR only after the client-level resource exists and is verified/usable.
-- Maya webhooks become the source of truth for payment success, failure, expiration, and cancellation.
+- Client account can have one PayMongo QR Ph configuration.
+- Client Owner supplies PayMongo business account name, mode (`test` or `live`), public API key, secret API key, and webhook secret.
+- Public and secret key prefixes must match the selected mode: `pk_test_`/`sk_test_` for test mode and `pk_live_`/`sk_live_` for live mode.
+- Secret API key and webhook secret are stored encrypted and never returned to frontend clients.
+- PhotoBIZ provides a webhook URL for the client to register in PayMongo Dashboard under `Developers > Webhooks`.
+- The webhook must be created in the same test/live mode selected in PhotoBIZ and subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`.
+- Booths can assign PayMongo QR Ph only after the client-level resource exists and is verified/usable.
+- PayMongo webhooks become the source of truth for payment success, failure, and expiration.
 - Payment attempts table supports auditability and retries.
 - Booth UI and Cashier POS display this option only after client payment config is verified, assigned to the booth, and runtime provider integration is enabled.
-
-### Coming Soon Maya Terminal ECR
-
-`MAYA_TERMINAL_ECR` is a future physical terminal payment method. It requires client-owned Maya terminal hardware and booth-local ECR setup.
-
-Future requirements:
-
-- Client has a verified Maya Business account.
-- Client can register multiple active supported Maya terminal devices.
-- Each terminal device stores a client-visible terminal name and required `deviceId`.
-- Client has access to the Maya ECR Integration Kit.
-- Client assigns specific terminal `deviceId` values to PhotoBIZ booths.
-- Windows Booth Agent stores local ECR connection settings, such as COM port.
-- Booth UI and Cashier POS display this option only after client payment config, selected booth ECR device assignment, and runtime provider integration are verified and enabled.
+- If PayMongo reports paid after a PhotoBIZ transaction was cancelled, the payment is recorded for reconciliation and must not start a booth session.
 
 ## Audit Log Requirements
 
@@ -687,8 +674,8 @@ Audit logs should capture:
 - Active booth offer assignment changes.
 - Booth payment option assignment changes.
 - Cash payment approval.
-- Maya payment configuration changes.
-- Maya ECR device configuration changes.
+- PayMongo payment configuration changes.
+- PayMongo webhook payment events.
 - Transaction cancellation.
 - Manual recovery actions.
 - Role changes.
@@ -732,11 +719,11 @@ The MVP is considered complete when:
 14. Application Owner dashboard shows client and subscription health.
 15. Client Owner dashboard shows client sales and booth status.
 16. Cashier dashboard shows only the assigned booth.
-17. Maya Checkout QR and Maya Terminal ECR are visible only as tenant setup toggles/future setup flows and locked booth assignment options.
+17. PayMongo QR Ph can be configured per tenant, verified, assigned per booth, and exposed to Booth UI only when all backend gates pass.
 18. Per-session transactions can accept post-session extra print add-ons.
 19. Time-unlimited and session-count offers reject extra print add-ons.
-20. Booth payment options are filtered by booth assignment, and cash is the only runtime-enabled MVP payment option.
+20. Booth payment options are filtered by booth assignment, and cash remains available while verified PayMongo QR Ph can be runtime-enabled per booth.
 
 ## Open Decisions
 
-- Exact Maya production verification steps with the client's Maya account manager.
+- Live PayMongo validation must be completed with the client's production PayMongo account before enabling live payments at an actual booth.

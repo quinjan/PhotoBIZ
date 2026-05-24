@@ -20,6 +20,7 @@ apps/.vscode/
 bin/
 obj/
 TestResults/
+/artifacts/
 *.user
 *.suo
 .vs/

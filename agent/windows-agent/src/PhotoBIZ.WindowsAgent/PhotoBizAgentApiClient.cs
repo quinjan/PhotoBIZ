@@ -41,7 +41,7 @@ public sealed class PhotoBizAgentApiClient(
         AddAgentCredential(request, agentCredential);
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
         return await response.Content.ReadFromJsonAsync<AgentPairPayload>(cancellationToken)
             ?? throw new InvalidOperationException("PhotoBIZ agent pair response was empty.");
     }
@@ -50,14 +50,14 @@ public sealed class PhotoBizAgentApiClient(
     {
         var settings = await optionsProvider.LoadAsync(cancellationToken);
         using var response = await PostAgentJsonAsync(settings.ApiBaseUrl, settings.AgentCredential, "/api/agent/heartbeat", heartbeat, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
     }
 
     public async Task OfflineAsync(string boothCode, CancellationToken cancellationToken)
     {
         var settings = await optionsProvider.LoadAsync(cancellationToken);
         using var response = await PostAgentJsonAsync(settings.ApiBaseUrl, settings.AgentCredential, "/api/agent/offline", new { boothCode }, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
     }
 
     public async Task<AgentBoothUiLaunchPayload> CreateBoothUiLaunchAsync(string boothCode, CancellationToken cancellationToken)
@@ -69,7 +69,7 @@ public sealed class PhotoBizAgentApiClient(
             "/api/agent/booth-ui-launch",
             new { boothCode },
             cancellationToken);
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
         return await response.Content.ReadFromJsonAsync<AgentBoothUiLaunchPayload>(cancellationToken)
             ?? throw new InvalidOperationException("PhotoBIZ booth UI launch response was empty.");
     }
@@ -89,7 +89,7 @@ public sealed class PhotoBizAgentApiClient(
             return null;
         }
 
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
         return await response.Content.ReadFromJsonAsync<AgentCommandPayload>(cancellationToken);
     }
 
@@ -159,7 +159,7 @@ public sealed class PhotoBizAgentApiClient(
             reason
         }, cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        EnsureAgentSuccess(response);
     }
 
     private async Task<HttpResponseMessage> PostAgentJsonAsync(
@@ -183,6 +183,16 @@ public sealed class PhotoBizAgentApiClient(
         {
             request.Headers.Add("X-Agent-Credential", agentCredential);
         }
+    }
+
+    private static void EnsureAgentSuccess(HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            throw new AgentCredentialUnauthorizedException();
+        }
+
+        response.EnsureSuccessStatusCode();
     }
 
     private static Uri BuildApiUri(string apiBaseUrl, string path)

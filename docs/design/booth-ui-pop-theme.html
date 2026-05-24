@@ -795,6 +795,42 @@
       transition: width 350ms linear;
     }
 
+    .qr-payment-panel {
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      margin: 4px auto 0;
+      max-width: 260px;
+    }
+
+    .qr-payment-panel img {
+      aspect-ratio: 1;
+      background: #ffffff;
+      border: 3px solid var(--ink);
+      border-radius: 8px;
+      box-shadow: 6px 6px 0 var(--ink);
+      object-fit: contain;
+      padding: 12px;
+      width: 240px;
+    }
+
+    .qr-payment-panel strong {
+      color: var(--magenta-dark);
+      display: block;
+      font-size: 28px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .qr-payment-panel span {
+      color: #34343e;
+      display: block;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
+    }
+
     .qr-stage {
       align-items: center;
       display: grid;
@@ -1311,7 +1347,9 @@
       offerPrice: "PHP 250",
       printEntitlement: "2 pcs 6x2 or 1 pc 6x4",
       extraPrintPrice: "PHP 50",
-      transactionNumber: "PBZ-20260524-0042"
+      transactionNumber: "PBZ-20260524-0042",
+      payMongoTransactionNumber: "PBZ-20260524-0043",
+      payMongoQrImageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' fill='white'/%3E%3Crect x='8' y='8' width='28' height='28' fill='%2308080d'/%3E%3Crect x='14' y='14' width='16' height='16' fill='white'/%3E%3Crect x='84' y='8' width='28' height='28' fill='%2308080d'/%3E%3Crect x='90' y='14' width='16' height='16' fill='white'/%3E%3Crect x='8' y='84' width='28' height='28' fill='%2308080d'/%3E%3Crect x='14' y='90' width='16' height='16' fill='white'/%3E%3Crect x='46' y='10' width='8' height='8' fill='%2308080d'/%3E%3Crect x='62' y='18' width='8' height='8' fill='%2308080d'/%3E%3Crect x='46' y='34' width='24' height='8' fill='%2308080d'/%3E%3Crect x='78' y='46' width='8' height='24' fill='%2308080d'/%3E%3Crect x='42' y='54' width='8' height='8' fill='%2308080d'/%3E%3Crect x='58' y='54' width='16' height='8' fill='%2308080d'/%3E%3Crect x='90' y='54' width='16' height='8' fill='%2308080d'/%3E%3Crect x='42' y='70' width='32' height='8' fill='%2308080d'/%3E%3Crect x='82' y='78' width='8' height='8' fill='%2308080d'/%3E%3Crect x='98' y='78' width='8' height='24' fill='%2308080d'/%3E%3Crect x='46' y='94' width='8' height='16' fill='%2308080d'/%3E%3Crect x='62' y='94' width='24' height='8' fill='%2308080d'/%3E%3C/svg%3E"
     };
 
     const screenStates = [
@@ -1385,7 +1423,8 @@
         title: "Payment Options",
         message: "Choose how to pay before the session starts.",
         paymentOptions: [
-          { title: "Cash", target: "waiting" }
+          { title: "Cash", target: "waiting" },
+          { title: "PayMongo QR Ph", target: "paymongo-waiting" }
         ],
         backTarget: "offer",
         backConfirmMessage: "Cancel this payment request and return to the start screen?",
@@ -1410,6 +1449,29 @@
         footerRight: "Cashier POS approval",
         progress: "55%",
         timeoutSeconds: 60
+      },
+      {
+        id: "paymongo-waiting",
+        screenId: "waiting",
+        label: "QRPH Waiting",
+        boothState: "PAYMENT_PENDING",
+        tone: "normal",
+        layout: "ticket",
+        eyebrow: "",
+        title: "Cashier Approval",
+        message: "Scan the QR code, then wait for payment confirmation.",
+        action: "",
+        backTarget: "payment",
+        backConfirmMessage: "Cancel this payment request and return to payment choices?",
+        footerLeft: boothConfig.payMongoTransactionNumber,
+        footerRight: "Cashier POS approval",
+        progress: "55%",
+        timeoutSeconds: 60,
+        qrPayment: {
+          imageUrl: boothConfig.payMongoQrImageUrl,
+          amount: boothConfig.offerPrice,
+          transactionNumber: boothConfig.payMongoTransactionNumber
+        }
       },
       {
         id: "approved",
@@ -1656,6 +1718,13 @@
           ${ticketHeader}
           <h2>${state.title}</h2>
           <p>${state.message}</p>
+          ${state.qrPayment ? `
+            <div class="qr-payment-panel">
+              <img src="${state.qrPayment.imageUrl}" alt="PayMongo QR Ph code">
+              <strong>${state.qrPayment.amount}</strong>
+              <span>${state.qrPayment.transactionNumber}</span>
+            </div>
+          ` : ""}
           ${state.timeoutSeconds ? renderTimeout(state) : renderProgress(state)}
           ${renderAction(state)}
         </article>
@@ -1722,7 +1791,7 @@
 
     function renderScreen(state) {
       const toneClass = state.tone ? `tone-${state.tone}` : "";
-      const stateClass = `state-${state.id}`;
+      const stateClass = `state-${state.screenId || state.id}`;
       const backButton = state.backTarget
         ? `<button type="button" class="back-button" data-back-target="${state.backTarget}">Back</button>`
         : "";
@@ -1949,7 +2018,7 @@
       attachPaymentChoiceHandlers();
       document.getElementById("currentState").innerHTML = `
         <strong>${state.label}</strong>
-        <p>${state.id} | ${humanize(state.boothState)}</p>
+        <p>${state.screenId || state.id} | ${humanize(state.boothState)}</p>
       `;
 
       document.querySelectorAll(".state-nav button").forEach((button) => {

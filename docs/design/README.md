@@ -16,7 +16,7 @@ The Central Web App is dense, operational, and role-aware:
 - Application Owner screens focus on SaaS clients, subscriptions, active booths, and platform health.
 - Client Owner/Admin screens focus on one client account: users, locations, booths, packages, branding, sessions, and reports.
 - Cashier screens focus on one assigned booth and fast payment approval.
-- Payment setup screens show cash-only MVP behavior plus coming soon Maya Checkout QR and Maya Terminal ECR registration flows.
+- Payment setup screens show cash plus PayMongo QR Ph credential setup and booth assignment behavior.
 
 ## Booth UI Customization Model
 
@@ -55,4 +55,4 @@ The mockup source includes two sample tenant Booth UI designs:
 
 ## Payment Mockup Notes
 
-MVP payments are cash only. `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR` appear as coming soon planning screens so the future client registration workflow is visible without implying live cashless payment support.
+Runtime payments are cash plus verified client-owned `PAYMONGO_QRPH`. Legacy payment-planning schema may remain in the repository, but it is not an active client payment option.

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 namespace PhotoBIZ.WindowsAgent;
 
@@ -11,8 +12,54 @@ public interface IBoothUiLauncher
 
 public sealed record BoothUiLaunchResult(int ProcessId, string Url);
 
+public interface IBoothUiLaunchStateStore
+{
+    BoothUiLaunchState? Load();
+    Task SaveAsync(BoothUiLaunchState state, CancellationToken cancellationToken);
+    Task ClearAsync(CancellationToken cancellationToken);
+}
+
+public sealed record BoothUiLaunchState(int ProcessId, DateTimeOffset StartedAt, string Url);
+
+public sealed class FileBoothUiLaunchStateStore(IAgentDataPaths dataPaths) : IBoothUiLaunchStateStore
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    public BoothUiLaunchState? Load()
+    {
+        if (!File.Exists(dataPaths.BoothUiLaunchStateFilePath))
+        {
+            return null;
+        }
+
+        using var stream = File.OpenRead(dataPaths.BoothUiLaunchStateFilePath);
+        return JsonSerializer.Deserialize<BoothUiLaunchState>(stream, JsonOptions);
+    }
+
+    public async Task SaveAsync(BoothUiLaunchState state, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(dataPaths.RootDirectory);
+        await using var stream = File.Create(dataPaths.BoothUiLaunchStateFilePath);
+        await JsonSerializer.SerializeAsync(stream, state, JsonOptions, cancellationToken);
+    }
+
+    public Task ClearAsync(CancellationToken cancellationToken)
+    {
+        if (File.Exists(dataPaths.BoothUiLaunchStateFilePath))
+        {
+            File.Delete(dataPaths.BoothUiLaunchStateFilePath);
+        }
+
+        return Task.CompletedTask;
+    }
+}
+
 public sealed class ChromeBoothUiLauncher(
     IAgentRuntimeOptionsProvider optionsProvider,
+    IBoothUiLaunchStateStore launchStateStore,
     ILogger<ChromeBoothUiLauncher> logger) : IBoothUiLauncher
 {
     private static readonly Action<ILogger, string, Exception?> LogBoothUiLaunched =
@@ -32,15 +79,12 @@ public sealed class ChromeBoothUiLauncher(
     {
         get
         {
-            if (launchedProcess is null)
-            {
-                return false;
-            }
+            var process = launchedProcess ?? TryResolvePersistedProcess();
 
             try
             {
-                launchedProcess.Refresh();
-                return !launchedProcess.HasExited;
+                process?.Refresh();
+                return process is not null && !process.HasExited;
             }
             catch (InvalidOperationException)
             {
@@ -71,14 +115,19 @@ public sealed class ChromeBoothUiLauncher(
             UseShellExecute = false
         }) ?? throw new InvalidOperationException("Chrome process did not start.");
 
+        await launchStateStore.SaveAsync(
+            new BoothUiLaunchState(launchedProcess.Id, DateTimeOffset.UtcNow, url),
+            cancellationToken);
+
         LogBoothUiLaunched(logger, launch.BoothCode, null);
         return new BoothUiLaunchResult(launchedProcess.Id, url);
     }
 
     public async Task CloseLaunchedAsync(CancellationToken cancellationToken)
     {
-        var process = launchedProcess;
+        var process = launchedProcess ?? TryResolvePersistedProcess();
         launchedProcess = null;
+        await launchStateStore.ClearAsync(cancellationToken);
 
         if (process is null)
         {
@@ -112,6 +161,54 @@ public sealed class ChromeBoothUiLauncher(
         finally
         {
             process.Dispose();
+        }
+    }
+
+    private Process? TryResolvePersistedProcess()
+    {
+        var launchState = launchStateStore.Load();
+        if (launchState is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var process = Process.GetProcessById(launchState.ProcessId);
+            if (!IsLikelyPersistedChromeProcess(process, launchState))
+            {
+                process.Dispose();
+                return null;
+            }
+
+            launchedProcess = process;
+            return process;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsLikelyPersistedChromeProcess(Process process, BoothUiLaunchState launchState)
+    {
+        if (!string.Equals(process.ProcessName, "chrome", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            var processStartTime = new DateTimeOffset(process.StartTime);
+            return Math.Abs((processStartTime - launchState.StartedAt).TotalMinutes) < 5;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
         }
     }
 
@@ -154,7 +251,7 @@ public sealed class ChromeBoothUiLauncher(
             : Path.Combine(commonApplicationData, "PhotoBIZ", "chrome-kiosk");
     }
 
-    private static string ResolveChromePath(string configuredPath)
+    public static string ResolveChromePath(string configuredPath)
     {
         if (!string.IsNullOrWhiteSpace(configuredPath))
         {

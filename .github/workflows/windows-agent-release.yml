@@ -1,0 +1,91 @@
+name: Windows Agent Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 0.1.0
+        required: true
+        type: string
+  push:
+    tags:
+      - agent-v*
+
+permissions:
+  contents: write
+
+jobs:
+  build-agent:
+    name: Build Windows Agent
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore PhotoBIZ.slnx
+
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+            $releaseTag = "agent-v$version"
+          } else {
+            $releaseTag = "${{ github.ref_name }}"
+            $version = $releaseTag -replace '^agent-v', ''
+          }
+
+          if ($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$') {
+            throw "Version must look like 0.1.0 or 0.1.0-preview.1. Received: $version"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
+
+      - name: Publish Agent artifact
+        shell: pwsh
+        run: |
+          $signingArgs = @()
+          if ("${{ secrets.WINDOWS_AGENT_SIGNING_CERTIFICATE_BASE64 }}" -ne "") {
+            $certPath = Join-Path $env:RUNNER_TEMP "windows-agent-signing.pfx"
+            [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String("${{ secrets.WINDOWS_AGENT_SIGNING_CERTIFICATE_BASE64 }}"))
+            $signingArgs += "-CodeSigningCertificatePath"
+            $signingArgs += $certPath
+            $signingArgs += "-CodeSigningCertificatePassword"
+            $signingArgs += "${{ secrets.WINDOWS_AGENT_SIGNING_CERTIFICATE_PASSWORD }}"
+          }
+
+          & ./agent/windows-agent/scripts/publish-control-center.ps1 `
+            -Version "${{ steps.version.outputs.version }}" `
+            -Configuration Release `
+            -RuntimeIdentifier win-x64 `
+            @signingArgs
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoBIZ-WindowsAgent-ControlCenter-${{ steps.version.outputs.version }}-win-x64
+          path: |
+            artifacts/windows-agent/packages/*.zip
+            artifacts/windows-agent/packages/*.manifest.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: PhotoBIZ Windows Agent ${{ steps.version.outputs.version }}
+          draft: true
+          prerelease: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/windows-agent/packages/*.zip
+            artifacts/windows-agent/packages/*.manifest.txt

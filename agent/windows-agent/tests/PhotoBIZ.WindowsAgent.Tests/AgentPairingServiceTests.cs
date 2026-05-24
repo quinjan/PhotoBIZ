@@ -31,6 +31,7 @@ public sealed class AgentPairingServiceTests
         Assert.DoesNotContain("agent-secret", fileText, StringComparison.Ordinal);
         Assert.Equal("agent-secret", runtime.AgentCredential);
         Assert.Equal("SMA-001", runtime.BoothCode);
+        Assert.Equal("Small Mall Booth", runtime.BoothName);
     }
 
     [Fact]
@@ -79,6 +80,7 @@ public sealed class AgentPairingServiceTests
         Assert.False(runtime.IsRunning);
         Assert.Equal("NEW-002", result.BoothCode);
         Assert.Equal("new-agent-secret", runtimeOptions.AgentCredential);
+        Assert.Equal("New Booth", runtimeOptions.BoothName);
         Assert.Equal("luma-secret", runtimeOptions.LumaBooth.ApiPassword);
     }
 
@@ -111,6 +113,7 @@ public sealed class AgentPairingServiceTests
         var runtime = await store.LoadRuntimeOptionsAsync(CancellationToken.None);
         Assert.Equal("https://api.example.test", runtime.ApiBaseUrl);
         Assert.Equal("NEW-002", runtime.BoothCode);
+        Assert.Equal("New Booth", runtime.BoothName);
         Assert.Equal(11, runtime.PollIntervalSeconds);
         Assert.Equal(12, runtime.SimulatedSessionDurationSeconds);
         Assert.Equal("luma-secret", runtime.LumaBooth.ApiPassword);
@@ -140,6 +143,7 @@ public sealed class AgentPairingServiceTests
         return new AgentConfigurationUpdate(
             "http://localhost:5082",
             "sma-001",
+            "Small Mall Booth",
             agentCredential,
             PollIntervalSeconds: 5,
             SimulatedSessionDurationSeconds: 6,
@@ -325,6 +329,7 @@ public sealed class AgentPairingServiceTests
         public string RootDirectory { get; } = rootDirectory;
         public string ConfigurationFilePath => Path.Combine(RootDirectory, "config.json");
         public string ActiveSessionFilePath => Path.Combine(RootDirectory, "active-session.json");
+        public string BoothUiLaunchStateFilePath => Path.Combine(RootDirectory, "booth-ui-launch.json");
     }
 
     private sealed class TestSecretProtector : IAgentSecretProtector

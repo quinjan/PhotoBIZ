@@ -7,7 +7,8 @@ Read these files first, in order:
 1. `docs/ARCHITECTURE.md`
 2. `docs/PRD.md`
 3. `docs/CODING_GUIDELINES.md`
-4. This file
+4. `docs/WINDOWS_AGENT_RELEASE_RUNBOOK.md`
+5. This file
 
 `docs/ARCHITECTURE.md` is the source of truth. It now matches this handoff's user-session Agent Control Center direction. If future implementation work changes the runtime model again, update `docs/ARCHITECTURE.md` first and then bring this handoff back into sync.
 
@@ -19,9 +20,9 @@ The Agent must be easy for a PhotoBIZ technician to install, pair, start, monito
 
 ## Current Implementation Status
 
-Status: foundation started, production Agent not complete.
+Status: production Agent is near release-candidate shape for internal lab ZIP distribution, but not yet validated as a signed client install.
 
-Overall distance to desired production state: about 62% complete. The documentation, backend lifecycle contract, core start/stop runtime service, local configuration pathing, encrypted secret storage, Pair/Re-pair application service, runtime config bridge, and first WPF Control Center shell are now in place. The remaining work is hardening the local Windows operations experience: tray behavior, staff/technician modes, editable settings, diagnostics, installer, signing, and hardware QA.
+Overall distance to desired production state: about 95% complete. The documentation, backend lifecycle contract, core start/stop runtime service, local configuration pathing, encrypted secret storage, Pair/Re-pair application service, runtime config bridge, WPF Control Center shell, editable local settings, re-pair-required credential state, tray/minimize behavior, staff/technician mode split, persisted booth display name, Relaunch Booth action, LumaBooth API reachability test, sanitized diagnostics export, persisted kiosk launch cleanup state, repeatable self-contained publish script, install/uninstall/autostart release scripts, and draft GitHub Release workflow are now in place. The remaining work is mostly external validation: richer GUI tests if desired, Admin Web status rendering, real code-signing certificate validation, clean Windows QA, and real LumaBooth hardware QA.
 
 Completed:
 
@@ -54,11 +55,30 @@ Completed:
 - The Control Center starts through the standard .NET host, registers the Agent runtime services, and uses production/local appsettings defaults.
 - Initial WPF screens now exist for Dashboard, Pair/Re-pair, Kiosk/Display, LumaBooth, Logs, Diagnostics, and About.
 - Dashboard Start/Stop actions call `AgentBoothRuntime`, while Pair/Re-pair actions call `IAgentPairingService`.
+- Kiosk/Display settings are now editable in the Control Center, including Booth UI URL, Chrome executable override, Chrome profile directory, Booth UI launch toggle, and kiosk/windowed mode.
+- Kiosk/Display settings include a Chrome detect action that uses the same executable resolution logic as kiosk launch.
+- LumaBooth settings are now editable in the Control Center, including simulator/API mode, local API URL, trigger listener URL, start timeout, and masked API password replacement.
+- LumaBooth tab now includes a safe API reachability test that does not trigger a booth session.
+- Pair/Re-pair now saves and displays the backend booth display name with the booth code.
+- Unauthorized Agent API responses now map to a dedicated re-pair-required exception and GUI state that disables Start Booth until credentials are replaced.
+- Control Center now has tray integration. Minimizing hides to tray, closing while online minimizes instead of exiting, and tray Exit stops the runtime before closing.
+- Control Center now has a staff/technician mode toggle. Staff mode keeps daily operation focused on Dashboard, Logs, Diagnostics, and About; technician mode exposes Pair/Re-pair, Kiosk/Display, and LumaBooth settings.
+- Dashboard and tray now include a Relaunch Booth action that stops and restarts the local runtime, relaunching kiosk Chrome with a fresh booth UI token.
+- Diagnostics export now writes a sanitized text bundle under the Agent data directory and redacts known credentials, LumaBooth passwords, password query parameters, secret headers, and long kiosk-token URL segments.
+- Agent release packaging now has `agent/windows-agent/scripts/publish-control-center.ps1`, which creates a self-contained `win-x64` single-file Control Center release ZIP and manifest under `artifacts/windows-agent/packages`.
+- Published Agent ZIPs exclude `appsettings.Development.json` and include only the production `appsettings.json` defaults next to `PhotoBIZ.WindowsAgent.ControlCenter.exe`.
+- Published Agent ZIPs now include `Install-PhotoBIZAgent.ps1` and `Uninstall-PhotoBIZAgent.ps1`. The install script copies the release to `C:\Program Files\PhotoBIZ\Windows Agent`, creates `C:\ProgramData\PhotoBIZ\Agent`, adds a current-user login auto-start entry, and creates a Start Menu shortcut. The uninstall script removes app files, auto-start, shortcut, and local data unless `-PreserveData` is passed.
+- GitHub Actions workflow `.github/workflows/windows-agent-release.yml` builds the Agent ZIP on `agent-v*` tags or manual dispatch, uploads workflow artifacts, and creates a draft prerelease with the ZIP and manifest attached.
+- The Agent release workflow supports optional Authenticode signing when `WINDOWS_AGENT_SIGNING_CERTIFICATE_BASE64` and `WINDOWS_AGENT_SIGNING_CERTIFICATE_PASSWORD` secrets are configured.
+- Kiosk Chrome launch state is now persisted at `booth-ui-launch.json` under the Agent data directory so a restarted Agent can identify and close a still-running PhotoBIZ-launched Chrome process.
 - Focused backend tests cover pair/launch-not-online, heartbeat metadata, immediate offline behavior, and preserving active transactions during graceful offline.
 - Focused Agent tests cover kiosk launch before heartbeat, graceful stop calling offline and closing the owned kiosk process, and failed kiosk launch preventing heartbeat.
 - Focused config tests cover encrypted-at-rest secrets, masked snapshots, runtime decryption, secret preservation on partial settings updates, secret clearing, and config deletion.
 - Focused Pair/Re-pair tests cover validation-before-save, failed validation preserving the existing encrypted config, runtime/session/kiosk cleanup during re-pair, and non-secret setting preservation.
 - Focused runtime option tests cover saved local config taking precedence and development appsettings fallback when no local pairing exists.
+- Focused Agent API client tests cover unauthorized credential responses mapping to the re-pair-required exception.
+- Focused LumaBooth connection tests cover API reachability without session start and simulator-mode skip behavior.
+- Focused diagnostics tests cover export output and redaction of credentials, kiosk tokens, passwords, and secret headers.
 - Current validation passed:
   - `dotnet test services/api/tests/PhotoBIZ.Api.Tests/PhotoBIZ.Api.Tests.csproj --no-restore`
   - `dotnet test agent/windows-agent/tests/PhotoBIZ.WindowsAgent.Tests/PhotoBIZ.WindowsAgent.Tests.csproj --no-restore`
@@ -70,27 +90,23 @@ Completed:
 
 Not complete yet:
 
-- WPF Control Center is only an initial shell; tray behavior, minimize-on-close while online, technician/staff modes, settings editing, diagnostics export, and polished error states are not done.
+- WPF Control Center still needs polished error states and stronger mode guarding if technician mode should require a local password or Windows role.
 - Existing `PhotoBIZ.WindowsAgent` is still a worker/dev-host style project, although its core lifecycle now lives behind reusable runtime services.
-- Kiosk process ownership is implemented in-process only; it does not yet persist launched process identity across app restarts.
-- Pair/Re-pair GUI is present but does not yet persist booth display name or show a dedicated re-pair-required state after unauthorized runtime API responses.
-- Staff mode and technician/admin mode screens are not implemented.
-- Sanitized local logs and diagnostics export are not implemented.
-- Unauthorized Agent responses do not yet drive a re-pair-required GUI state.
+- Logs tab is still basic and only shows the latest GUI status message; it is not yet backed by a rolling sanitized runtime log.
 - Admin Web has the data contract for Agent status but does not yet render the new status fields.
-- The signed self-contained `.exe` installer, login auto-start registration, uninstall behavior, update behavior, and code signing are not implemented.
+- A ZIP-based installer/autostart/uninstall flow is implemented for internal lab/pilot validation. A branded MSI/MSIX/Inno-style installer is not implemented.
+- Code signing support exists in the release workflow, but a real signing certificate has not been configured or validated.
 - Clean Windows install QA and real LumaBooth hardware smoke testing are not done.
 
 Recommended next implementation slices:
 
-1. Harden the WPF shell: tray icon, close/minimize behavior while online, staff/technician modes, clearer error states, and persisted booth display name.
-2. Add editable Kiosk/Display and LumaBooth settings screens, including Chrome auto-detection and API connection tests.
-3. Add unauthorized Agent response handling that drives a dedicated re-pair-required GUI state.
-4. Add sanitized logs and diagnostics export, then test redaction against credentials, kiosk tokens, passwords, and secret headers.
-5. Render Agent status in Admin Web using the new overview DTO fields.
-6. Improve kiosk process ownership for crash/restart scenarios if needed, such as storing launched process identity in local runtime state.
-7. Add packaging: self-contained `win-x64` publish, installer, ProgramData setup, login auto-start, uninstall cleanup, and manual update behavior.
-8. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
+1. Add focused GUI/view-model tests for button enablement, settings save flows, re-pair-required behavior, diagnostics export, mode gating, relaunch, and tray-exit shutdown behavior where practical.
+2. Decide whether technician mode needs a local password or Windows role guard, then add it if required for live booths.
+3. Back the Logs tab with a rolling sanitized runtime log source instead of only the latest status message.
+4. Render Agent status in Admin Web using the new overview DTO fields.
+5. Decide whether the ZIP-based installer scripts are enough for v1 or replace them with a branded MSI/MSIX/Inno-style installer.
+6. Configure and validate a real code-signing certificate in GitHub Actions.
+7. Complete manual QA on a clean Windows machine, then smoke test real LumaBooth API mode with URL triggers, focus handoff, and extra-print commands.
 
 ## Decisions Already Made
 

@@ -6,7 +6,9 @@ namespace PhotoBIZ.Api;
 
 public sealed class PhotoBizTransactionWorkflow(
     PhotoBizDbContext dbContext,
-    PhotoBizAuditService auditService)
+    PhotoBizAuditService auditService,
+    IPayMongoClient? payMongoClient = null,
+    PhotoBizSecretProtector? secretProtector = null)
 {
     private static readonly TimeSpan PendingCashWindow = TimeSpan.FromMinutes(1);
     public static readonly TimeSpan PostSessionPromptDuration = TimeSpan.FromSeconds(15);
@@ -23,6 +25,7 @@ public sealed class PhotoBizTransactionWorkflow(
     [
         StatusValues.Transaction.Created,
         StatusValues.Transaction.PendingCash,
+        StatusValues.Transaction.PendingPayMongoQrPh,
         StatusValues.Transaction.Paid,
         StatusValues.Transaction.StartingSession,
         StatusValues.Transaction.InSession
@@ -243,12 +246,9 @@ public sealed class PhotoBizTransactionWorkflow(
             throw new InvalidOperationException("Only newly created transactions can choose a payment method.");
         }
 
-        if (paymentMethod != StatusValues.PaymentMethod.Cash)
+        if (paymentMethod == StatusValues.PaymentMethod.Cash)
         {
-            throw new InvalidOperationException("Only CASH is runtime-enabled in MVP.");
-        }
-
-        var cashAssignment = await dbContext.BoothPaymentOptionAssignments
+            var cashAssignment = await dbContext.BoothPaymentOptionAssignments
             .AsNoTracking()
             .SingleOrDefaultAsync(assignment =>
                 assignment.BoothId == booth.Id &&
@@ -257,14 +257,88 @@ public sealed class PhotoBizTransactionWorkflow(
                 assignment.Status == StatusValues.PaymentAssignment.Assigned,
                 cancellationToken);
 
-        if (cashAssignment is null)
-        {
-            throw new InvalidOperationException("This booth does not have runtime cash enabled.");
+            if (cashAssignment is null)
+            {
+                throw new InvalidOperationException("This booth does not have runtime cash enabled.");
+            }
+
+            transaction.PaymentMethod = paymentMethod;
+            transaction.Status = StatusValues.Transaction.PendingCash;
+            booth.CurrentState = StatusValues.Booth.PaymentPending;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return transaction;
         }
 
-        transaction.PaymentMethod = paymentMethod;
-        transaction.Status = StatusValues.Transaction.PendingCash;
+        if (paymentMethod == StatusValues.PaymentMethod.PayMongoQrPh)
+        {
+            return await SetPayMongoQrPhPaymentMethodAsync(transaction, booth, cancellationToken);
+        }
+
+        throw new InvalidOperationException("This payment method is not runtime-enabled.");
+    }
+
+    private async Task<Transaction> SetPayMongoQrPhPaymentMethodAsync(
+        Transaction transaction,
+        Booth booth,
+        CancellationToken cancellationToken)
+    {
+        var assignment = await dbContext.BoothPaymentOptionAssignments
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.BoothId == booth.Id &&
+                item.PaymentMethod == StatusValues.PaymentMethod.PayMongoQrPh &&
+                item.RuntimeEnabled &&
+                item.Status == StatusValues.PaymentAssignment.Assigned,
+                cancellationToken);
+
+        if (assignment is null)
+        {
+            throw new InvalidOperationException("This booth does not have runtime PayMongo QR Ph enabled.");
+        }
+
+        var config = await dbContext.ClientPaymentProviderConfigs
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.ClientAccountId == booth.ClientAccountId &&
+                item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh &&
+                item.Status == StatusValues.PaymentResource.Verified,
+                cancellationToken);
+
+        if (config is null || string.IsNullOrWhiteSpace(config.EncryptedSecretKey))
+        {
+            throw new InvalidOperationException("PayMongo QR Ph is not verified for this client.");
+        }
+
+        if (secretProtector is null)
+        {
+            throw new InvalidOperationException("Payment secret protection is not configured.");
+        }
+
+        var client = payMongoClient ?? new DisabledPayMongoClient();
+        var credentials = new PayMongoCredentials(
+            secretProtector.Unprotect(config.EncryptedSecretKey),
+            config.PaymentMode ?? StatusValues.PaymentMode.Test,
+            config.BusinessAccountName);
+        var qrPayment = await client.CreateQrPhPaymentAsync(credentials, transaction, cancellationToken);
+
+        transaction.PaymentMethod = StatusValues.PaymentMethod.PayMongoQrPh;
+        transaction.Status = StatusValues.Transaction.PendingPayMongoQrPh;
+        transaction.ExpiresAt = qrPayment.ExpiresAt;
         booth.CurrentState = StatusValues.Booth.PaymentPending;
+
+        dbContext.PaymentAttempts.Add(new PaymentAttempt
+        {
+            Id = Guid.NewGuid(),
+            TransactionId = transaction.Id,
+            Provider = StatusValues.PaymentProvider.PayMongo,
+            ProviderReference = qrPayment.PaymentIntentId,
+            Status = StatusValues.Transaction.PendingPayMongoQrPh,
+            RawPayload = qrPayment.RawPayload,
+            CreatedAt = DateTimeOffset.UtcNow
+        });
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -385,9 +459,10 @@ public sealed class PhotoBizTransactionWorkflow(
         CancellationToken cancellationToken)
     {
         if (transaction.Status != StatusValues.Transaction.Created &&
-            transaction.Status != StatusValues.Transaction.PendingCash)
+            transaction.Status != StatusValues.Transaction.PendingCash &&
+            transaction.Status != StatusValues.Transaction.PendingPayMongoQrPh)
         {
-            throw new InvalidOperationException("Only created or pending cash transactions can be cancelled from the booth UI.");
+            throw new InvalidOperationException("Only created or pending payment transactions can be cancelled from the booth UI.");
         }
 
         if (transaction.BoothId != booth.Id)
@@ -601,7 +676,8 @@ public sealed class PhotoBizTransactionWorkflow(
         var now = DateTimeOffset.UtcNow;
         var expiredTransactions = await dbContext.Transactions
             .Where(transaction =>
-                transaction.Status == StatusValues.Transaction.PendingCash &&
+                (transaction.Status == StatusValues.Transaction.PendingCash ||
+                    transaction.Status == StatusValues.Transaction.PendingPayMongoQrPh) &&
                 transaction.ExpiresAt <= now &&
                 (boothId == null || transaction.BoothId == boothId))
             .ToListAsync(cancellationToken);
@@ -629,6 +705,103 @@ public sealed class PhotoBizTransactionWorkflow(
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return expiredTransactions.Count;
+    }
+
+    public async Task<PayMongoWebhookApplyResult> ApplyPayMongoWebhookAsync(
+        PayMongoWebhookEvent webhookEvent,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(webhookEvent.PaymentIntentId))
+        {
+            return PayMongoWebhookApplyResult.Ignored("PayMongo event has no payment intent reference.");
+        }
+
+        var attempt = await dbContext.PaymentAttempts
+            .Include(item => item.Transaction)
+            .Where(item =>
+                item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                item.ProviderReference == webhookEvent.PaymentIntentId)
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (attempt?.Transaction is null)
+        {
+            return PayMongoWebhookApplyResult.Ignored("No PhotoBIZ payment attempt matched the PayMongo reference.");
+        }
+
+        var transaction = attempt.Transaction;
+        if (webhookEvent.AmountCents.HasValue && webhookEvent.AmountCents.Value != transaction.AmountCents)
+        {
+            return PayMongoWebhookApplyResult.Invalid("PayMongo amount does not match the PhotoBIZ transaction.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(webhookEvent.Currency) &&
+            !string.Equals(webhookEvent.Currency, transaction.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            return PayMongoWebhookApplyResult.Invalid("PayMongo currency does not match the PhotoBIZ transaction.");
+        }
+
+        attempt.RawPayload = webhookEvent.RawPayload;
+        attempt.Status = webhookEvent.EventType switch
+        {
+            "payment.paid" => StatusValues.Transaction.Paid,
+            "payment.failed" => StatusValues.Transaction.PaymentFailed,
+            "qrph.expired" => StatusValues.Transaction.Expired,
+            _ => attempt.Status
+        };
+
+        if (webhookEvent.EventType == "payment.paid")
+        {
+            if (transaction.Status == StatusValues.Transaction.PendingPayMongoQrPh)
+            {
+                transaction.Status = StatusValues.Transaction.Paid;
+                transaction.PaidAt ??= DateTimeOffset.UtcNow;
+
+                var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
+                booth.CurrentState = StatusValues.Booth.Paid;
+            }
+            else if (transaction.Status is StatusValues.Transaction.Cancelled or StatusValues.Transaction.Expired or StatusValues.Transaction.PaymentFailed)
+            {
+                transaction.FailureReason ??= "PayMongo reported payment after the PhotoBIZ transaction was already terminal; manual reconciliation is required.";
+            }
+        }
+        else if (webhookEvent.EventType is "payment.failed" or "qrph.expired" &&
+            transaction.Status == StatusValues.Transaction.PendingPayMongoQrPh)
+        {
+            transaction.Status = webhookEvent.EventType == "qrph.expired"
+                ? StatusValues.Transaction.Expired
+                : StatusValues.Transaction.PaymentFailed;
+            transaction.FailureReason = webhookEvent.EventType == "qrph.expired"
+                ? "PayMongo QR Ph expired before payment was completed."
+                : "PayMongo reported that the QR Ph payment failed.";
+
+            var booth = await dbContext.Booths.SingleAsync(item => item.Id == transaction.BoothId, cancellationToken);
+            booth.CurrentState = StatusValues.Booth.Welcome;
+        }
+        else if (webhookEvent.EventType is not ("payment.paid" or "payment.failed" or "qrph.expired"))
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return PayMongoWebhookApplyResult.Ignored("PayMongo event type is not used by PhotoBIZ.");
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await auditService.WriteSystemAsync(
+            transaction.ClientAccountId,
+            "transaction.paymongo_webhook",
+            nameof(Transaction),
+            transaction.Id,
+            new
+            {
+                webhookEvent.EventId,
+                webhookEvent.EventType,
+                webhookEvent.PaymentIntentId,
+                transaction.TransactionNumber,
+                transaction.Status
+            },
+            cancellationToken);
+
+        return PayMongoWebhookApplyResult.Applied();
     }
 
     public async Task<PhotoBizAgentCommand?> TryAcquireNextAgentCommandAsync(
@@ -1047,6 +1220,8 @@ public sealed class PhotoBizTransactionWorkflow(
                 StatusValues.CancellationSource.BoothUiPaymentOptionsIdleTimeout,
             (StatusValues.Transaction.PendingCash, StatusValues.BoothUiCancelTrigger.BackButton) =>
                 StatusValues.CancellationSource.BoothUiWaitingForPaymentBack,
+            (StatusValues.Transaction.PendingPayMongoQrPh, StatusValues.BoothUiCancelTrigger.BackButton) =>
+                StatusValues.CancellationSource.BoothUiWaitingForPaymentBack,
             _ => throw new InvalidOperationException("Cancellation trigger is not valid for this transaction state.")
         };
     }
@@ -1114,6 +1289,7 @@ public sealed class PhotoBizTransactionWorkflow(
         return IsSessionTransaction(transactionType) &&
             status is StatusValues.Transaction.Created
                 or StatusValues.Transaction.PendingCash
+                or StatusValues.Transaction.PendingPayMongoQrPh
                 or StatusValues.Transaction.Paid;
     }
 
@@ -1221,3 +1397,24 @@ public sealed record PhotoBizAgentCommand(
     string IncludedPrintEntitlement,
     string LumaboothSessionMode,
     int ExtraPrintCount);
+
+public sealed record PayMongoWebhookApplyResult(
+    bool Succeeded,
+    bool ShouldAcknowledge,
+    string? Message)
+{
+    public static PayMongoWebhookApplyResult Applied()
+    {
+        return new PayMongoWebhookApplyResult(true, true, null);
+    }
+
+    public static PayMongoWebhookApplyResult Ignored(string message)
+    {
+        return new PayMongoWebhookApplyResult(false, true, message);
+    }
+
+    public static PayMongoWebhookApplyResult Invalid(string message)
+    {
+        return new PayMongoWebhookApplyResult(false, false, message);
+    }
+}

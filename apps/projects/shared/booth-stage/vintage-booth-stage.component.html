@@ -65,6 +65,16 @@
                   <h3>{{ option.label }}</h3>
                 </button>
               }
+              @if (payMongoQrOption(); as option) {
+                <button
+                  type="button"
+                  class="payment-choice"
+                  (click)="openPayMongoConfirm()"
+                  [disabled]="loading()"
+                >
+                  <h3>{{ option.label }}</h3>
+                </button>
+              }
             </div>
           </div>
 
@@ -108,6 +118,13 @@
             <p>{{ message() }}</p>
 
             @if (screen() === 'waiting') {
+              @if (activeTransaction()?.qrPayment?.imageUrl; as qrImageUrl) {
+                <div class="qr-payment-panel">
+                  <img [src]="qrImageUrl" alt="PayMongo QR Ph code" />
+                  <strong>{{ formatMoney(activeTransaction()?.amountCents ?? 0) }}</strong>
+                  <span>{{ transactionNumber() }}</span>
+                </div>
+              }
               <div class="timeout-panel">
                 <div class="timeout-meta">
                   <span>Time Left</span>
@@ -292,7 +309,7 @@
         <article class="back-modal-card">
           <p class="label">Confirm Payment</p>
           <h2 id="paymentModalTitle">Use Payment?</h2>
-          <p>Continue with {{ cashOption()?.label ?? 'this payment option' }}?</p>
+          <p>Continue with {{ selectedPaymentLabel() }}?</p>
           <div class="back-modal-actions">
             <button
               type="button"

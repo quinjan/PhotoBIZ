@@ -7,6 +7,9 @@
         MinWidth="920"
         MinHeight="620"
         Loaded="OnLoaded"
+        Closing="OnClosing"
+        Closed="OnClosed"
+        StateChanged="OnStateChanged"
         Background="{StaticResource AgentBackgroundBrush}">
   <Grid Margin="18">
     <Grid.RowDefinitions>
@@ -38,6 +41,7 @@
                   Margin="0,0,10,0">
             <TextBlock Text="{Binding RuntimeStatusText}" FontWeight="SemiBold" />
           </Border>
+          <CheckBox Content="{Binding ModeText}" IsChecked="{Binding TechnicianMode}" VerticalAlignment="Center" Margin="0,0,14,0" />
           <Button Content="Start Booth" Command="{Binding StartBoothCommand}" Background="{StaticResource AgentAccentBrush}" Foreground="White" />
           <Button Content="Stop Booth" Command="{Binding StopBoothCommand}" />
         </StackPanel>
@@ -98,6 +102,7 @@
               <TextBlock Text="Runtime" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
               <Button Content="Start Booth" Command="{Binding StartBoothCommand}" Margin="0,0,0,8" />
               <Button Content="Stop Booth" Command="{Binding StopBoothCommand}" Margin="0,0,0,8" />
+              <Button Content="Relaunch Booth" Command="{Binding RestartBoothCommand}" Margin="0,0,0,8" />
               <Button Content="Reload Status" Command="{Binding ReloadCommand}" Margin="0" />
             </StackPanel>
           </Border>
@@ -111,7 +116,7 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Pair / Re-pair">
+      <TabItem Header="Pair / Re-pair" Visibility="{Binding TechnicianVisibility}">
         <Grid Margin="18">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -140,7 +145,7 @@
         </Grid>
       </TabItem>
 
-      <TabItem Header="Kiosk / Display">
+      <TabItem Header="Kiosk / Display" Visibility="{Binding TechnicianVisibility}">
         <Grid Margin="18">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="210" />
@@ -151,19 +156,39 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Booth UI URL" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding BoothUiBaseUrl}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="Chrome Path" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ChromeExecutablePath}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="Chrome Profile" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ChromeUserDataDir}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="3" Grid.Column="0" Text="Kiosk Mode" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding KioskModeText}" Margin="0,0,0,12" />
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Booth UI URL" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding BoothUiBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Chrome Path" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <Grid Grid.Row="1" Grid.Column="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0" Text="{Binding ChromeExecutablePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
+            <Button Grid.Column="1" Content="Detect" Command="{Binding DetectChromeCommand}" Margin="0" />
+          </Grid>
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="Chrome Profile" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ChromeUserDataDir, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="Launch Booth UI" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <CheckBox Grid.Row="3" Grid.Column="1" IsChecked="{Binding LaunchBoothUiOnStartup}" VerticalAlignment="Center" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="4" Grid.Column="0" Text="Kiosk Mode" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <CheckBox Grid.Row="4" Grid.Column="1" IsChecked="{Binding KioskMode}" VerticalAlignment="Center" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding ChromeExecutablePathText}" Foreground="{StaticResource AgentMutedTextBrush}" Margin="0,0,0,12" />
+
+          <Button Grid.Row="6" Grid.Column="1" Content="Save Kiosk Settings" Command="{Binding SaveDisplaySettingsCommand}" HorizontalAlignment="Left" />
         </Grid>
       </TabItem>
 
-      <TabItem Header="LumaBooth">
+      <TabItem Header="LumaBooth" Visibility="{Binding TechnicianVisibility}">
         <Grid Margin="18">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="210" />
@@ -174,15 +199,33 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LumaBoothMode}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="1" Grid.Column="0" Text="API URL" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LumaBoothApiBaseUrl}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="2" Grid.Column="0" Text="Trigger Listener" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LumaBoothTriggerListenerUrl}" Margin="0,0,0,12" />
-          <TextBlock Grid.Row="3" Grid.Column="0" Text="API Password" Margin="0,0,12,12" />
-          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LumaBoothPasswordStatusText}" Margin="0,0,0,12" />
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <ComboBox Grid.Row="0" Grid.Column="1"
+                    ItemsSource="{Binding LumaBoothModeOptions}"
+                    SelectedItem="{Binding LumaBoothMode}"
+                    MinHeight="34"
+                    Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="API URL" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding LumaBoothApiBaseUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="2" Grid.Column="0" Text="Trigger Listener" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding LumaBoothTriggerListenerUrl, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="3" Grid.Column="0" Text="Start Timeout" VerticalAlignment="Center" Margin="0,0,12,12" />
+          <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding LumaBoothStartTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,12" />
+
+          <TextBlock Grid.Row="4" Grid.Column="0" Text="API Password" VerticalAlignment="Center" Margin="0,0,12,16" />
+          <PasswordBox Grid.Row="4" Grid.Column="1" x:Name="LumaBoothApiPasswordBox" PasswordChanged="OnLumaBoothApiPasswordChanged" Margin="0,0,0,16" />
+
+          <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal">
+            <TextBlock Text="{Binding LumaBoothPasswordStatusText}" Foreground="{StaticResource AgentMutedTextBrush}" VerticalAlignment="Center" Margin="0,0,16,0" />
+            <Button Content="Save LumaBooth Settings" Command="{Binding SaveLumaBoothSettingsCommand}" />
+            <Button Content="Test API" Command="{Binding TestLumaBoothCommand}" />
+          </StackPanel>
         </Grid>
       </TabItem>
 
@@ -194,7 +237,12 @@
 
       <TabItem Header="Diagnostics">
         <Grid Margin="18">
-          <TextBox Text="{Binding DiagnosticSummaryText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <Button Grid.Row="0" Content="Export Diagnostics" Command="{Binding ExportDiagnosticsCommand}" HorizontalAlignment="Left" Margin="0,0,0,12" />
+          <TextBox Grid.Row="1" Text="{Binding DiagnosticSummaryText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" />
         </Grid>
       </TabItem>
 

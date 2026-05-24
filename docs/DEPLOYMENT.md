@@ -101,9 +101,9 @@ For local booth configuration, each booth stores:
 - LumaBooth simulator/API settings.
 - Environment name: local or production.
 
-The production booth-laptop artifact is a signed, self-contained `win-x64` Windows `.exe` installer. The installer installs under `Program Files`, creates the required `C:\ProgramData\PhotoBIZ\Agent` folders, adds a login auto-start entry for the Agent Control Center, and does not require a separate .NET runtime. Manual installer updates preserve existing configuration. Uninstall removes local pairing/config for v1. Silent install and auto-update are intentionally out of v1 scope.
+The production booth-laptop artifact starts as a self-contained `win-x64` Windows Agent release ZIP attached to GitHub Releases. The ZIP contains the single-file `PhotoBIZ.WindowsAgent.ControlCenter.exe`, production `appsettings.json` defaults, and PowerShell install/uninstall scripts. It does not require a separate .NET runtime. The included installer script installs under `Program Files`, creates `C:\ProgramData\PhotoBIZ\Agent`, adds current-user login auto-start, and creates a Start Menu shortcut. Manual updates are enough for v1. Silent install and auto-update are intentionally out of v1 scope.
 
-Code signing is required before client or live booth installation. Unsigned Agent builds are allowed only for local development or internal lab testing.
+Code signing is required before client or live booth installation. Unsigned Agent builds are allowed only for local development or internal lab testing. The release workflow supports optional signing when certificate secrets are configured.
 
 Current Agent Control Center project path:
 
@@ -114,10 +114,68 @@ agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgen
 Pre-installer publish command for lab validation:
 
 ```powershell
-dotnet publish agent/windows-agent/src/PhotoBIZ.WindowsAgent.ControlCenter/PhotoBIZ.WindowsAgent.ControlCenter.csproj -c Release -r win-x64 --self-contained true
+powershell -ExecutionPolicy Bypass -File agent/windows-agent/scripts/publish-control-center.ps1 -Version 0.1.0
 ```
 
-The installer technology, signing command, artifact naming, and release process still need to be finalized before live booth installation.
+This writes:
+
+```text
+artifacts/windows-agent/packages/PhotoBIZ-WindowsAgent-ControlCenter-<version>-win-x64.zip
+artifacts/windows-agent/packages/PhotoBIZ-WindowsAgent-ControlCenter-<version>-win-x64.manifest.txt
+```
+
+The ZIP intentionally excludes `appsettings.Development.json`. For internal lab testing, unzip the release on the booth laptop and run:
+
+```powershell
+.\PhotoBIZ.WindowsAgent.ControlCenter.exe
+```
+
+For booth-laptop installation from the extracted ZIP:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Install-PhotoBIZAgent.ps1
+```
+
+The installer defaults are:
+
+```text
+Install directory: C:\Program Files\PhotoBIZ\Windows Agent
+Data directory:    C:\ProgramData\PhotoBIZ\Agent
+Autostart:         HKCU Run entry for the current Windows user
+```
+
+Uninstall and remove local pairing/config:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\PhotoBIZ\Windows Agent\Uninstall-PhotoBIZAgent.ps1"
+```
+
+Uninstall while preserving local pairing/config for manual troubleshooting:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Program Files\PhotoBIZ\Windows Agent\Uninstall-PhotoBIZAgent.ps1" -PreserveData
+```
+
+For a GitHub Release, run the `Windows Agent Release` workflow manually with a version such as `0.1.0`, or push a tag named:
+
+```text
+agent-v0.1.0
+```
+
+The workflow uploads the ZIP and manifest as workflow artifacts and creates a draft prerelease with those files attached.
+
+Optional signing secrets:
+
+```text
+WINDOWS_AGENT_SIGNING_CERTIFICATE_BASE64=<base64-encoded pfx>
+WINDOWS_AGENT_SIGNING_CERTIFICATE_PASSWORD=<pfx password>
+```
+
+When these secrets are present, the workflow signs `PhotoBIZ.WindowsAgent.ControlCenter.exe` before packaging. The manifest records `SignatureStatus` and SHA-256 hashes.
+
+The installer is currently PowerShell-script based inside the release ZIP. A branded MSI/MSIX/Inno Setup style installer can still replace it later if needed, but the v1 operational requirements are represented in the release artifact.
+
+For the full step-by-step release and booth-laptop install procedure, use [Windows Agent GitHub Release And Install Runbook](WINDOWS_AGENT_RELEASE_RUNBOOK.md).
 
 ## CI/CD Plan
 
@@ -276,3 +334,458 @@ Start with:
 - Weekly VPS backups plus nightly PostgreSQL dumps.
 
 This is the best balance of low cost, straightforward CI/CD, and enough control for a .NET + SignalR + Angular + Windows Agent product.
+
+## Internal Pilot Without A Purchased Domain
+
+For the first internal pilot, use the Droplet public IPv4 address with an IP-based DNS alias such as `sslip.io` instead of buying a domain.
+
+If the Droplet public IP is `203.0.113.10`, set:
+
+```text
+PHOTOBIZ_PILOT_HOST=203.0.113.10.sslip.io
+```
+
+The pilot URLs are:
+
+```text
+https://admin.203.0.113.10.sslip.io
+https://booth.203.0.113.10.sslip.io
+https://api.203.0.113.10.sslip.io
+```
+
+Caddy can request normal public TLS certificates for these hostnames, which keeps the Admin Web cookie flow and PayMongo test webhooks on HTTPS without a purchased domain. This is a pilot convenience only, not the long-term branded production URL.
+
+Production deployment files:
+
+- `docker-compose.prod.yml`
+- `infra/caddy/Caddyfile.prod`
+- `infra/production.env.example`
+- `infra/scripts/provision-ubuntu.sh`
+- `infra/scripts/backup-postgres.sh`
+- `.github/workflows/deploy-pilot.yml`
+
+### Droplet Provisioning
+
+Create a fresh Ubuntu Droplet in the Singapore region. A 2 GB RAM Basic Droplet is enough for the pilot unless builds or database memory become tight.
+
+Run the provisioning script as root on the Droplet:
+
+```bash
+DEPLOY_USER=photobiz SSH_PUBLIC_KEY="<deploy public ssh key>" bash infra/scripts/provision-ubuntu.sh
+```
+
+Then create the production environment file:
+
+```bash
+cd /opt/photobiz
+cp infra/production.env.example .env
+nano .env
+```
+
+Required `.env` values:
+
+```text
+PHOTOBIZ_PILOT_HOST=<droplet-public-ip>.sslip.io
+POSTGRES_DB=photobiz
+POSTGRES_USER=photobiz
+POSTGRES_PASSWORD=<long random password>
+CADDY_ACME_EMAIL=
+```
+
+Do not expose PostgreSQL or Redis ports publicly. The production Compose file keeps them on the internal Docker network.
+
+### GitHub Actions Deployment
+
+Configure the repository `production` environment with manual approval before a live booth is connected.
+
+Required GitHub secrets:
+
+```text
+PHOTOBIZ_DEPLOY_HOST=<droplet public ip>
+PHOTOBIZ_DEPLOY_USER=photobiz
+PHOTOBIZ_DEPLOY_SSH_KEY=<private key for the deploy user>
+```
+
+Optional GitHub environment variable:
+
+```text
+PHOTOBIZ_DEPLOY_PATH=/opt/photobiz
+```
+
+The deploy workflow validates backend tests, frontend builds/tests, and `docker compose --env-file infra/production.env.example -f docker-compose.prod.yml config`. It then copies the repository and built Angular artifacts to the Droplet, runs `docker compose --env-file .env -f docker-compose.prod.yml up -d --build`, and smoke-checks Admin, Booth UI, and API HTTPS endpoints.
+
+### Backups
+
+Enable DigitalOcean Droplet backups before any real booth pilot.
+
+Install nightly PostgreSQL dumps:
+
+```bash
+sudo APP_DIR=/opt/photobiz bash /opt/photobiz/infra/scripts/install-backup-cron.sh
+```
+
+Backups are written under:
+
+```text
+/opt/photobiz/backups/postgres
+```
+
+Keep at least 7 daily dumps. Before real payments or client-facing launch, copy backups off-server and perform one restore rehearsal.
+
+### PayMongo Pilot Mode
+
+Use PayMongo test mode only for this no-domain pilot.
+
+Register the tenant webhook in PayMongo Dashboard using the generated PhotoBIZ webhook URL, which should resolve to:
+
+```text
+https://api.<droplet-public-ip>.sslip.io/api/payments/paymongo/webhooks/{resourceId}
+```
+
+Do not enable live PayMongo payments until HTTPS smoke checks, webhook callbacks, booth Agent pairing, and real booth hardware validation have all passed.
+
+## Step By Step DigitalOcean Pilot Deployment
+
+Use this runbook for the first internal pilot deployment on a fresh DigitalOcean Droplet. The commands assume Windows PowerShell on your local machine and Ubuntu on the Droplet.
+
+Replace these placeholders as you go:
+
+```text
+<droplet-ip>        The public IPv4 shown in DigitalOcean after the Droplet is created
+<pilot-host>        <droplet-ip>.sslip.io
+<repo-root>         C:\Quinjan\Repos\PhotoBIZ
+```
+
+### 1. Create An SSH Key For The Pilot
+
+From Windows PowerShell:
+
+```powershell
+ssh-keygen -t ed25519 -C "photobiz-pilot" -f "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519"
+Get-Content "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519.pub"
+```
+
+Copy the printed public key. You will paste it into DigitalOcean when creating the Droplet.
+
+Keep the private key file private:
+
+```text
+C:\Users\<you>\.ssh\photobiz_pilot_ed25519
+```
+
+This private key is also the value that will later go into the GitHub secret `PHOTOBIZ_DEPLOY_SSH_KEY`.
+
+### 2. Create The DigitalOcean Droplet
+
+In DigitalOcean:
+
+1. Go to `Droplets`.
+2. Click `Create Droplet`.
+3. Choose region `Singapore`.
+4. Choose image `Ubuntu LTS`.
+5. Choose the Basic plan. Use at least `2 GB RAM / 1 vCPU / 50 GB SSD` for the pilot.
+6. Under authentication, choose `SSH Key`.
+7. Add/pick the public key from step 1.
+8. Enable DigitalOcean Droplet backups if available for the plan.
+9. Name it something clear, for example `photobiz-pilot-sgp1`.
+10. Create the Droplet.
+
+After it finishes, copy the public IPv4 address. In the rest of this guide, that is `<droplet-ip>`.
+
+Quick connection check:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip>
+```
+
+If the SSH prompt opens, exit back to PowerShell:
+
+```bash
+exit
+```
+
+### 3. Provision The Droplet
+
+Copy the provisioning script and public key to the Droplet:
+
+```powershell
+Set-Location C:\Quinjan\Repos\PhotoBIZ
+scp -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" infra/scripts/provision-ubuntu.sh root@<droplet-ip>:/tmp/provision-ubuntu.sh
+scp -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519.pub" root@<droplet-ip>:/tmp/photobiz_pilot_ed25519.pub
+```
+
+Run provisioning as root:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> 'SSH_PUBLIC_KEY="$(cat /tmp/photobiz_pilot_ed25519.pub)" DEPLOY_USER=photobiz bash /tmp/provision-ubuntu.sh'
+```
+
+This installs Docker, Docker Compose, firewall rules, fail2ban, creates the `photobiz` deploy user, and creates `/opt/photobiz`.
+
+Verify the deploy user works:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "docker --version && docker compose version"
+```
+
+### 4. Create The Pilot Environment File
+
+Generate a long PostgreSQL password locally:
+
+```powershell
+-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 40 | ForEach-Object {[char]$_})
+```
+
+SSH into the Droplet as the deploy user:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip>
+```
+
+Create `/opt/photobiz/.env`:
+
+```bash
+cat >/opt/photobiz/.env <<'EOF'
+PHOTOBIZ_PILOT_HOST=<droplet-ip>.sslip.io
+POSTGRES_DB=photobiz
+POSTGRES_USER=photobiz
+POSTGRES_PASSWORD=<paste-long-random-password-here>
+CADDY_ACME_EMAIL=
+
+# Temporary first-login Application Owner for the internal pilot.
+# Remove these three lines after the first owner account exists.
+BootstrapAdmin__Email=owner@your-email.example
+BootstrapAdmin__Password=<strong temporary password>
+BootstrapAdmin__Name=PhotoBIZ Owner
+EOF
+
+chmod 600 /opt/photobiz/.env
+exit
+```
+
+Those `BootstrapAdmin__...` settings are environment variables read by the API container on startup. They create the first Application Owner only when no Application Owner exists yet. Set them only in `/opt/photobiz/.env` on the Droplet.
+
+Example with a fake IP and fake email:
+
+```text
+PHOTOBIZ_PILOT_HOST=203.0.113.10.sslip.io
+POSTGRES_DB=photobiz
+POSTGRES_USER=photobiz
+POSTGRES_PASSWORD=replace-this-with-a-long-random-password
+CADDY_ACME_EMAIL=
+BootstrapAdmin__Email=owner@example.com
+BootstrapAdmin__Password=ReplaceThisWithAStrongTemporaryPassword123!
+BootstrapAdmin__Name=PhotoBIZ Owner
+```
+
+Important: `PHOTOBIZ_PILOT_HOST` must not include `admin.`, `booth.`, `api.`, `https://`, or a trailing slash. It should look like:
+
+```text
+203.0.113.10.sslip.io
+```
+
+### 5. Configure GitHub Deployment Secrets
+
+In GitHub:
+
+1. Open the PhotoBIZ repository.
+2. Go to `Settings` > `Environments`.
+3. Create or open the environment named `production`.
+4. Enable required reviewers/manual approval if this repository supports it.
+5. Add these environment secrets:
+
+```text
+PHOTOBIZ_DEPLOY_HOST=<droplet-ip>
+PHOTOBIZ_DEPLOY_USER=photobiz
+PHOTOBIZ_DEPLOY_SSH_KEY=<contents of C:\Users\<you>\.ssh\photobiz_pilot_ed25519>
+```
+
+To print the private key for copying:
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" -Raw
+```
+
+Add this optional environment variable if the path differs from the default:
+
+```text
+PHOTOBIZ_DEPLOY_PATH=/opt/photobiz
+```
+
+### 6. Run The First GitHub Deploy
+
+In GitHub:
+
+1. Go to `Actions`.
+2. Open `Deploy Pilot`.
+3. Click `Run workflow`.
+4. Select the branch to deploy.
+5. Approve the `production` environment if prompted.
+
+The workflow will:
+
+1. Run backend tests.
+2. Install/build/test Angular apps.
+3. Validate the production Compose file.
+4. Build the production API and worker Docker images.
+5. Sync the repository and built Angular artifacts to `/opt/photobiz`.
+6. Run `docker compose --env-file .env -f docker-compose.prod.yml up -d --build`.
+7. Smoke-check the HTTPS endpoints.
+
+If the first TLS attempt fails, wait 1-2 minutes and rerun the smoke step or the workflow. Caddy sometimes needs a short moment for the first certificate issue.
+
+### 7. Verify The Pilot URLs
+
+From your browser, open:
+
+```text
+https://admin.<droplet-ip>.sslip.io
+https://booth.<droplet-ip>.sslip.io
+https://api.<droplet-ip>.sslip.io/health
+https://api.<droplet-ip>.sslip.io/api/platform/status
+```
+
+Expected API status:
+
+```json
+{
+  "service": "PhotoBIZ.Api",
+  "status": "ok",
+  "runtime": "net10.0"
+}
+```
+
+On the Droplet, check container status:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "cd /opt/photobiz && docker compose --env-file .env -f docker-compose.prod.yml ps"
+```
+
+View logs if something is down:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "cd /opt/photobiz && docker compose --env-file .env -f docker-compose.prod.yml logs --tail=100 api reverse-proxy"
+```
+
+### 8. Install Nightly Database Backups
+
+After the first deploy succeeds, install the backup cron:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> "APP_DIR=/opt/photobiz bash /opt/photobiz/infra/scripts/install-backup-cron.sh"
+```
+
+Run one manual backup:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "APP_DIR=/opt/photobiz bash /opt/photobiz/infra/scripts/backup-postgres.sh"
+```
+
+Confirm a `.dump.gz` file exists:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "ls -lh /opt/photobiz/backups/postgres"
+```
+
+Before real-money use, copy backups off the Droplet and do a restore rehearsal.
+
+### 9. First Application Setup
+
+Open:
+
+```text
+https://admin.<droplet-ip>.sslip.io
+```
+
+Sign in with the temporary bootstrap Application Owner from `/opt/photobiz/.env`.
+
+After confirming the first owner account exists, remove the three `BootstrapAdmin__...` lines from `/opt/photobiz/.env` and restart the API:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "cd /opt/photobiz && sed -i '/^BootstrapAdmin__/d' .env && docker compose --env-file .env -f docker-compose.prod.yml up -d api"
+```
+
+Then verify:
+
+1. Application Owner login works.
+2. Client onboarding works.
+3. Client Owner forced password change works.
+4. Location, booth, package, payment assignment, and cashier setup work.
+5. Booth UI opens with a kiosk token.
+
+### 10. PayMongo Test Mode
+
+Keep PayMongo in test mode for this pilot.
+
+In PhotoBIZ Admin:
+
+1. Open the tenant payment settings.
+2. Enter PayMongo test keys.
+3. Save step 1 to generate the webhook URL.
+4. Copy the generated webhook URL.
+
+In PayMongo Dashboard test mode:
+
+1. Go to `Developers` > `Webhooks`.
+2. Create a webhook with the copied URL.
+3. Subscribe to:
+   - `payment.paid`
+   - `payment.failed`
+   - `qrph.expired`
+4. Copy the webhook signing secret back into PhotoBIZ.
+5. Verify the setup from PhotoBIZ.
+
+The webhook URL should look like:
+
+```text
+https://api.<droplet-ip>.sslip.io/api/payments/paymongo/webhooks/{resourceId}
+```
+
+### 11. Agent Pilot Settings
+
+On the booth laptop, configure the Agent Control Center with:
+
+```text
+API base URL:      https://api.<droplet-ip>.sslip.io
+Booth UI base URL: https://booth.<droplet-ip>.sslip.io
+```
+
+Use simulator mode first. Only move to LumaBooth API mode after the full cash/session flow works against the pilot API.
+
+### 12. Common Troubleshooting
+
+If HTTPS does not work:
+
+- Confirm ports 80 and 443 are open in DigitalOcean Cloud Firewall, if one is attached.
+- Confirm Ubuntu firewall allows 80 and 443:
+
+```bash
+sudo ufw status
+```
+
+- Confirm the hostname resolves:
+
+```powershell
+nslookup api.<droplet-ip>.sslip.io
+```
+
+If GitHub deploy cannot SSH:
+
+- Confirm `PHOTOBIZ_DEPLOY_HOST` is only the IP address.
+- Confirm `PHOTOBIZ_DEPLOY_USER` is `photobiz`.
+- Confirm `PHOTOBIZ_DEPLOY_SSH_KEY` contains the full private key, including the `BEGIN OPENSSH PRIVATE KEY` and `END OPENSSH PRIVATE KEY` lines.
+- Confirm the deploy user can SSH manually from your machine.
+
+If containers fail:
+
+```bash
+cd /opt/photobiz
+docker compose --env-file .env -f docker-compose.prod.yml ps
+docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200
+```
+
+If PayMongo webhook URLs are wrong:
+
+- Confirm the public Admin Web is being accessed through `https://admin.<droplet-ip>.sslip.io`.
+- Confirm API is behind `https://api.<droplet-ip>.sslip.io`.
+- Confirm `ForwardedHeaders__Enabled=true` is present in the API container environment through `docker compose --env-file .env -f docker-compose.prod.yml config`.

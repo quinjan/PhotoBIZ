@@ -13,6 +13,7 @@ public interface IAgentConfigurationStore
 public sealed record AgentConfigurationSnapshot(
     string ApiBaseUrl,
     string BoothCode,
+    string BoothName,
     bool HasAgentCredential,
     int PollIntervalSeconds,
     int SimulatedSessionDurationSeconds,
@@ -41,6 +42,7 @@ public sealed record DisplayConfigurationSnapshot(
 public sealed record AgentConfigurationUpdate(
     string ApiBaseUrl,
     string BoothCode,
+    string BoothName,
     string? AgentCredential,
     int PollIntervalSeconds,
     int SimulatedSessionDurationSeconds,
@@ -91,6 +93,7 @@ public sealed class FileAgentConfigurationStore(
         {
             ApiBaseUrl = NormalizeRequired(update.ApiBaseUrl, "API base URL"),
             BoothCode = NormalizeRequired(update.BoothCode, "booth code").ToUpperInvariant(),
+            BoothName = update.BoothName.Trim(),
             AgentCredential = ProtectOrPreserve(update.AgentCredential, existing.AgentCredential),
             PollIntervalSeconds = Math.Max(1, update.PollIntervalSeconds),
             SimulatedSessionDurationSeconds = Math.Max(1, update.SimulatedSessionDurationSeconds),
@@ -147,6 +150,7 @@ public sealed class FileAgentConfigurationStore(
         {
             ApiBaseUrl = config.ApiBaseUrl,
             BoothCode = config.BoothCode,
+            BoothName = config.BoothName,
             AgentCredential = Unprotect(config.AgentCredential),
             PollIntervalSeconds = config.PollIntervalSeconds,
             SimulatedSessionDurationSeconds = config.SimulatedSessionDurationSeconds,
@@ -180,6 +184,7 @@ public sealed class FileAgentConfigurationStore(
         return new AgentConfigurationSnapshot(
             config.ApiBaseUrl,
             config.BoothCode,
+            config.BoothName,
             !string.IsNullOrWhiteSpace(config.AgentCredential),
             config.PollIntervalSeconds,
             config.SimulatedSessionDurationSeconds,
@@ -239,6 +244,7 @@ public sealed class FileAgentConfigurationStore(
     {
         public string ApiBaseUrl { get; set; } = "https://api.photobiz.local";
         public string BoothCode { get; set; } = string.Empty;
+        public string BoothName { get; set; } = string.Empty;
         public string AgentCredential { get; set; } = string.Empty;
         public int PollIntervalSeconds { get; set; } = 5;
         public int SimulatedSessionDurationSeconds { get; set; } = 6;

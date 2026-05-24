@@ -24,8 +24,7 @@ The source mockups live in `ui-mockups.html`. Screenshots in `screenshots/` may 
 | Client branding plus booth-level theme/session/payment setup | `booth-customization` |
 | Transactions, reports, and audit activity | `transactions-reporting` |
 | Client payment resource and session settings | `settings-payments` |
-| Coming soon Maya Checkout registration | `maya-checkout-registration` |
-| Coming soon Maya Terminal ECR registration | `maya-ecr-registration` |
+| PayMongo QR Ph registration | `paymongo-qrph-registration` |
 | Cashier POS | `cashier-pos` |
 
 ## Booth UI Coverage
@@ -110,24 +109,16 @@ flowchart TD
 
 ## Payment Resource And Booth Assignment Checklist
 
-These mockups document client-level future payment resources and booth-level assignment. They do not enable live cashless payments in the MVP.
+These mockups document client-level payment resources and booth-level assignment. PayMongo QR Ph is runtime-available only after verified tenant setup, booth assignment, and runtime enablement.
 
-Maya Checkout QR setup:
+PayMongo QR Ph setup:
 
-1. Client Owner opens `maya-checkout-registration`.
-2. Client reviews Business Account, API Keys, Webhook, Verification, and Ready steps.
-3. Client enters Maya Business account name, public API key, and masked secret API key.
-4. Client copies the PhotoBIZ webhook URL into Maya Business Manager.
-5. Client can assign the future QR option per booth only after the client resource exists and is active or verified.
-6. `MAYA_CHECKOUT_QR` remains locked for runtime use until future verification and provider support are implemented.
-
-Maya Terminal ECR setup:
-
-1. Client Owner opens `maya-ecr-registration`.
-2. Client reviews Terminal Ordered, ECR Kit Received, Booth Assigned, COM Port Set, and Connection Test steps.
-3. Client drafts one or more terminal device records with terminal name, required `deviceId`, model/reference, and serial or asset tag.
-4. Client assigns one or more active ECR `deviceId` values per booth from `booth-customization`.
-5. `MAYA_TERMINAL_ECR` remains locked for runtime use until Maya terminal hardware and Windows Agent ECR support are implemented.
+1. Client Owner opens `settings-payments`.
+2. Client selects PayMongo test or live mode and reviews the same-page setup instructions.
+3. Client copies matching API keys from PayMongo `Settings > Developers` and enters business account name, public key, secret key, and webhook secret.
+4. Client creates a same-mode PayMongo webhook in `Developers > Webhooks` using the PhotoBIZ webhook URL and subscribes to `payment.paid`, `payment.failed`, and `qrph.expired`.
+5. Client saves the provider resource, then uses Verify PayMongo Setup.
+6. Verified `PAYMONGO_QRPH` can be assigned per booth and runtime-enabled alongside cash.
 
 ## Ending A Booth
 

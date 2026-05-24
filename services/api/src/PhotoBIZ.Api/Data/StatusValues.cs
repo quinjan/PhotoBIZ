@@ -100,13 +100,19 @@ public static class StatusValues
     public static class PaymentProvider
     {
         public const string Maya = "MAYA";
+        public const string PayMongo = "PAYMONGO";
     }
 
     public static class PaymentMethod
     {
         public const string Cash = "CASH";
-        public const string MayaCheckoutQr = "MAYA_CHECKOUT_QR";
-        public const string MayaTerminalEcr = "MAYA_TERMINAL_ECR";
+        public const string PayMongoQrPh = "PAYMONGO_QRPH";
+    }
+
+    public static class PaymentMode
+    {
+        public const string Test = "test";
+        public const string Live = "live";
     }
 
     public static class PaymentResource
@@ -136,6 +142,7 @@ public static class StatusValues
     {
         public const string Created = "CREATED";
         public const string PendingCash = "PENDING_CASH";
+        public const string PendingPayMongoQrPh = "PENDING_PAYMONGO_QRPH";
         public const string Paid = "PAID";
         public const string StartingSession = "STARTING_SESSION";
         public const string InSession = "IN_SESSION";

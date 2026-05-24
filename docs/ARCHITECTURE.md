@@ -36,7 +36,7 @@ flowchart LR
   Luma --> Camera["Canon R50 Camera"]
   Luma --> Fotoshare["LumaBooth / Fotoshare<br/>Digital Delivery"]
 
-  API -. "Coming Soon" .-> Maya["Maya Checkout QR / Terminal ECR"]
+  API <--> PayMongo["PayMongo QR Ph"]
 ```
 
 ## Tenant And Subscription Flow
@@ -253,11 +253,11 @@ Agent configuration keys:
 Payment setup has two levels plus the built-in cash resource:
 
 - Cash is a built-in client payment resource. It is always enabled/verified for every client tenant and cannot be disabled at the tenant level.
-- Admin Web Settings exposes tenant payment resources. Client Owner and Client Admin users can toggle Maya Checkout QR and Maya Terminal ECR resources to create or enable draft setup records, or disable those resources before they are usable.
-- Client-level provider resources register one Maya Checkout QR configuration and Maya Terminal ECR device/configuration records. A draft resource is setup state only and is not runtime-ready.
+- Admin Web Settings exposes tenant payment resources. Client Owner and Client Admin users can configure PayMongo QR Ph credentials, webhook signing secret, and test/live mode for the tenant.
+- Client-level provider resources register one PayMongo QR Ph configuration per tenant. The encrypted secret key and encrypted webhook secret are never returned to frontend clients; only masked public key metadata, webhook URL, setup status, and verification timestamp are returned.
 - Booth-level assignments choose which registered payment resources are allowed on each booth.
-- Runtime exposure requires every gate: usable/verified client payment resource where provider-backed, booth assignment `ASSIGNED`, `RuntimeEnabled == true`, and live provider feature availability.
-- Future payment option values are `MAYA_CHECKOUT_QR` and `MAYA_TERMINAL_ECR`, but they remain locked from Booth UI and Cashier POS runtime payment until the provider integrations are enabled in a future phase.
+- Runtime exposure requires every gate: usable/verified client payment resource where provider-backed, booth assignment `ASSIGNED`, `RuntimeEnabled == true`, subscription eligibility, booth availability, and fresh agent heartbeat for session-starting transactions.
+- Runtime payment option values are `CASH` and `PAYMONGO_QRPH`. Legacy payment setup tables from earlier planning remain inert and are not surfaced as client payment options.
 
 ## Cash Payment State Flow
 
@@ -293,17 +293,17 @@ stateDiagram-v2
   SESSION_FAILED --> WELCOME: Manual recovery
 ```
 
-## Coming Soon Maya Checkout QR Flow
+## PayMongo QR Ph Flow
 
 ```mermaid
 stateDiagram-v2
   [*] --> WELCOME
   WELCOME --> OFFER_CONFIRMED: Customer confirms active offer
-  OFFER_CONFIRMED --> PENDING_MAYA_CHECKOUT_QR: Customer chooses Maya Checkout QR
-  PENDING_MAYA_CHECKOUT_QR --> PAID: Maya webhook confirms paid
-  PENDING_MAYA_CHECKOUT_QR --> EXPIRED: Maya webhook or timeout
-  PENDING_MAYA_CHECKOUT_QR --> PAYMENT_FAILED: Maya webhook confirms failure
-  PENDING_MAYA_CHECKOUT_QR --> CANCELLED: Customer or cashier cancels
+  OFFER_CONFIRMED --> PENDING_PAYMONGO_QRPH: Customer chooses PayMongo QR Ph
+  PENDING_PAYMONGO_QRPH --> PAID: Verified PayMongo webhook confirms paid
+  PENDING_PAYMONGO_QRPH --> EXPIRED: PayMongo expiration or timeout
+  PENDING_PAYMONGO_QRPH --> PAYMENT_FAILED: Verified PayMongo webhook confirms failure
+  PENDING_PAYMONGO_QRPH --> CANCELLED: Customer or cashier cancels
   PAID --> STARTING_SESSION
   STARTING_SESSION --> IN_SESSION
   IN_SESSION --> COMPLETED
@@ -313,7 +313,7 @@ stateDiagram-v2
   CANCELLED --> WELCOME
 ```
 
-## Coming Soon Maya Checkout QR Runtime Flow
+## PayMongo QR Ph Runtime Flow
 
 ```mermaid
 sequenceDiagram
@@ -321,18 +321,19 @@ sequenceDiagram
   participant C as Customer
   participant B as Booth UI
   participant API as Backend API
-  participant M as Maya
+  participant P as PayMongo
   participant A as Windows Agent
 
   C->>B: Confirm active offer
   B->>API: Create transaction
-  C->>B: Choose Maya Checkout QR
-  API->>API: Load encrypted client Maya credentials
-  API->>M: Create Maya Checkout payment
-  M-->>API: Payment reference + QR data
+  C->>B: Choose PayMongo QR Ph
+  API->>API: Validate tenant setup, booth assignment, subscription, booth state, and agent heartbeat
+  API->>API: Load encrypted client PayMongo secret key
+  API->>P: Create Payment Intent and attach QR Ph payment method
+  P-->>API: Payment Intent reference + QR data
   API-->>B: Render QR code
-  C->>M: Pay using wallet/bank app
-  M-->>API: Webhook payment success
+  C->>P: Pay using wallet/bank app
+  P-->>API: Signed webhook payment.paid
   API->>API: Verify and mark PAID
   API->>A: Start LumaBooth session
 ```
@@ -422,8 +423,8 @@ Responsibilities:
 - Booth UI config API.
 - Transaction state machine.
 - Payment orchestration.
-- Maya Checkout QR provider integration during Phase 5.
-- Maya Terminal ECR provider integration during Phase 5.
+- PayMongo QR Ph provider integration.
+- PayMongo webhook verification and payment reconciliation.
 - Agent command dispatch.
 - Realtime updates to Booth UI and Cashier POS.
 - Reporting.
@@ -478,6 +479,8 @@ photobooth-platform/
 
 ## Data Model
 
+`CLIENT_MAYA_ECR_DEVICE` remains in the schema as an inert legacy planning table. It is not an active payment resource and should not be surfaced in Admin Settings, booth assignment, Booth UI, or Cashier POS.
+
 ```mermaid
 erDiagram
   CLIENT_ACCOUNT ||--o{ LOCATION : owns
@@ -486,13 +489,13 @@ erDiagram
   CLIENT_ACCOUNT ||--o{ PRINT_ENTITLEMENT : defines
   CLIENT_ACCOUNT ||--o{ CLIENT_SUBSCRIPTION : subscribes
   CLIENT_ACCOUNT ||--o{ CLIENT_PAYMENT_PROVIDER_CONFIG : configures
-  CLIENT_ACCOUNT ||--o{ CLIENT_MAYA_ECR_DEVICE : registers
+  CLIENT_ACCOUNT ||--o{ CLIENT_MAYA_ECR_DEVICE : legacy_inert
   SUBSCRIPTION_PLAN ||--o{ CLIENT_SUBSCRIPTION : assigned_as
   LOCATION ||--o{ BOOTH : contains
   BOOTH ||--|| BOOTH_APPEARANCE_CONFIG : configures
   BOOTH ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : allows
   CLIENT_PAYMENT_PROVIDER_CONFIG ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : assigned_to
-  CLIENT_MAYA_ECR_DEVICE ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : assigned_to
+  CLIENT_MAYA_ECR_DEVICE ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : legacy_inert
   BOOTH ||--o{ BOOTH_OFFER_ACTIVATION : activates
   BOOTH_OFFER ||--o{ BOOTH_OFFER_ACTIVATION : assigned_to
   BOOTH ||--o{ TRANSACTION : records
@@ -547,10 +550,12 @@ erDiagram
     uuid client_account_id
     string provider
     string integration_type
+    string payment_mode
     string status
     string business_account_name
     string public_key_masked
     string encrypted_secret_key
+    string encrypted_webhook_secret
     string webhook_url
     datetime verified_at
   }
@@ -895,7 +900,7 @@ Each booth is paired to exactly one environment.
 - Active booth offer assignment.
 - Minimal tenant Booth UI theme management.
 - Booth-level cash payment assignment.
-- Tenant-level payment resource settings with cash always enabled and draft Maya QR/ECR setup records.
+- Tenant-level payment resource settings with cash always enabled and PayMongo QR Ph credential setup.
 
 ### Phase 2: Transaction And POS
 
@@ -926,12 +931,12 @@ Each booth is paired to exactly one environment.
 - Booth status reports.
 - Audit logs.
 
-### Phase 5: Coming Soon Real Payments
+### Phase 5: Real Payments
 
-- Client-owned Maya Checkout QR integration.
-- Maya webhook handling.
+- Client-owned PayMongo QR Ph integration.
+- PayMongo webhook handling.
 - Payment reconciliation.
-- Maya Terminal ECR integration using booth-assigned client ECR `deviceId` values.
+- Provider-specific terminal integrations can be evaluated later as separate features.
 
 ## Architectural Principles
 

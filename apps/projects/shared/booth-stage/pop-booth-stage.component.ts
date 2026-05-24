@@ -17,6 +17,7 @@ import {
   stageCashOption,
   stageEyebrow,
   stageMessage,
+  stagePayMongoQrOption,
   stageTitle,
   shouldShowStageOfferDetails,
 } from './booth-stage.helpers';
@@ -38,6 +39,7 @@ export class PopBoothStageComponent {
   private readonly autoReturnStartedAt = signal(Date.now());
   protected readonly backConfirmOpen = signal(false);
   protected readonly paymentConfirmOpen = signal(false);
+  protected readonly selectedPaymentAction = signal<BoothStageAction>('cash');
   readonly config = input<BoothStageConfig | null>(null);
   readonly screen = input<BoothStageScreenState>('connect');
   readonly loading = input(false);
@@ -47,6 +49,12 @@ export class PopBoothStageComponent {
   protected readonly message = computed(() => this.popMessage());
   protected readonly eyebrow = computed(() => stageEyebrow(this.config()));
   protected readonly cashOption = computed(() => stageCashOption(this.config()));
+  protected readonly payMongoQrOption = computed(() => stagePayMongoQrOption(this.config()));
+  protected readonly selectedPaymentLabel = computed(() =>
+    this.selectedPaymentAction() === 'paymongo-qrph'
+      ? (this.payMongoQrOption()?.label ?? 'PayMongo QR Ph')
+      : (this.cashOption()?.label ?? 'Cash'),
+  );
   protected readonly backgroundImage = computed(() => stageBackgroundImage(this.config()));
   protected readonly activeTransaction = computed(() => this.config()?.activeTransaction ?? null);
   protected readonly showOfferDetails = computed(() => shouldShowStageOfferDetails(this.config()));
@@ -326,6 +334,12 @@ export class PopBoothStageComponent {
   }
 
   protected openPaymentConfirm(): void {
+    this.selectedPaymentAction.set('cash');
+    this.paymentConfirmOpen.set(true);
+  }
+
+  protected openPayMongoConfirm(): void {
+    this.selectedPaymentAction.set('paymongo-qrph');
     this.paymentConfirmOpen.set(true);
   }
 
@@ -335,7 +349,7 @@ export class PopBoothStageComponent {
 
   protected confirmPayment(): void {
     this.closePaymentConfirm();
-    this.action.emit('cash');
+    this.action.emit(this.selectedPaymentAction());
   }
 
   private popTitle(): string {

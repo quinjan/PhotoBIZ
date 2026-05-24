@@ -66,6 +66,9 @@ export function stageMessage(
     case 'payment':
       return 'Choose how to pay before the session starts.';
     case 'waiting':
+      if (config?.activeTransaction?.paymentMethod === 'PAYMONGO_QRPH') {
+        return 'Scan the QR code, then wait for payment confirmation.';
+      }
       return 'Please wait while the cashier confirms payment option. Please pay at the cashier after using the booth.';
     case 'approved':
       return 'Payment confirmed. The booth session is starting.';
@@ -102,6 +105,16 @@ export function stageCashOption(
   return (
     config?.paymentOptions.find((option) => option.method === 'CASH' && option.runtimeEnabled) ??
     null
+  );
+}
+
+export function stagePayMongoQrOption(
+  config: BoothStageConfig | null,
+): { readonly method: string; readonly label: string; readonly runtimeEnabled: boolean } | null {
+  return (
+    config?.paymentOptions.find(
+      (option) => option.method === 'PAYMONGO_QRPH' && option.runtimeEnabled,
+    ) ?? null
   );
 }
 

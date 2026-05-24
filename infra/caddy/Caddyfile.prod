@@ -1,0 +1,19 @@
+api.{$PHOTOBIZ_PILOT_HOST} {
+	encode zstd gzip
+
+	reverse_proxy api:8080
+}
+
+admin.{$PHOTOBIZ_PILOT_HOST} {
+	encode zstd gzip
+	root * /srv/admin
+	try_files {path} /index.html
+	file_server
+}
+
+booth.{$PHOTOBIZ_PILOT_HOST} {
+	encode zstd gzip
+	root * /srv/booth
+	try_files {path} /index.html
+	file_server
+}

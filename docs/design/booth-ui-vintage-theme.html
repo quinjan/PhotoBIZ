@@ -870,74 +870,43 @@
       margin: 0;
     }
 
-    .qr-stage {
-      align-items: center;
-      display: grid;
-      gap: 26px;
-      grid-template-columns: 340px minmax(0, 1fr);
-      max-width: 850px;
-      width: 100%;
-    }
-
-    .qr-card {
-      animation: ticketPop 560ms cubic-bezier(0.18, 1.1, 0.28, 1) both;
-      background: #fff7e8;
-      border: 8px solid var(--cream);
-      border-radius: 8px;
-      box-shadow: 0 24px 52px var(--shadow);
-      display: grid;
-      gap: 14px;
-      justify-items: center;
-      padding: 24px;
-    }
-
-    .qr-code {
-      background: #fffdf5;
-      border: 8px solid #fffdf5;
-      display: grid;
-      gap: 3px;
-      grid-template-columns: repeat(13, 1fr);
-      height: 246px;
-      width: 246px;
-    }
-
-    .qr-cell {
-      background: #f9efd9;
-      min-height: 0;
-    }
-
-    .qr-cell.is-dark {
-      background: var(--ink);
-    }
-
-    .qr-copy {
-      animation: textRise 520ms ease-out 180ms both;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.48), transparent 34%),
-        var(--cream);
-      border: 6px solid #fff7e8;
-      border-radius: 8px;
-      box-shadow: 0 24px 52px var(--shadow);
-      color: var(--ink);
-      display: grid;
-      gap: 16px;
-      padding: 30px;
-    }
-
-    .qr-copy h2 {
+    .qr-payment-panel {
       color: var(--red-dark);
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 52px;
-      line-height: 0.96;
-      margin: 0;
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      margin: 2px auto 0;
+      max-width: 260px;
     }
 
-    .qr-copy p {
+    .qr-payment-panel img {
+      aspect-ratio: 1;
+      background: #ffffff;
+      border: 2px solid var(--paper-dark);
+      border-radius: 8px;
+      box-shadow: 0 14px 28px rgba(112, 25, 21, 0.18);
+      object-fit: contain;
+      padding: 12px;
+      width: 240px;
+    }
+
+    .qr-payment-panel strong,
+    .qr-payment-panel span {
+      display: block;
+    }
+
+    .qr-payment-panel strong {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .qr-payment-panel span {
       color: #5a3c2c;
-      font-size: 20px;
+      font-size: 12px;
       font-weight: 900;
-      line-height: 1.28;
-      margin: 0;
+      letter-spacing: 1.1px;
+      text-transform: uppercase;
     }
 
     .tone-muted .screen {
@@ -1233,7 +1202,8 @@
       offerPrice: "PHP 250",
       printEntitlement: "2 pcs 6x2 or 1 pc 6x4",
       transactionNumber: "PBZ-20260523-0007",
-      qrReference: "MAYA-QR-0007"
+      payMongoTransactionNumber: "PBZ-20260523-0008",
+      payMongoQrImageUrl: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' fill='white'/%3E%3Crect x='8' y='8' width='28' height='28' fill='%2323150f'/%3E%3Crect x='14' y='14' width='16' height='16' fill='white'/%3E%3Crect x='84' y='8' width='28' height='28' fill='%2323150f'/%3E%3Crect x='90' y='14' width='16' height='16' fill='white'/%3E%3Crect x='8' y='84' width='28' height='28' fill='%2323150f'/%3E%3Crect x='14' y='90' width='16' height='16' fill='white'/%3E%3Crect x='46' y='10' width='8' height='8' fill='%2323150f'/%3E%3Crect x='62' y='18' width='8' height='8' fill='%2323150f'/%3E%3Crect x='46' y='34' width='24' height='8' fill='%2323150f'/%3E%3Crect x='78' y='46' width='8' height='24' fill='%2323150f'/%3E%3Crect x='42' y='54' width='8' height='8' fill='%2323150f'/%3E%3Crect x='58' y='54' width='16' height='8' fill='%2323150f'/%3E%3Crect x='90' y='54' width='16' height='8' fill='%2323150f'/%3E%3Crect x='42' y='70' width='32' height='8' fill='%2323150f'/%3E%3Crect x='82' y='78' width='8' height='8' fill='%2323150f'/%3E%3Crect x='98' y='78' width='8' height='24' fill='%2323150f'/%3E%3Crect x='46' y='94' width='8' height='16' fill='%2323150f'/%3E%3Crect x='62' y='94' width='24' height='8' fill='%2323150f'/%3E%3C/svg%3E"
     };
 
     const screenStates = [
@@ -1315,8 +1285,8 @@
             target: "waiting"
           },
           {
-            title: "QRPH",
-            target: "qr-waiting"
+            title: "PayMongo QR Ph",
+            target: "paymongo-waiting"
           }
         ]
       },
@@ -1335,24 +1305,30 @@
         footerLeft: boothConfig.transactionNumber,
         footerRight: "",
         progress: "55%",
-        timeoutSeconds: 300
+        timeoutSeconds: 60
       },
       {
-        id: "qr-waiting",
+        id: "paymongo-waiting",
+        screenId: "waiting",
         label: "QR Waiting",
         boothState: "PAYMENT_PENDING",
         tone: "normal",
-        layout: "qr-waiting",
-        eyebrow: "QRPH",
-        title: "Scan To Pay",
+        layout: "payment",
+        eyebrow: "Cashier Approval",
+        title: "Cashier Approval",
         message: "Scan the QR code, then wait for confirmation.",
         action: "",
         backTarget: "payment",
         backConfirmMessage: "Return to payment choices?",
-        footerLeft: boothConfig.transactionNumber,
+        footerLeft: boothConfig.payMongoTransactionNumber,
         footerRight: "",
         progress: "50%",
-        timeoutSeconds: 300
+        timeoutSeconds: 60,
+        qrPayment: {
+          imageUrl: boothConfig.payMongoQrImageUrl,
+          amount: boothConfig.offerPrice,
+          transactionNumber: boothConfig.payMongoTransactionNumber
+        }
       },
       {
         id: "approved",
@@ -1392,7 +1368,7 @@
         title: "Thanks for sharing your smile.",
         message: "A timeless photo for a timeless moment.",
         extraMessage: "Need extra prints? Go to the cashier.",
-        action: "Back to Start",
+        action: "Back To Start",
         autoReturnSeconds: 15,
         footerLeft: "",
         footerRight: "",
@@ -1407,7 +1383,7 @@
         eyebrow: "Expired",
         title: "Request Expired",
         message: "Please start again.",
-        action: "Back to Start",
+        action: "Back To Start",
         autoReturnSeconds: 15,
         footerLeft: "",
         footerRight: "",
@@ -1422,7 +1398,7 @@
         eyebrow: "Cancelled",
         title: "Request Cancelled",
         message: "Please ask the cashier.",
-        action: "Back to Start",
+        action: "Back To Start",
         autoReturnSeconds: 15,
         footerLeft: "",
         footerRight: "",
@@ -1437,7 +1413,7 @@
         eyebrow: "Payment Failed",
         title: "Payment Failed",
         message: "Please ask the cashier.",
-        action: "Back to Start",
+        action: "Back To Start",
         autoReturnSeconds: 15,
         footerLeft: "",
         footerRight: "",
@@ -1569,46 +1545,6 @@
       `;
     }
 
-    function renderQrCode() {
-      const darkCells = new Set([
-        0, 1, 2, 3, 5, 6, 8, 9, 10, 11, 12,
-        13, 16, 18, 21, 25,
-        26, 28, 29, 31, 32, 34, 36, 38,
-        39, 42, 44, 45, 48, 51,
-        52, 53, 54, 56, 58, 60, 61, 62, 64,
-        66, 68, 70, 73, 75, 77,
-        78, 79, 81, 83, 84, 87, 89, 90,
-        91, 94, 95, 97, 100, 102, 103,
-        104, 106, 108, 110, 111, 112, 116,
-        117, 119, 120, 123, 125, 127, 128,
-        130, 131, 132, 134, 136, 139, 140, 141, 142,
-        143, 146, 148, 151, 153, 155,
-        156, 157, 158, 160, 162, 164, 166, 167, 168
-      ]);
-
-      return Array.from({ length: 169 }, (_, index) => {
-        const className = darkCells.has(index) ? "qr-cell is-dark" : "qr-cell";
-        return `<span class="${className}"></span>`;
-      }).join("");
-    }
-
-    function renderQrWaitingLayout(state) {
-      return `
-        <div class="qr-stage">
-          <aside class="qr-card" aria-label="Payment QR code">
-            <div class="qr-code" aria-hidden="true">${renderQrCode()}</div>
-          </aside>
-
-          <article class="qr-copy">
-            <div class="label">${state.eyebrow}</div>
-            <h2>${state.title}</h2>
-            <p>${state.message}</p>
-            ${renderTimeout(state)}
-          </article>
-        </div>
-      `;
-    }
-
     function renderFilmLayout(state) {
       return `
         <div class="film-card">
@@ -1643,8 +1579,15 @@
         <div class="payment-stage">
           <article class="ticket">
             ${ticketHeader}
-            <h2>${state.title}</h2>
+            ${(state.screenId || state.id) === "waiting" ? "" : `<h2>${state.title}</h2>`}
             <p>${state.message}</p>
+            ${state.qrPayment ? `
+              <div class="qr-payment-panel">
+                <img src="${state.qrPayment.imageUrl}" alt="PayMongo QR Ph code">
+                <strong>${state.qrPayment.amount}</strong>
+                <span>${state.qrPayment.transactionNumber}</span>
+              </div>
+            ` : ""}
             ${state.timeoutSeconds ? renderTimeout(state) : renderProgress(state)}
             ${renderAction(state)}
           </article>
@@ -1696,7 +1639,7 @@
 
     function renderScreen(state) {
       const toneClass = state.tone ? `tone-${state.tone}` : "";
-      const stateClass = `state-${state.id}`;
+      const stateClass = `state-${state.screenId || state.id}`;
       const backButton = state.backTarget
         ? `<button type="button" class="back-button" data-back-target="${state.backTarget}">Back</button>`
         : "";
@@ -1704,11 +1647,9 @@
       const content =
         state.layout === "payment-options"
           ? renderPaymentOptionsLayout(state)
-          : state.layout === "qr-waiting"
-            ? renderQrWaitingLayout(state)
-            : state.layout === "payment"
-              ? renderPaymentLayout(state)
-              : renderFilmLayout(state);
+          : state.layout === "payment"
+            ? renderPaymentLayout(state)
+            : renderFilmLayout(state);
 
       return `
         <section class="${toneClass} ${stateClass}">
@@ -1926,7 +1867,7 @@
       attachPaymentChoiceHandlers();
       document.getElementById("currentState").innerHTML = `
         <strong>${state.label}</strong>
-        <p>${state.id} | ${humanize(state.boothState)}</p>
+        <p>${state.screenId || state.id} | ${humanize(state.boothState)}</p>
       `;
 
       document.querySelectorAll(".state-nav button").forEach((button) => {
@@ -1953,7 +1894,7 @@
     }
 
     const requestedState = new URLSearchParams(window.location.search).get("screen") || defaultStateId;
-    const normalizedRequestedState = requestedState === "payment-qr-available" ? "payment" : requestedState;
+    const normalizedRequestedState = requestedState === "payment-qr-available" || requestedState === "qr-waiting" ? "paymongo-waiting" : requestedState;
     renderNavigation(normalizedRequestedState);
     setState(normalizedRequestedState);
   </script>

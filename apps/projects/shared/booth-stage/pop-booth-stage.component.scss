@@ -608,6 +608,28 @@
   text-transform: uppercase;
 }
 
+.qr-payment-panel {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 18px auto;
+  max-width: 260px;
+}
+
+.qr-payment-panel img {
+  width: min(240px, 45vw);
+  aspect-ratio: 1;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.qr-payment-panel strong,
+.qr-payment-panel span {
+  display: block;
+}
+
 .ticket {
   display: grid;
   gap: 20px;

@@ -50,8 +50,10 @@ public sealed class ClientPaymentProviderConfig
     public string IntegrationType { get; set; } = string.Empty;
     public string Status { get; set; } = StatusValues.PaymentResource.NotConfigured;
     public string? BusinessAccountName { get; set; }
+    public string? PaymentMode { get; set; }
     public string? PublicKeyMasked { get; set; }
     public string? EncryptedSecretKey { get; set; }
+    public string? EncryptedWebhookSecret { get; set; }
     public string? WebhookUrl { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }
 

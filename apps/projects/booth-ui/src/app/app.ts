@@ -9,6 +9,7 @@ import {
   BoothStageConfig,
   BoothStageScreenState,
 } from '@photobiz/booth-stage';
+import { resolvePhotoBizApiBaseUrl } from '../../../shared/runtime-config';
 import { firstValueFrom, interval } from 'rxjs';
 
 type BoothTransaction = {
@@ -32,7 +33,7 @@ type RunOptions = {
   styleUrl: './app.scss',
 })
 export class App {
-  private static readonly apiBaseUrl = 'http://localhost:5082';
+  private static readonly apiBaseUrl = resolvePhotoBizApiBaseUrl();
   private static readonly completedPromptDurationMs = 15_000;
   private static readonly completedPromptRetryMs = 1_000;
   private static readonly paymentIdleCancelMs = 30_000;
@@ -91,7 +92,10 @@ export class App {
       return 'payment';
     }
 
-    if (activeTransaction?.status === 'PENDING_CASH') {
+    if (
+      activeTransaction?.status === 'PENDING_CASH' ||
+      activeTransaction?.status === 'PENDING_PAYMONGO_QRPH'
+    ) {
       return 'waiting';
     }
 
@@ -191,10 +195,18 @@ export class App {
   }
 
   protected async chooseCash(): Promise<void> {
+    await this.choosePaymentMethod('CASH', 'Could not select cash payment.');
+  }
+
+  protected async choosePayMongoQrPh(): Promise<void> {
+    await this.choosePaymentMethod('PAYMONGO_QRPH', 'Could not create PayMongo QR Ph payment.');
+  }
+
+  private async choosePaymentMethod(method: string, errorMessage: string): Promise<void> {
     const transaction = this.currentTransaction();
 
     if (!transaction) {
-      this.error.set('Could not select cash payment. Please start again.');
+      this.error.set(`${errorMessage} Please start again.`);
       return;
     }
 
@@ -203,7 +215,7 @@ export class App {
         const updated = await firstValueFrom(
           this.http.post<BoothTransaction>(
             `${App.apiBaseUrl}/api/booth-ui/transactions/${transaction.id}/payment-method`,
-            { method: 'CASH' },
+            { method },
             { headers: this.headers() },
           ),
         );
@@ -211,7 +223,7 @@ export class App {
         this.transaction.set(updated);
         await this.loadConfig({ showBusy: false });
       },
-      { errorMessage: 'Could not select cash payment.' },
+      { errorMessage },
     );
   }
 
@@ -233,6 +245,9 @@ export class App {
           break;
         case 'cash':
           await this.chooseCash();
+          break;
+        case 'paymongo-qrph':
+          await this.choosePayMongoQrPh();
           break;
         case 'cancel-transaction':
           await this.cancelActiveTransaction(true, 'BACK_BUTTON');
@@ -443,7 +458,11 @@ export class App {
   private updatePendingCashExpiryRefreshTimer(config: BoothStageConfig): void {
     const activeTransaction = config.activeTransaction;
 
-    if (!activeTransaction || activeTransaction.status !== 'PENDING_CASH') {
+    if (
+      !activeTransaction ||
+      (activeTransaction.status !== 'PENDING_CASH' &&
+        activeTransaction.status !== 'PENDING_PAYMONGO_QRPH')
+    ) {
       this.clearPendingCashExpiryRefreshTimer();
       return;
     }

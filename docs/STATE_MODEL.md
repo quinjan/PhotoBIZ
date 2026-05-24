@@ -141,7 +141,7 @@ A booth can have only one `ACTIVE` activation. It may also have one current `PEN
 
 Tenant-level payment resources register built-in or provider setup. Booth-level assignments decide runtime availability.
 
-Cash is a special built-in tenant resource. It is always enabled/verified for every client account and cannot be disabled at the tenant level. Provider-backed resources such as Maya Checkout QR and Maya Terminal ECR can be toggled in Settings; enabling them creates or re-enables `DRAFT` setup state and disabling them moves the resource to `DISABLED`.
+Cash is a special built-in tenant resource. It is always enabled/verified for every client account and cannot be disabled at the tenant level. Provider-backed resources such as PayMongo QR Ph require verified tenant setup before they can be assigned and runtime-enabled for a booth; disabling a provider resource moves it to `DISABLED`.
 
 Client payment resource statuses:
 
@@ -190,7 +190,7 @@ Terminal statuses for MVP runtime availability are `COMPLETED`, `EXPIRED`, and `
 
 ### Payment Attempt
 
-Payment attempt status is provider/payment-flow specific. For MVP cash, transactions carry the authoritative cash status. Future Maya flows should use payment attempts for provider references, webhook outcomes, retries, and auditability.
+Payment attempt status is provider/payment-flow specific. Cash transactions carry the authoritative cash status on the transaction. PayMongo QR Ph uses payment attempts for provider references, webhook outcomes, retries, and auditability.
 
 ### Booth Session
 
@@ -311,7 +311,7 @@ Runtime payment requires both levels:
 - Tenant-level payment resource exists. Cash is built in and always usable; provider-backed methods require a verified/usable client-level resource.
 - Booth-level payment assignment is `ASSIGNED` and runtime-enabled.
 
-For MVP, only cash can be runtime-enabled. Maya resources in `DRAFT`, `DISABLED`, or `NOT_CONFIGURED` are not runtime-usable.
+Cash is always runtime-eligible when assigned. PayMongo QR Ph can be runtime-enabled only when the tenant resource is verified and the booth assignment is enabled; resources in `DRAFT`, `DISABLED`, or `NOT_CONFIGURED` are not runtime-usable.
 
 ### Transaction To Booth Current State
 

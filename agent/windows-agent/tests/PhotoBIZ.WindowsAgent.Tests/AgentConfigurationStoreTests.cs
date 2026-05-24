@@ -21,10 +21,12 @@ public sealed class AgentConfigurationStoreTests
         Assert.DoesNotContain("luma-secret", fileText, StringComparison.Ordinal);
         Assert.Contains("test:", fileText, StringComparison.Ordinal);
         Assert.Equal("SMA-001", snapshot.BoothCode);
+        Assert.Equal("Small Mall Booth", snapshot.BoothName);
         Assert.True(snapshot.HasAgentCredential);
         Assert.True(snapshot.LumaBooth.HasApiPassword);
         Assert.Equal(workspace.RootDirectory, snapshot.Storage.BaseDirectory);
         Assert.Equal("agent-secret", runtime.AgentCredential);
+        Assert.Equal("Small Mall Booth", runtime.BoothName);
         Assert.Equal("luma-secret", runtime.LumaBooth.ApiPassword);
         Assert.Equal(LumaBoothIntegrationMode.Api, runtime.LumaBooth.Mode);
         Assert.Equal(workspace.RootDirectory, runtime.Storage.BaseDirectory);
@@ -98,6 +100,7 @@ public sealed class AgentConfigurationStoreTests
         return new AgentConfigurationUpdate(
             "http://localhost:5082",
             "sma-001",
+            "Small Mall Booth",
             agentCredential,
             PollIntervalSeconds: 5,
             SimulatedSessionDurationSeconds: 6,
@@ -165,6 +168,7 @@ public sealed class AgentConfigurationStoreTests
         public string RootDirectory { get; } = rootDirectory;
         public string ConfigurationFilePath => Path.Combine(RootDirectory, "config.json");
         public string ActiveSessionFilePath => Path.Combine(RootDirectory, "active-session.json");
+        public string BoothUiLaunchStateFilePath => Path.Combine(RootDirectory, "booth-ui-launch.json");
     }
 
     private sealed class TestSecretProtector : IAgentSecretProtector

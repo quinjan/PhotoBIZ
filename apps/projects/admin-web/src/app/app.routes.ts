@@ -68,6 +68,11 @@ export const routes: Routes = [
     loadComponent: () => import('./admin-pages').then((pages) => pages.SettingsPageComponent),
   },
   {
+    path: 'settings/paymongo',
+    loadComponent: () =>
+      import('./admin-pages').then((pages) => pages.PayMongoSettingsPageComponent),
+  },
+  {
     path: 'account',
     loadComponent: () => import('./admin-pages').then((pages) => pages.AccountPageComponent),
   },

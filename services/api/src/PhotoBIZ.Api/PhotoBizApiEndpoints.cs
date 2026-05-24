@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Linq.Expressions;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -59,6 +60,9 @@ public static class PhotoBizApiEndpoints
         admin.MapPut("/payment-resources/{paymentMethod}", UpdatePaymentResourceAsync);
         admin.MapPost("/booths/{boothId:guid}/payment-options", AssignPaymentOptionAsync);
         admin.MapDelete("/booths/{boothId:guid}/payment-options/{paymentMethod}", DisablePaymentOptionAsync);
+
+        var payments = app.MapGroup("/api/payments");
+        payments.MapPost("/paymongo/webhooks/{paymentProviderConfigId:guid}", ReceivePayMongoWebhookAsync);
 
         var boothUi = app.MapGroup("/api/booth-ui");
         boothUi.MapGet("/config", GetBoothConfigAsync);
@@ -1897,9 +1901,12 @@ public static class PhotoBizApiEndpoints
     private static async Task<Results<Ok<PaymentResourceSummary>, ForbidHttpResult, ValidationProblem>> UpdatePaymentResourceAsync(
         string paymentMethod,
         UpdatePaymentResourceRequest request,
+        HttpContext httpContext,
         ClaimsPrincipal principal,
         PhotoBizDbContext dbContext,
         PhotoBizAuditService auditService,
+        PhotoBizSecretProtector secretProtector,
+        IPayMongoClient payMongoClient,
         CancellationToken cancellationToken)
     {
         var currentUser = principal.GetRequiredCurrentUser();
@@ -1928,19 +1935,17 @@ public static class PhotoBizApiEndpoints
                 });
             }
 
-            return TypedResults.Ok(new PaymentResourceSummary(clientAccountId, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified));
+            return TypedResults.Ok(new PaymentResourceSummary(clientAccountId, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified, null, null, null, null, null, false, false));
         }
 
-        PaymentResourceSummary summary;
-
-        if (paymentMethod == StatusValues.PaymentMethod.MayaCheckoutQr)
+        if (paymentMethod == StatusValues.PaymentMethod.PayMongoQrPh)
         {
             var config = await dbContext.ClientPaymentProviderConfigs
                 .SingleOrDefaultAsync(
                     item =>
                         item.ClientAccountId == clientAccountId &&
-                        item.Provider == StatusValues.PaymentProvider.Maya &&
-                        item.IntegrationType == StatusValues.PaymentMethod.MayaCheckoutQr,
+                        item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                        item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh,
                     cancellationToken);
 
             if (config is null)
@@ -1949,55 +1954,122 @@ public static class PhotoBizApiEndpoints
                 {
                     Id = Guid.NewGuid(),
                     ClientAccountId = clientAccountId,
-                    Provider = StatusValues.PaymentProvider.Maya,
-                    IntegrationType = StatusValues.PaymentMethod.MayaCheckoutQr,
+                    Provider = StatusValues.PaymentProvider.PayMongo,
+                    IntegrationType = StatusValues.PaymentMethod.PayMongoQrPh,
                     Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled
                 };
                 dbContext.ClientPaymentProviderConfigs.Add(config);
             }
+
+            if (!request.Enabled)
+            {
+                config.Status = StatusValues.PaymentResource.Disabled;
+                config.VerifiedAt = null;
+            }
             else
             {
-                config.Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled;
+                var mode = NormalizePaymentMode(request.PaymentMode);
+                var validationErrors = new Dictionary<string, string[]>();
+                if (mode is null)
+                {
+                    validationErrors["paymentMode"] = ["PayMongo mode must be test or live."];
+                }
+
+                var hasStoredPublicKey = !string.IsNullOrWhiteSpace(config.PublicKeyMasked);
+                var hasStoredSecretKey = !string.IsNullOrWhiteSpace(config.EncryptedSecretKey);
+                var hasStoredWebhookSecret = !string.IsNullOrWhiteSpace(config.EncryptedWebhookSecret);
+                if (string.IsNullOrWhiteSpace(request.BusinessAccountName))
+                {
+                    validationErrors["businessAccountName"] = ["Business account name is required."];
+                }
+
+                if (string.IsNullOrWhiteSpace(request.PublicKey) && !hasStoredPublicKey)
+                {
+                    validationErrors["publicKey"] = ["PayMongo public key is required."];
+                }
+
+                if (string.IsNullOrWhiteSpace(request.SecretKey) && !hasStoredSecretKey)
+                {
+                    validationErrors["secretKey"] = ["PayMongo secret key is required."];
+                }
+
+                if (request.Verify && string.IsNullOrWhiteSpace(request.WebhookSecret) && !hasStoredWebhookSecret)
+                {
+                    validationErrors["webhookSecret"] = ["Webhook secret is required before verification."];
+                }
+
+                if (validationErrors.Count > 0)
+                {
+                    return TypedResults.ValidationProblem(validationErrors);
+                }
+
+                Debug.Assert(mode is not null);
+                config.PaymentMode = mode;
+                config.BusinessAccountName = request.BusinessAccountName!.Trim();
+                config.WebhookUrl = BuildPayMongoWebhookUrl(httpContext, config.Id);
+                if (!string.IsNullOrWhiteSpace(request.PublicKey))
+                {
+                    if (!IsExpectedPayMongoKey(request.PublicKey, publicKey: true, mode))
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["publicKey"] = ["The PayMongo public key prefix does not match the selected mode."]
+                        });
+                    }
+
+                    config.PublicKeyMasked = MaskPayMongoKey(request.PublicKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.SecretKey))
+                {
+                    if (!IsExpectedPayMongoKey(request.SecretKey, publicKey: false, mode))
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["secretKey"] = ["The PayMongo secret key prefix does not match the selected mode."]
+                        });
+                    }
+
+                    config.EncryptedSecretKey = secretProtector.Protect(request.SecretKey.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.WebhookSecret))
+                {
+                    config.EncryptedWebhookSecret = secretProtector.Protect(request.WebhookSecret.Trim());
+                }
+
+                config.Status = StatusValues.PaymentResource.Draft;
+                config.VerifiedAt = null;
+
+                if (request.Verify)
+                {
+                    if (string.IsNullOrWhiteSpace(config.EncryptedSecretKey) ||
+                        string.IsNullOrWhiteSpace(config.EncryptedWebhookSecret) ||
+                        string.IsNullOrWhiteSpace(config.PublicKeyMasked))
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["payMongo"] = ["Public key, secret key, and webhook secret are required before verification."]
+                        });
+                    }
+
+                    await payMongoClient.VerifyCredentialsAsync(
+                        new PayMongoCredentials(secretProtector.Unprotect(config.EncryptedSecretKey), mode, config.BusinessAccountName),
+                        cancellationToken);
+                    config.Status = StatusValues.PaymentResource.Verified;
+                    config.VerifiedAt = DateTimeOffset.UtcNow;
+                }
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
             await auditService.WriteAsync(currentUser, "payment_resource.updated", nameof(ClientPaymentProviderConfig), config.Id, new { paymentMethod, config.Status }, cancellationToken);
-            summary = ToPaymentResourceSummary(clientAccountId, paymentMethod, config.Status);
+            return TypedResults.Ok(ToPaymentResourceSummary(clientAccountId, StatusValues.PaymentMethod.PayMongoQrPh, config));
         }
-        else
+
+        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
         {
-            var device = await dbContext.ClientMayaEcrDevices
-                .OrderBy(item => item.DisplayName)
-                .FirstOrDefaultAsync(
-                    item =>
-                        item.ClientAccountId == clientAccountId &&
-                        item.Provider == StatusValues.PaymentProvider.Maya,
-                    cancellationToken);
-
-            if (device is null)
-            {
-                device = new ClientMayaEcrDevice
-                {
-                    Id = Guid.NewGuid(),
-                    ClientAccountId = clientAccountId,
-                    DisplayName = "Maya Terminal ECR",
-                    DeviceId = "MAYA-ECR-DRAFT",
-                    Provider = StatusValues.PaymentProvider.Maya,
-                    Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled
-                };
-                dbContext.ClientMayaEcrDevices.Add(device);
-            }
-            else
-            {
-                device.Status = request.Enabled ? StatusValues.PaymentResource.Draft : StatusValues.PaymentResource.Disabled;
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-            await auditService.WriteAsync(currentUser, "payment_resource.updated", nameof(ClientMayaEcrDevice), device.Id, new { paymentMethod, device.Status }, cancellationToken);
-            summary = ToPaymentResourceSummary(clientAccountId, paymentMethod, device.Status);
-        }
-
-        return TypedResults.Ok(summary);
+            ["paymentMethod"] = ["Payment method is not supported."]
+        });
     }
 
     private static async Task<Results<Ok<PaymentAssignmentSummary>, ForbidHttpResult, ValidationProblem>> AssignPaymentOptionAsync(
@@ -2034,8 +2106,21 @@ public static class PhotoBizApiEndpoints
         }
 
         var runtimeEnabled = request.PaymentMethod == StatusValues.PaymentMethod.Cash && request.RuntimeEnabled;
+        if (request.PaymentMethod == StatusValues.PaymentMethod.PayMongoQrPh && request.RuntimeEnabled)
+        {
+            var payMongoVerified = await dbContext.ClientPaymentProviderConfigs
+                .AsNoTracking()
+                .AnyAsync(item =>
+                    item.ClientAccountId == booth.ClientAccountId &&
+                    item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                    item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh &&
+                    item.Status == StatusValues.PaymentResource.Verified,
+                    cancellationToken);
+            runtimeEnabled = payMongoVerified;
+        }
 
-        if (request.PaymentMethod != StatusValues.PaymentMethod.Cash)
+        if (request.PaymentMethod != StatusValues.PaymentMethod.Cash &&
+            request.PaymentMethod != StatusValues.PaymentMethod.PayMongoQrPh)
         {
             runtimeEnabled = false;
         }
@@ -2123,6 +2208,61 @@ public static class PhotoBizApiEndpoints
         return TypedResults.Ok(new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status));
     }
 
+    private static async Task<IResult> ReceivePayMongoWebhookAsync(
+        Guid paymentProviderConfigId,
+        HttpContext httpContext,
+        PhotoBizDbContext dbContext,
+        PhotoBizTransactionWorkflow workflow,
+        PhotoBizSecretProtector secretProtector,
+        CancellationToken cancellationToken)
+    {
+        var config = await dbContext.ClientPaymentProviderConfigs
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                item.Id == paymentProviderConfigId &&
+                item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh,
+                cancellationToken);
+
+        if (config is null || string.IsNullOrWhiteSpace(config.EncryptedWebhookSecret))
+        {
+            return Results.BadRequest(new { message = "PayMongo webhook is not configured." });
+        }
+
+        using var reader = new StreamReader(httpContext.Request.Body);
+        var rawPayload = await reader.ReadToEndAsync(cancellationToken);
+        var signature = httpContext.Request.Headers["Paymongo-Signature"].ToString();
+        var webhookSecret = secretProtector.Unprotect(config.EncryptedWebhookSecret);
+        var mode = config.PaymentMode ?? StatusValues.PaymentMode.Test;
+        if (!PayMongoWebhookSignature.Verify(rawPayload, signature, webhookSecret, mode))
+        {
+            return Results.BadRequest(new { message = "Invalid PayMongo webhook signature." });
+        }
+
+        PayMongoWebhookEvent webhookEvent;
+        try
+        {
+            webhookEvent = PayMongoWebhookParser.Parse(rawPayload);
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest(new { message = "Invalid PayMongo webhook payload." });
+        }
+
+        if ((mode == StatusValues.PaymentMode.Live) != webhookEvent.LiveMode)
+        {
+            return Results.BadRequest(new { message = "PayMongo webhook mode does not match this tenant resource." });
+        }
+
+        var result = await workflow.ApplyPayMongoWebhookAsync(webhookEvent, cancellationToken);
+        if (!result.ShouldAcknowledge)
+        {
+            return Results.BadRequest(new { message = result.Message });
+        }
+
+        return Results.Ok(new { message = result.Succeeded ? "applied" : "ignored" });
+    }
+
     private static async Task<Results<Ok<BoothConfigResponse>, UnauthorizedHttpResult, ValidationProblem>> GetBoothConfigAsync(
         HttpContext httpContext,
         PhotoBizDbContext dbContext,
@@ -2183,6 +2323,14 @@ public static class PhotoBizApiEndpoints
             .Where(item => item.BoothId == booth.Id)
             .OrderBy(item => item.PaymentMethod)
             .ToListAsync(cancellationToken);
+        var hasVerifiedPayMongo = await dbContext.ClientPaymentProviderConfigs
+            .AsNoTracking()
+            .AnyAsync(item =>
+                item.ClientAccountId == booth.ClientAccountId &&
+                item.Provider == StatusValues.PaymentProvider.PayMongo &&
+                item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh &&
+                item.Status == StatusValues.PaymentResource.Verified,
+                cancellationToken);
 
         return TypedResults.Ok(new BoothConfigResponse(
             new BoothClientResponse(client.DisplayNameOrName(), null),
@@ -2196,7 +2344,8 @@ public static class PhotoBizApiEndpoints
                     selectedActivation.BoothOffer.OfferType == StatusValues.OfferType.PerSession &&
                     item.Status == StatusValues.PaymentAssignment.Assigned &&
                     item.RuntimeEnabled &&
-                    item.PaymentMethod == StatusValues.PaymentMethod.Cash)
+                    (item.PaymentMethod == StatusValues.PaymentMethod.Cash ||
+                        (item.PaymentMethod == StatusValues.PaymentMethod.PayMongoQrPh && hasVerifiedPayMongo)))
                 .Select(item => new BoothPaymentOptionResponse(item.PaymentMethod, ToPaymentLabel(item.PaymentMethod), item.RuntimeEnabled))
                 .ToArray(),
             activeTransaction,
@@ -3436,7 +3585,8 @@ public static class PhotoBizApiEndpoints
             transaction.AmountCents,
             transaction.Currency,
             transaction.CreatedAt,
-            transaction.ExpiresAt);
+            transaction.ExpiresAt,
+            ToQrPaymentResponse(transaction));
     }
 
     private static IEnumerable<TransactionSummary> ToTransactionSummaries(IReadOnlyCollection<Transaction> transactions)
@@ -3629,6 +3779,21 @@ public static class PhotoBizApiEndpoints
             value.TryGetInt32(out var result)
                 ? result
                 : null;
+    }
+
+    private static string? GetNestedString(JsonElement root, params string[] path)
+    {
+        var current = root;
+        foreach (var segment in path)
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty(segment, out current))
+            {
+                return null;
+            }
+        }
+
+        return current.ValueKind == JsonValueKind.String ? current.GetString() : null;
     }
 
     private static OfferSummary ToOfferSummary(BoothOffer offer)
@@ -3935,10 +4100,12 @@ public static class PhotoBizApiEndpoints
     {
         var transaction = await dbContext.Transactions
             .AsNoTracking()
+            .Include(item => item.PaymentAttempts)
             .Where(item =>
                 item.BoothId == boothId &&
                 (item.Status == StatusValues.Transaction.Created ||
                  item.Status == StatusValues.Transaction.PendingCash ||
+                 item.Status == StatusValues.Transaction.PendingPayMongoQrPh ||
                  item.Status == StatusValues.Transaction.Paid ||
                  item.Status == StatusValues.Transaction.StartingSession ||
                  item.Status == StatusValues.Transaction.InSession ||
@@ -3947,6 +4114,42 @@ public static class PhotoBizApiEndpoints
             .FirstOrDefaultAsync(cancellationToken);
 
         return transaction is null ? null : ToBoothActiveTransactionResponse(transaction);
+    }
+
+    private static BoothQrPaymentResponse? ToQrPaymentResponse(Transaction transaction)
+    {
+        if (transaction.PaymentMethod != StatusValues.PaymentMethod.PayMongoQrPh)
+        {
+            return null;
+        }
+
+        var attempt = transaction.PaymentAttempts
+            .Where(item => item.Provider == StatusValues.PaymentProvider.PayMongo)
+            .OrderByDescending(item => item.CreatedAt)
+            .FirstOrDefault();
+
+        if (attempt is null)
+        {
+            return null;
+        }
+
+        string? imageUrl = null;
+        try
+        {
+            using var payload = JsonDocument.Parse(attempt.RawPayload);
+            imageUrl = GetNestedString(payload.RootElement, "data", "attributes", "next_action", "code", "image_url") ??
+                GetNestedString(payload.RootElement, "data", "attributes", "next_action", "qrph", "image_url");
+        }
+        catch (JsonException)
+        {
+            imageUrl = null;
+        }
+
+        return new BoothQrPaymentResponse(
+            StatusValues.PaymentProvider.PayMongo,
+            attempt.ProviderReference,
+            imageUrl,
+            transaction.ExpiresAt);
     }
 
     private static async Task<BoothRecentTransactionResponse?> GetRecentBoothTerminalTransactionAsync(
@@ -4253,42 +4456,45 @@ public static class PhotoBizApiEndpoints
         IReadOnlyCollection<ClientPaymentProviderConfig> paymentProviderConfigs,
         IReadOnlyCollection<ClientMayaEcrDevice> mayaEcrDevices)
     {
+        _ = mayaEcrDevices;
         return clients
             .SelectMany(client =>
             {
-                var mayaQrStatus =
+                var payMongoConfig =
                     paymentProviderConfigs
                         .FirstOrDefault(
                             config =>
                                 config.ClientAccountId == client.Id &&
-                                config.Provider == StatusValues.PaymentProvider.Maya &&
-                                config.IntegrationType == StatusValues.PaymentMethod.MayaCheckoutQr)
-                        ?.Status ?? StatusValues.PaymentResource.NotConfigured;
-                var mayaEcrStatus =
-                    mayaEcrDevices
-                        .FirstOrDefault(
-                            device =>
-                                device.ClientAccountId == client.Id &&
-                                device.Provider == StatusValues.PaymentProvider.Maya)
-                        ?.Status ?? StatusValues.PaymentResource.NotConfigured;
+                                config.Provider == StatusValues.PaymentProvider.PayMongo &&
+                                config.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh);
 
                 return new[]
                 {
-                    new PaymentResourceSummary(client.Id, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified),
-                    ToPaymentResourceSummary(client.Id, StatusValues.PaymentMethod.MayaCheckoutQr, mayaQrStatus),
-                    ToPaymentResourceSummary(client.Id, StatusValues.PaymentMethod.MayaTerminalEcr, mayaEcrStatus)
+                    new PaymentResourceSummary(client.Id, StatusValues.PaymentMethod.Cash, true, StatusValues.PaymentResource.Verified, null, null, null, null, null, false, false),
+                    ToPaymentResourceSummary(client.Id, StatusValues.PaymentMethod.PayMongoQrPh, payMongoConfig)
                 };
             })
             .ToArray();
     }
 
-    private static PaymentResourceSummary ToPaymentResourceSummary(Guid clientAccountId, string paymentMethod, string status)
+    private static PaymentResourceSummary ToPaymentResourceSummary(
+        Guid clientAccountId,
+        string paymentMethod,
+        ClientPaymentProviderConfig? config)
     {
+        var status = config?.Status ?? StatusValues.PaymentResource.NotConfigured;
         return new PaymentResourceSummary(
             clientAccountId,
             paymentMethod,
             status is not StatusValues.PaymentResource.NotConfigured and not StatusValues.PaymentResource.Disabled,
-            status);
+            status,
+            config?.Id,
+            config?.PaymentMode,
+            config?.BusinessAccountName,
+            config?.PublicKeyMasked,
+            config?.WebhookUrl,
+            !string.IsNullOrWhiteSpace(config?.EncryptedSecretKey),
+            !string.IsNullOrWhiteSpace(config?.EncryptedWebhookSecret));
     }
 
     private static bool IsKnownClientUserRole(string role)
@@ -4341,7 +4547,46 @@ public static class PhotoBizApiEndpoints
 
     private static bool IsKnownPaymentMethod(string paymentMethod)
     {
-        return paymentMethod is StatusValues.PaymentMethod.Cash or StatusValues.PaymentMethod.MayaCheckoutQr or StatusValues.PaymentMethod.MayaTerminalEcr;
+        return paymentMethod is StatusValues.PaymentMethod.Cash or StatusValues.PaymentMethod.PayMongoQrPh;
+    }
+
+    private static string? NormalizePaymentMode(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            StatusValues.PaymentMode.Test => StatusValues.PaymentMode.Test,
+            StatusValues.PaymentMode.Live => StatusValues.PaymentMode.Live,
+            _ => null
+        };
+    }
+
+    private static bool IsExpectedPayMongoKey(string value, bool publicKey, string mode)
+    {
+        var prefix = (publicKey, mode) switch
+        {
+            (true, StatusValues.PaymentMode.Live) => "pk_live_",
+            (false, StatusValues.PaymentMode.Live) => "sk_live_",
+            (true, _) => "pk_test_",
+            (false, _) => "sk_test_"
+        };
+
+        return value.Trim().StartsWith(prefix, StringComparison.Ordinal);
+    }
+
+    private static string MaskPayMongoKey(string value)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length <= 12)
+        {
+            return "****";
+        }
+
+        return $"{trimmed[..8]}...{trimmed[^4..]}";
+    }
+
+    private static string BuildPayMongoWebhookUrl(HttpContext httpContext, Guid configId)
+    {
+        return $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/api/payments/paymongo/webhooks/{configId}";
     }
 
     private static bool IsKnownSubscriptionStatus(string status)
@@ -4351,7 +4596,7 @@ public static class PhotoBizApiEndpoints
 
     private static bool IsTerminalTransactionStatus(string status)
     {
-        return status is StatusValues.Transaction.Completed or StatusValues.Transaction.Expired or StatusValues.Transaction.Cancelled;
+        return status is StatusValues.Transaction.Completed or StatusValues.Transaction.Expired or StatusValues.Transaction.Cancelled or StatusValues.Transaction.PaymentFailed;
     }
 
     private static string GetReturnToWelcomeValidationMessage(ReturnCompletedBoothToWelcomeStatus status)
@@ -4370,8 +4615,7 @@ public static class PhotoBizApiEndpoints
         return paymentMethod switch
         {
             StatusValues.PaymentMethod.Cash => "Cash",
-            StatusValues.PaymentMethod.MayaCheckoutQr => "Maya Checkout QR",
-            StatusValues.PaymentMethod.MayaTerminalEcr => "Maya Terminal ECR",
+            StatusValues.PaymentMethod.PayMongoQrPh => "PayMongo QR Ph",
             _ => paymentMethod
         };
     }
@@ -4461,7 +4705,18 @@ public sealed record OfferActivationSummary(
     DateTimeOffset? EndsAt,
     int? SessionAllowance,
     int SessionsUsed);
-public sealed record PaymentResourceSummary(Guid ClientAccountId, string PaymentMethod, bool Enabled, string Status);
+public sealed record PaymentResourceSummary(
+    Guid ClientAccountId,
+    string PaymentMethod,
+    bool Enabled,
+    string Status,
+    Guid? ResourceId,
+    string? PaymentMode,
+    string? BusinessAccountName,
+    string? PublicKeyMasked,
+    string? WebhookUrl,
+    bool HasSecretKey,
+    bool HasWebhookSecret);
 public sealed record PaymentAssignmentSummary(Guid Id, Guid BoothId, string PaymentMethod, bool RuntimeEnabled, string Status);
 public sealed record BoothAppearanceSummary(
     Guid Id,
@@ -4631,7 +4886,14 @@ public sealed record UpdateAppearanceRequest(
     string? PrimaryColor = null,
     string? AccentColor = null,
     string? BackgroundImageUrl = null);
-public sealed record UpdatePaymentResourceRequest(bool Enabled);
+public sealed record UpdatePaymentResourceRequest(
+    bool Enabled,
+    string? PaymentMode = null,
+    string? BusinessAccountName = null,
+    string? PublicKey = null,
+    string? SecretKey = null,
+    string? WebhookSecret = null,
+    bool Verify = false);
 public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool RuntimeEnabled);
 public sealed record BoothClientResponse(string DisplayName, string? LogoUrl);
 public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string? BackgroundImageDataUrl, string FontMode);
@@ -4672,6 +4934,12 @@ public sealed record BoothActiveTransactionResponse(
     int AmountCents,
     string Currency,
     DateTimeOffset CreatedAt,
+    DateTimeOffset ExpiresAt,
+    BoothQrPaymentResponse? QrPayment);
+public sealed record BoothQrPaymentResponse(
+    string Provider,
+    string? ProviderReference,
+    string? ImageUrl,
     DateTimeOffset ExpiresAt);
 public sealed record BoothConfigResponse(
     BoothClientResponse Client,

@@ -1,5 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -725,7 +729,7 @@ public sealed class PhotoBizManagementApiTests
 
         var assignmentResponse = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
         {
-            paymentMethod = StatusValues.PaymentMethod.MayaCheckoutQr,
+            paymentMethod = StatusValues.PaymentMethod.PayMongoQrPh,
             runtimeEnabled = true
         });
 
@@ -741,8 +745,142 @@ public sealed class PhotoBizManagementApiTests
         var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
 
         Assert.NotNull(config);
-        Assert.DoesNotContain(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.MayaCheckoutQr);
+        Assert.DoesNotContain(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.PayMongoQrPh);
         Assert.Contains(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.Cash && option.RuntimeEnabled);
+    }
+
+    [Fact]
+    public async Task PayMongoSetupRequiresCredentialsBeforeGeneratingWebhookUrl()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(StatusValues.Subscription.Active, activeBoothAllowance: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var emptyResponse = await client.PutAsJsonAsync("/api/admin/payment-resources/PAYMONGO_QRPH", new
+        {
+            enabled = true,
+            paymentMode = "test",
+            businessAccountName = "",
+            publicKey = "",
+            secretKey = ""
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, emptyResponse.StatusCode);
+        var problem = await emptyResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("businessAccountName", problem.Errors.Keys);
+        Assert.Contains("publicKey", problem.Errors.Keys);
+        Assert.Contains("secretKey", problem.Errors.Keys);
+
+        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
+        client.DefaultRequestHeaders.Add("X-Forwarded-Host", "api.203.0.113.10.sslip.io");
+
+        var validResponse = await client.PutAsJsonAsync("/api/admin/payment-resources/PAYMONGO_QRPH", new
+        {
+            enabled = true,
+            paymentMode = "test",
+            businessAccountName = "PayMongo Test",
+            publicKey = "pk_test_1234567890",
+            secretKey = "sk_test_1234567890"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, validResponse.StatusCode);
+        var resource = await validResponse.Content.ReadFromJsonAsync<PaymentResourceSummary>();
+        Assert.NotNull(resource);
+        Assert.Equal(StatusValues.PaymentResource.Draft, resource.Status);
+        Assert.NotNull(resource.WebhookUrl);
+        Assert.Contains($"/api/payments/paymongo/webhooks/{resource.ResourceId}", resource.WebhookUrl, StringComparison.Ordinal);
+        Assert.StartsWith("https://api.203.0.113.10.sslip.io/", resource.WebhookUrl, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PayMongoQrPhSelectionCreatesQrAndWebhookMarksTransactionPaid()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: "paymongo-kiosk-token");
+        var configId = await factory.SeedVerifiedPayMongoAsync(seed.ClientAccountId);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var assignmentResponse = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
+        {
+            paymentMethod = StatusValues.PaymentMethod.PayMongoQrPh,
+            runtimeEnabled = true
+        });
+        Assert.Equal(HttpStatusCode.OK, assignmentResponse.StatusCode);
+
+        client.DefaultRequestHeaders.Remove("X-Kiosk-Token");
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", "paymongo-kiosk-token");
+        var createdResponse = await client.PostAsJsonAsync("/api/booth-ui/transactions", new { });
+        var created = await createdResponse.Content.ReadFromJsonAsync<TransactionSummary>();
+        Assert.NotNull(created);
+
+        var selectedResponse = await client.PostAsJsonAsync($"/api/booth-ui/transactions/{created.Id}/payment-method", new
+        {
+            method = StatusValues.PaymentMethod.PayMongoQrPh
+        });
+        Assert.Equal(HttpStatusCode.OK, selectedResponse.StatusCode);
+
+        var config = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+        Assert.NotNull(config);
+        Assert.Contains(config.PaymentOptions, option => option.Method == StatusValues.PaymentMethod.PayMongoQrPh && option.RuntimeEnabled);
+        Assert.NotNull(config.ActiveTransaction?.QrPayment);
+        Assert.Equal(StatusValues.Transaction.PendingPayMongoQrPh, config.ActiveTransaction.Status);
+        Assert.Equal("data:image/png;base64,cXJwaA==", config.ActiveTransaction.QrPayment.ImageUrl);
+
+        var webhookPayload = $$"""
+        {
+          "data": {
+            "id": "evt_paid_1",
+            "type": "event",
+            "attributes": {
+              "type": "payment.paid",
+              "livemode": false,
+              "data": {
+                "id": "pay_123",
+                "type": "payment",
+                "attributes": {
+                  "amount": 25000,
+                  "currency": "PHP",
+                  "payment_intent_id": "{{FakePayMongoClient.PaymentIntentId}}"
+                }
+              }
+            }
+          }
+        }
+        """;
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        client.DefaultRequestHeaders.Remove("Paymongo-Signature");
+        client.DefaultRequestHeaders.Add(
+            "Paymongo-Signature",
+            $"t={timestamp},te={SignWebhook(timestamp, webhookPayload, PhotoBizApiFactory.PayMongoWebhookSecret)},li=");
+        var webhookResponse = await client.PostAsync(
+            $"/api/payments/paymongo/webhooks/{configId}",
+            new StringContent(webhookPayload, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, webhookResponse.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+        var transaction = await dbContext.Transactions.SingleAsync(item => item.Id == created.Id);
+        Assert.Equal(StatusValues.Transaction.Paid, transaction.Status);
+        Assert.Equal(StatusValues.PaymentMethod.PayMongoQrPh, transaction.PaymentMethod);
+        Assert.NotNull(transaction.PaidAt);
     }
 
     [Fact]
@@ -2563,24 +2701,70 @@ public sealed class PhotoBizManagementApiTests
         return session;
     }
 
+    private static string SignWebhook(string timestamp, string payload, string webhookSecret)
+    {
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(webhookSecret));
+        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes($"{timestamp}.{payload}"))).ToLowerInvariant();
+    }
+
+    private sealed class FakePayMongoClient : IPayMongoClient
+    {
+        public const string PaymentIntentId = "pi_test_photobiz";
+
+        public Task VerifyCredentialsAsync(PayMongoCredentials credentials, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task<PayMongoQrPaymentResult> CreateQrPhPaymentAsync(
+            PayMongoCredentials credentials,
+            Transaction transaction,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new PayMongoQrPaymentResult(
+                PaymentIntentId,
+                "pm_test_qrph",
+                "data:image/png;base64,cXJwaA==",
+                """
+                {
+                  "data": {
+                    "id": "pi_test_photobiz",
+                    "attributes": {
+                      "next_action": {
+                        "code": {
+                          "image_url": "data:image/png;base64,cXJwaA=="
+                        }
+                      }
+                    }
+                  }
+                }
+                """,
+                DateTimeOffset.UtcNow.AddMinutes(30)));
+        }
+    }
+
     private sealed class PhotoBizApiFactory : WebApplicationFactory<Program>
     {
         public const string Password = "Test12345!";
         public const string DefaultInitialPassword = "PhotoBIZ!123";
+        public const string PayMongoWebhookSecret = "whsec_test";
 
         private readonly string databaseName = $"photobiz-api-tests-{Guid.NewGuid()}";
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseSetting("ConnectionStrings:Postgres", "Host=localhost;Database=photobiz_tests;Username=test;Password=test");
+            builder.UseSetting("ForwardedHeaders:Enabled", "true");
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<DbContextOptions<PhotoBizDbContext>>();
                 services.RemoveAll<IDbContextOptionsConfiguration<PhotoBizDbContext>>();
+                services.RemoveAll<IPayMongoClient>();
                 services.AddDbContext<PhotoBizDbContext>(options =>
                 {
                     options.UseInMemoryDatabase(databaseName);
                 });
+                services.AddSingleton<IPayMongoClient, FakePayMongoClient>();
             });
         }
 
@@ -2621,6 +2805,32 @@ public sealed class PhotoBizManagementApiTests
             await dbContext.SaveChangesAsync();
 
             return client.Id;
+        }
+
+        public async Task<Guid> SeedVerifiedPayMongoAsync(Guid clientAccountId)
+        {
+            await using var scope = Services.CreateAsyncScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PhotoBizDbContext>();
+            var secretProtector = scope.ServiceProvider.GetRequiredService<PhotoBizSecretProtector>();
+            var id = Guid.NewGuid();
+            dbContext.ClientPaymentProviderConfigs.Add(new ClientPaymentProviderConfig
+            {
+                Id = id,
+                ClientAccountId = clientAccountId,
+                Provider = StatusValues.PaymentProvider.PayMongo,
+                IntegrationType = StatusValues.PaymentMethod.PayMongoQrPh,
+                Status = StatusValues.PaymentResource.Verified,
+                BusinessAccountName = "PayMongo Test",
+                PaymentMode = StatusValues.PaymentMode.Test,
+                PublicKeyMasked = "pk_test_...1234",
+                EncryptedSecretKey = secretProtector.Protect("sk_test_1234"),
+                EncryptedWebhookSecret = secretProtector.Protect(PayMongoWebhookSecret),
+                WebhookUrl = $"https://localhost/api/payments/paymongo/webhooks/{id}",
+                VerifiedAt = DateTimeOffset.UtcNow
+            });
+            await dbContext.SaveChangesAsync();
+
+            return id;
         }
 
         public async Task<SeedResult> SeedClientSetupAsync(
