@@ -30,6 +30,8 @@ Get-ChildItem -LiteralPath $sourceDirectory -File | Where-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $InstallDirectory $_.Name) -Force
 }
 
+Get-ChildItem -LiteralPath $InstallDirectory -File | Unblock-File -ErrorAction SilentlyContinue
+
 if (-not $NoAutoStart) {
     New-Item -Path $runKeyPath -Force | Out-Null
     New-ItemProperty `

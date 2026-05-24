@@ -82,6 +82,9 @@ jobs:
           install -m 700 -d ~/.ssh
           printf '%s\n' "${DEPLOY_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.pub
+          echo "GitHub deploy key fingerprint:"
+          ssh-keygen -lf ~/.ssh/id_ed25519.pub
           ssh-keyscan -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts
 
       - name: Verify SSH access
@@ -97,6 +100,7 @@ jobs:
           DEPLOY_USER: ${{ secrets.PHOTOBIZ_DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.PHOTOBIZ_DEPLOY_PATH || '/opt/photobiz' }}
         run: |
+          ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${DEPLOY_PATH}' && rm -rf '${DEPLOY_PATH}/deploy/admin-web' '${DEPLOY_PATH}/deploy/booth-ui'"
           rsync -az --delete \
             -e "ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
             --exclude '.git/' \
@@ -130,9 +134,15 @@ jobs:
           cp -R apps/dist/booth-ui/browser/. deploy/booth-ui/
           docker compose --env-file .env -f docker-compose.prod.yml up -d --build
           docker compose --env-file .env -f docker-compose.prod.yml ps
-          set -a
-          . ./.env
-          set +a
+          PHOTOBIZ_PILOT_HOST="$(grep -E '^PHOTOBIZ_PILOT_HOST=' .env | tail -n 1 | cut -d '=' -f 2-)"
+          PHOTOBIZ_PILOT_HOST="${PHOTOBIZ_PILOT_HOST%\"}"
+          PHOTOBIZ_PILOT_HOST="${PHOTOBIZ_PILOT_HOST#\"}"
+          PHOTOBIZ_PILOT_HOST="${PHOTOBIZ_PILOT_HOST%\'}"
+          PHOTOBIZ_PILOT_HOST="${PHOTOBIZ_PILOT_HOST#\'}"
+          if [[ -z "${PHOTOBIZ_PILOT_HOST}" ]]; then
+            echo "PHOTOBIZ_PILOT_HOST is missing from .env" >&2
+            exit 1
+          fi
           for url in \
             "https://api.${PHOTOBIZ_PILOT_HOST}/health" \
             "https://api.${PHOTOBIZ_PILOT_HOST}/api/platform/status" \

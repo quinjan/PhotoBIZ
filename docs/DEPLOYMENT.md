@@ -585,7 +585,7 @@ CADDY_ACME_EMAIL=
 # Remove these three lines after the first owner account exists.
 BootstrapAdmin__Email=owner@your-email.example
 BootstrapAdmin__Password=<strong temporary password>
-BootstrapAdmin__Name=PhotoBIZ Owner
+BootstrapAdmin__Name="PhotoBIZ Owner"
 EOF
 
 chmod 600 /opt/photobiz/.env
@@ -604,7 +604,7 @@ POSTGRES_PASSWORD=replace-this-with-a-long-random-password
 CADDY_ACME_EMAIL=
 BootstrapAdmin__Email=owner@example.com
 BootstrapAdmin__Password=ReplaceThisWithAStrongTemporaryPassword123!
-BootstrapAdmin__Name=PhotoBIZ Owner
+BootstrapAdmin__Name="PhotoBIZ Owner"
 ```
 
 Important: `PHOTOBIZ_PILOT_HOST` must not include `admin.`, `booth.`, `api.`, `https://`, or a trailing slash. It should look like:
@@ -860,6 +860,21 @@ ssh -i "$env:USERPROFILE\.ssh\photobiz_github_actions_ed25519" photobiz@<droplet
 ```
 
 Only rerun GitHub Actions after the local deploy-key test succeeds.
+
+If rsync can SSH but fails with permission denied deleting deployed frontend folders:
+
+```text
+rsync: [generator] delete_file: rmdir(deploy/booth-ui) failed: Permission denied (13)
+rsync: [generator] delete_file: rmdir(deploy/admin-web) failed: Permission denied (13)
+```
+
+The deploy folders are owned by `root` or another user from an earlier manual command. Fix ownership once:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" root@<droplet-ip> "chown -R photobiz:photobiz /opt/photobiz"
+```
+
+Then rerun `Deploy Pilot`.
 
 If containers fail:
 
