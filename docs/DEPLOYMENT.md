@@ -595,6 +595,8 @@ exit
 
 Those `BootstrapAdmin__...` settings are environment variables read by the API container on startup. They create the first Application Owner only when no Application Owner exists yet. Set them only in `/opt/photobiz/.env` on the Droplet. `BootstrapAdmin__Name` is optional and omitted to avoid shell quoting issues; the API defaults it to `PhotoBIZ Owner`.
 
+The production Compose file explicitly passes those bootstrap values into the API container. If `grep '^BootstrapAdmin__' /opt/photobiz/.env` shows values but the database has no `APPLICATION_OWNER` row, redeploy or restart the API with the current production Compose file.
+
 Example with a fake IP and fake email:
 
 ```text
