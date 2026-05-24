@@ -69,8 +69,8 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:-}
-      PHOTOBIZ_PILOT_HOST: ${PHOTOBIZ_PILOT_HOST}
+      CADDY_ACME_EMAIL: ${CADDY_ACME_EMAIL:?CADDY_ACME_EMAIL is required for ZeroSSL certificates}
+      PHOTOBIZ_PILOT_HOST: ${PHOTOBIZ_PILOT_HOST:?PHOTOBIZ_PILOT_HOST is required}
     ports:
       - "80:80"
       - "443:443"

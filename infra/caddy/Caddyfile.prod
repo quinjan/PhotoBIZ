@@ -1,3 +1,8 @@
+{
+	email {$CADDY_ACME_EMAIL}
+	acme_ca https://acme.zerossl.com/v2/DV90
+}
+
 api.{$PHOTOBIZ_PILOT_HOST} {
 	encode zstd gzip
 

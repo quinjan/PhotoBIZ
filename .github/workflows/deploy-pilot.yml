@@ -156,6 +156,7 @@ jobs:
               fi
               if [[ "${attempt}" == "6" ]]; then
                 echo "Smoke check failed: ${url}" >&2
+                docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 reverse-proxy api >&2
                 exit 1
               fi
               sleep 10

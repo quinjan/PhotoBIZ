@@ -353,7 +353,7 @@ https://booth.203.0.113.10.sslip.io
 https://api.203.0.113.10.sslip.io
 ```
 
-Caddy can request normal public TLS certificates for these hostnames, which keeps the Admin Web cookie flow and PayMongo test webhooks on HTTPS without a purchased domain. This is a pilot convenience only, not the long-term branded production URL.
+Caddy requests normal public TLS certificates for these hostnames, which keeps the Admin Web cookie flow and PayMongo test webhooks on HTTPS without a purchased domain. The pilot Caddy config uses ZeroSSL because `sslip.io` is a shared registered domain and Let's Encrypt can rate-limit it globally. This is a pilot convenience only, not the long-term branded production URL.
 
 Production deployment files:
 
@@ -389,8 +389,10 @@ PHOTOBIZ_PILOT_HOST=<droplet-public-ip>.sslip.io
 POSTGRES_DB=photobiz
 POSTGRES_USER=photobiz
 POSTGRES_PASSWORD=<long random password>
-CADDY_ACME_EMAIL=
+CADDY_ACME_EMAIL=<your real email address>
 ```
+
+Set `CADDY_ACME_EMAIL` to your real email address. Caddy uses it when registering the ZeroSSL ACME account for these temporary HTTPS certificates.
 
 Do not expose PostgreSQL or Redis ports publicly. The production Compose file keeps them on the internal Docker network.
 
@@ -579,20 +581,19 @@ PHOTOBIZ_PILOT_HOST=<droplet-ip>.sslip.io
 POSTGRES_DB=photobiz
 POSTGRES_USER=photobiz
 POSTGRES_PASSWORD=<paste-long-random-password-here>
-CADDY_ACME_EMAIL=
+CADDY_ACME_EMAIL=owner@your-email.example
 
 # Temporary first-login Application Owner for the internal pilot.
-# Remove these three lines after the first owner account exists.
+# Remove these two lines after the first owner account exists.
 BootstrapAdmin__Email=owner@your-email.example
 BootstrapAdmin__Password=<strong temporary password>
-BootstrapAdmin__Name="PhotoBIZ Owner"
 EOF
 
 chmod 600 /opt/photobiz/.env
 exit
 ```
 
-Those `BootstrapAdmin__...` settings are environment variables read by the API container on startup. They create the first Application Owner only when no Application Owner exists yet. Set them only in `/opt/photobiz/.env` on the Droplet.
+Those `BootstrapAdmin__...` settings are environment variables read by the API container on startup. They create the first Application Owner only when no Application Owner exists yet. Set them only in `/opt/photobiz/.env` on the Droplet. `BootstrapAdmin__Name` is optional and omitted to avoid shell quoting issues; the API defaults it to `PhotoBIZ Owner`.
 
 Example with a fake IP and fake email:
 
@@ -601,10 +602,9 @@ PHOTOBIZ_PILOT_HOST=203.0.113.10.sslip.io
 POSTGRES_DB=photobiz
 POSTGRES_USER=photobiz
 POSTGRES_PASSWORD=replace-this-with-a-long-random-password
-CADDY_ACME_EMAIL=
+CADDY_ACME_EMAIL=owner@example.com
 BootstrapAdmin__Email=owner@example.com
 BootstrapAdmin__Password=ReplaceThisWithAStrongTemporaryPassword123!
-BootstrapAdmin__Name="PhotoBIZ Owner"
 ```
 
 Important: `PHOTOBIZ_PILOT_HOST` must not include `admin.`, `booth.`, `api.`, `https://`, or a trailing slash. It should look like:
@@ -740,7 +740,7 @@ https://admin.<droplet-ip>.sslip.io
 
 Sign in with the temporary bootstrap Application Owner from `/opt/photobiz/.env`.
 
-After confirming the first owner account exists, remove the three `BootstrapAdmin__...` lines from `/opt/photobiz/.env` and restart the API:
+After confirming the first owner account exists, remove the `BootstrapAdmin__...` lines from `/opt/photobiz/.env` and restart the API:
 
 ```powershell
 ssh -i "$env:USERPROFILE\.ssh\photobiz_pilot_ed25519" photobiz@<droplet-ip> "cd /opt/photobiz && sed -i '/^BootstrapAdmin__/d' .env && docker compose --env-file .env -f docker-compose.prod.yml up -d api"
@@ -808,6 +808,15 @@ sudo ufw status
 
 ```powershell
 nslookup api.<droplet-ip>.sslip.io
+```
+
+If Caddy logs show `too many certificates ... already issued for "sslip.io"` from Let's Encrypt, the Droplet and DNS are probably fine. The shared `sslip.io` domain has hit a Let's Encrypt global rate limit. Make sure the deployed `infra/caddy/Caddyfile.prod` contains the ZeroSSL ACME setting and that `/opt/photobiz/.env` has a real `CADDY_ACME_EMAIL` value:
+
+```bash
+cd /opt/photobiz
+grep -E 'CADDY_ACME_EMAIL|acme_ca' .env infra/caddy/Caddyfile.prod
+docker compose --env-file .env -f docker-compose.prod.yml up -d reverse-proxy
+docker compose --env-file .env -f docker-compose.prod.yml logs --tail=120 reverse-proxy
 ```
 
 If GitHub deploy cannot SSH:
