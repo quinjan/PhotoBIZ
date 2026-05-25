@@ -132,7 +132,14 @@ jobs:
           mkdir -p deploy/admin-web deploy/booth-ui
           cp -R apps/dist/admin-web/browser/. deploy/admin-web/
           cp -R apps/dist/booth-ui/browser/. deploy/booth-ui/
+          test -s deploy/admin-web/index.html
+          test -s deploy/booth-ui/index.html
+          echo "Admin Web artifact files:"
+          find deploy/admin-web -maxdepth 1 -type f -printf '%f\n' | sort
+          echo "Booth UI artifact files:"
+          find deploy/booth-ui -maxdepth 1 -type f -printf '%f\n' | sort
           docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+          docker compose --env-file .env -f docker-compose.prod.yml up -d --force-recreate --no-deps reverse-proxy
           docker compose --env-file .env -f docker-compose.prod.yml ps
           PHOTOBIZ_PILOT_HOST="$(grep -E '^PHOTOBIZ_PILOT_HOST=' .env | tail -n 1 | cut -d '=' -f 2-)"
           PHOTOBIZ_PILOT_HOST="${PHOTOBIZ_PILOT_HOST%\"}"
@@ -143,23 +150,45 @@ jobs:
             echo "PHOTOBIZ_PILOT_HOST is missing from .env" >&2
             exit 1
           fi
-          for url in \
-            "https://api.${PHOTOBIZ_PILOT_HOST}/health" \
-            "https://api.${PHOTOBIZ_PILOT_HOST}/api/platform/status" \
-            "https://admin.${PHOTOBIZ_PILOT_HOST}" \
-            "https://booth.${PHOTOBIZ_PILOT_HOST}"
-          do
-            for attempt in 1 2 3 4 5 6; do
-              if curl -fsS "${url}" >/dev/null; then
-                echo "Smoke check passed: ${url}"
-                break
+
+          smoke_check() {
+            local url="$1"
+            local expected_pattern="$2"
+
+            for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              status="$(curl -sS -o /tmp/photobiz-smoke-response.txt -w '%{http_code}' "${url}" || true)"
+              if [[ "${status}" =~ ^[23][0-9][0-9]$ ]]; then
+                if [[ -z "${expected_pattern}" ]] || grep -Eiq "${expected_pattern}" /tmp/photobiz-smoke-response.txt; then
+                  echo "Smoke check passed: ${url}"
+                  return 0
+                fi
+
+                echo "Smoke check attempt ${attempt} for ${url} returned HTTP ${status}, but the response did not match '${expected_pattern}'" >&2
+              else
+                echo "Smoke check attempt ${attempt} failed for ${url} with HTTP ${status}" >&2
               fi
-              if [[ "${attempt}" == "6" ]]; then
-                echo "Smoke check failed: ${url}" >&2
-                docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 reverse-proxy api >&2
-                exit 1
-              fi
+
+              head -c 500 /tmp/photobiz-smoke-response.txt >&2 || true
+              echo >&2
               sleep 10
             done
+
+            echo "Smoke check failed: ${url}" >&2
+            echo "Admin Web deployed files:" >&2
+            find deploy/admin-web -maxdepth 2 -type f -printf '%p\n' | sort | head -100 >&2 || true
+            echo "Booth UI deployed files:" >&2
+            find deploy/booth-ui -maxdepth 2 -type f -printf '%p\n' | sort | head -100 >&2 || true
+            docker compose --env-file .env -f docker-compose.prod.yml logs --tail=200 reverse-proxy api >&2
+            return 1
+          }
+
+          for url in \
+            "https://api.${PHOTOBIZ_PILOT_HOST}/health" \
+            "https://api.${PHOTOBIZ_PILOT_HOST}/api/platform/status"
+          do
+            smoke_check "${url}" ""
           done
+
+          smoke_check "https://admin.${PHOTOBIZ_PILOT_HOST}" "<app-root|photobiz|script"
+          smoke_check "https://booth.${PHOTOBIZ_PILOT_HOST}" "<app-root|photobiz|script"
           REMOTE
