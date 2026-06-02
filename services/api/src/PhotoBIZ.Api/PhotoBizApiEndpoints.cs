@@ -2053,9 +2053,34 @@ public static class PhotoBizApiEndpoints
                         });
                     }
 
-                    await payMongoClient.VerifyCredentialsAsync(
-                        new PayMongoCredentials(secretProtector.Unprotect(config.EncryptedSecretKey), mode, config.BusinessAccountName),
-                        cancellationToken);
+                    try
+                    {
+                        await payMongoClient.VerifyCredentialsAsync(
+                            new PayMongoCredentials(secretProtector.Unprotect(config.EncryptedSecretKey), mode, config.BusinessAccountName),
+                            cancellationToken);
+                    }
+                    catch (HttpRequestException)
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["payMongo"] = ["PhotoBIZ could not reach PayMongo. Check API server network, DNS, and TLS certificate access, then try again."]
+                        });
+                    }
+                    catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["payMongo"] = ["PhotoBIZ timed out while contacting PayMongo. Try again."]
+                        });
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        {
+                            ["payMongo"] = [exception.Message]
+                        });
+                    }
+
                     config.Status = StatusValues.PaymentResource.Verified;
                     config.VerifiedAt = DateTimeOffset.UtcNow;
                 }

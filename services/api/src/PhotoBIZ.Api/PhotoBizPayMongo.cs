@@ -69,13 +69,18 @@ public sealed class PayMongoClient(HttpClient httpClient) : IPayMongoClient
 
     public async Task VerifyCredentialsAsync(PayMongoCredentials credentials, CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "v1/payment_intents?limit=1");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "v1/payments?limit=1");
         ApplyAuth(request, credentials.SecretKey);
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException("PayMongo rejected the supplied secret key.");
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+            {
+                throw new InvalidOperationException("PayMongo rejected the supplied secret key.");
+            }
+
+            throw new InvalidOperationException($"PayMongo credential verification failed with status {(int)response.StatusCode}.");
         }
     }
 

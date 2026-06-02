@@ -798,6 +798,35 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task PayMongoVerificationFailureReturnsValidationProblem()
+    {
+        await using var factory = new PhotoBizApiFactory(new UnreachablePayMongoClient());
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(StatusValues.Subscription.Active, activeBoothAllowance: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var response = await client.PutAsJsonAsync("/api/admin/payment-resources/PAYMONGO_QRPH", new
+        {
+            enabled = true,
+            paymentMode = "test",
+            businessAccountName = "PayMongo Test",
+            publicKey = "pk_test_1234567890",
+            secretKey = "sk_test_1234567890",
+            webhookSecret = "whsec_test",
+            verify = true
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("payMongo", problem.Errors.Keys);
+        Assert.Contains("could not reach PayMongo", problem.Errors["payMongo"][0], StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PayMongoQrPhSelectionCreatesQrAndWebhookMarksTransactionPaid()
     {
         await using var factory = new PhotoBizApiFactory();
@@ -2743,6 +2772,22 @@ public sealed class PhotoBizManagementApiTests
         }
     }
 
+    private sealed class UnreachablePayMongoClient : IPayMongoClient
+    {
+        public Task VerifyCredentialsAsync(PayMongoCredentials credentials, CancellationToken cancellationToken)
+        {
+            throw new HttpRequestException("certificate revocation check failed");
+        }
+
+        public Task<PayMongoQrPaymentResult> CreateQrPhPaymentAsync(
+            PayMongoCredentials credentials,
+            Transaction transaction,
+            CancellationToken cancellationToken)
+        {
+            throw new HttpRequestException("certificate revocation check failed");
+        }
+    }
+
     private sealed class PhotoBizApiFactory : WebApplicationFactory<Program>
     {
         public const string Password = "Test12345!";
@@ -2750,6 +2795,12 @@ public sealed class PhotoBizManagementApiTests
         public const string PayMongoWebhookSecret = "whsec_test";
 
         private readonly string databaseName = $"photobiz-api-tests-{Guid.NewGuid()}";
+        private readonly IPayMongoClient payMongoClient;
+
+        public PhotoBizApiFactory(IPayMongoClient? payMongoClient = null)
+        {
+            this.payMongoClient = payMongoClient ?? new FakePayMongoClient();
+        }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
@@ -2764,7 +2815,7 @@ public sealed class PhotoBizManagementApiTests
                 {
                     options.UseInMemoryDatabase(databaseName);
                 });
-                services.AddSingleton<IPayMongoClient, FakePayMongoClient>();
+                services.AddSingleton(payMongoClient);
             });
         }
 
