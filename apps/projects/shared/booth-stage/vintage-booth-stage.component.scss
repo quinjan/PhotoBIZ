@@ -34,6 +34,11 @@
   position: relative;
 }
 
+.stage,
+.stage * {
+  box-sizing: border-box;
+}
+
 .stage::before {
   background:
     linear-gradient(
@@ -80,6 +85,7 @@
   display: grid;
   grid-template-rows: auto 1fr auto;
   min-height: 0;
+  min-width: 0;
   position: relative;
   z-index: 1;
 }
@@ -97,6 +103,7 @@
   display: grid;
   gap: 20px;
   grid-template-columns: 1fr auto;
+  min-width: 0;
 }
 
 .topbar.has-back {
@@ -204,6 +211,7 @@
   display: grid;
   grid-template-columns: 64px minmax(0, 720px) 64px;
   min-height: min(470px, 100%);
+  min-width: 0;
   width: min(100%, 880px);
 }
 
@@ -529,6 +537,7 @@
   justify-items: center;
   max-width: 720px;
   min-height: 370px;
+  min-width: 0;
   padding: 34px;
   position: relative;
   text-align: center;
@@ -586,6 +595,7 @@
 
 .payment-choice-card {
   min-height: 480px;
+  min-width: 0;
   width: min(100%, 900px);
 }
 

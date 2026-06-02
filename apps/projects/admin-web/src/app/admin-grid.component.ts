@@ -31,6 +31,7 @@ ModuleRegistry.registerModules([
   template: `
     <ag-grid-angular
       class="ag-theme-quartz admin-grid"
+      [attr.aria-label]="ariaLabel"
       [rowData]="rows"
       [columnDefs]="columns"
       [defaultColDef]="defaultColDef"
@@ -51,6 +52,7 @@ export class AdminGridComponent<T extends { readonly id: string }> {
   @Input() pagination = true;
   @Input() paginationPageSize = 10;
   @Input() paginationPageSizeSelector: number[] | false = [10, 20, 50];
+  @Input() ariaLabel = 'Admin data grid';
 
   readonly defaultColDef: ColDef<T> = {
     filter: true,

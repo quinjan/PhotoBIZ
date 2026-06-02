@@ -86,8 +86,8 @@
     </section>
   </main>
 } @else {
-  <mat-sidenav-container class="admin-shell">
-    <mat-sidenav mode="side" opened class="admin-side">
+  <mat-sidenav-container class="admin-shell" [class.nav-collapsed]="navigationCollapsed()">
+    <mat-sidenav mode="side" [opened]="!navigationCollapsed()" class="admin-side">
       <div class="side-brand">
         <img
           class="side-brand-logo"
@@ -104,6 +104,7 @@
             type="button"
             class="nav-item"
             [class.active]="w.activeView() === item.key"
+            [attr.aria-current]="w.activeView() === item.key ? 'page' : null"
             (click)="w.setView(item.key)"
           >
             {{ item.label }}
@@ -120,6 +121,20 @@
 
     <mat-sidenav-content>
       <mat-toolbar class="admin-toolbar">
+        <button
+          mat-button
+          type="button"
+          class="nav-toggle-button"
+          [attr.aria-label]="navigationCollapsed() ? 'Show navigation' : 'Hide navigation'"
+          [attr.aria-pressed]="!navigationCollapsed()"
+          (click)="toggleNavigation()"
+        >
+          <span class="nav-toggle-icon" aria-hidden="true">
+            <span></span>
+            <span></span>
+            <span></span>
+          </span>
+        </button>
         <div>
           <span class="eyebrow">
             @if (w.isApplicationOwner()) {

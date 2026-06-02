@@ -190,6 +190,39 @@ describe('App', () => {
     ]);
   });
 
+  it('lets users hide and show the left navigation from the toolbar', () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const session = makeSession({ role: 'CLIENT_ADMIN' });
+
+    workspace.session.set(session);
+    workspace.overview.set(makeOverview(session));
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const shell = root.querySelector('.admin-shell') as HTMLElement;
+    const toggle = root.querySelector('.nav-toggle-button') as HTMLButtonElement;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Hide navigation');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(shell.classList.contains('nav-collapsed')).toBe(false);
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-label')).toBe('Show navigation');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    expect(shell.classList.contains('nav-collapsed')).toBe(true);
+
+    toggle.click();
+    fixture.detectChanges();
+
+    expect(toggle.getAttribute('aria-label')).toBe('Hide navigation');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(shell.classList.contains('nav-collapsed')).toBe(false);
+  });
+
   it('shows operational client pages as routed AG Grid views', async () => {
     const fixture = TestBed.createComponent(App);
     rejectSessionRestore();

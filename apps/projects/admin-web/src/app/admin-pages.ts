@@ -37,9 +37,16 @@ function actionCell<T>(
 ): (params: ICellRendererParams<T>) => HTMLElement {
   return (params) => {
     const button = document.createElement('button');
+    const row = params.data as
+      | { readonly code?: string; readonly email?: string; readonly name?: string }
+      | undefined;
+    const rowLabel = [row?.name, row?.code, row?.email].filter(Boolean).join(' ');
     button.type = 'button';
     button.className = 'grid-action-button';
     button.textContent = label;
+    if (rowLabel) {
+      button.setAttribute('aria-label', `${label} ${rowLabel}`);
+    }
     button.addEventListener('click', () => {
       if (params.data) {
         action(params.data);
@@ -1605,7 +1612,10 @@ export class BoothsPageComponent extends AdminRoutePage {
           </mat-card-content>
         </mat-card>
 
-        <mat-tab-group [selectedIndex]="w.boothDetailTab() === 'details' ? 0 : 1">
+        <mat-tab-group
+          [selectedIndex]="w.boothDetailTab() === 'details' ? 0 : 1"
+          animationDuration="0ms"
+        >
           <mat-tab label="Details">
             <section class="content-grid tab-panel">
               <mat-card>
@@ -2848,51 +2858,65 @@ export class ReportsPageComponent extends AdminRoutePage {
         <mat-card-content>
           <div class="payment-resource-list">
             @for (resource of w.tenantPaymentResources(); track resource.method) {
-              <div
-                class="payment-resource-row"
-                [class.payment-resource-row-clickable]="resource.method === 'PAYMONGO_QRPH'"
-                [attr.role]="resource.method === 'PAYMONGO_QRPH' ? 'button' : null"
-                [attr.tabindex]="resource.method === 'PAYMONGO_QRPH' ? 0 : null"
-                (click)="openPaymentResource(resource)"
-                (keydown.enter)="openPaymentResource(resource)"
-                (keydown.space)="openPaymentResource(resource); $event.preventDefault()"
-              >
-                <div class="payment-resource-summary">
-                  <span class="payment-resource-icon" aria-hidden="true">{{ resource.icon }}</span>
-                  <div>
-                    <div class="inline-status-row">
-                      <strong>{{ resource.label }}</strong>
-                      <span
-                        class="status-chip"
-                        [class.active]="resource.enabled"
-                        [class.not-used]="!resource.enabled"
-                      >
-                        {{ resource.statusLabel }}
-                      </span>
+              @if (resource.method === 'PAYMONGO_QRPH') {
+                <div
+                  class="payment-resource-row payment-resource-row-clickable"
+                  role="button"
+                  tabindex="0"
+                  (click)="openPaymentResource(resource)"
+                  (keydown.enter)="openPaymentResource(resource)"
+                  (keydown.space)="openPaymentResource(resource); $event.preventDefault()"
+                >
+                  <div class="payment-resource-summary">
+                    <span class="payment-resource-icon" aria-hidden="true">{{
+                      resource.icon
+                    }}</span>
+                    <div>
+                      <div class="inline-status-row">
+                        <strong>{{ resource.label }}</strong>
+                        <span
+                          class="status-chip"
+                          [class.active]="resource.enabled"
+                          [class.not-used]="!resource.enabled"
+                        >
+                          {{ resource.statusLabel }}
+                        </span>
+                      </div>
+                      <span>{{ resource.description }}</span>
                     </div>
-                    <span>{{ resource.description }}</span>
                   </div>
+                  <span class="payment-resource-action">Configure</span>
                 </div>
-                @if (resource.method === 'PAYMONGO_QRPH') {
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    (click)="$event.stopPropagation(); openPaymentResource(resource)"
-                  >
-                    Configure
-                  </button>
-                } @else {
+              } @else {
+                <div class="payment-resource-row">
+                  <div class="payment-resource-summary">
+                    <span class="payment-resource-icon" aria-hidden="true">{{
+                      resource.icon
+                    }}</span>
+                    <div>
+                      <div class="inline-status-row">
+                        <strong>{{ resource.label }}</strong>
+                        <span
+                          class="status-chip"
+                          [class.active]="resource.enabled"
+                          [class.not-used]="!resource.enabled"
+                        >
+                          {{ resource.statusLabel }}
+                        </span>
+                      </div>
+                      <span>{{ resource.description }}</span>
+                    </div>
+                  </div>
                   <mat-slide-toggle
                     [checked]="resource.enabled"
                     [disabled]="resource.locked"
                     [matTooltip]="resource.locked ? lockedReason(resource) : ''"
-                    (click)="$event.stopPropagation()"
                     (change)="confirmSetPaymentResourceEnabled(resource, $event)"
                   >
                     {{ resource.enabled ? 'Enabled' : 'Disabled' }}
                   </mat-slide-toggle>
-                }
-              </div>
+                </div>
+              }
             }
           </div>
         </mat-card-content>

@@ -70,6 +70,13 @@
   min-height: 100vh;
 }
 
+.admin-shell ::ng-deep .mat-drawer-inner-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  overflow-x: hidden;
+}
+
 .admin-side {
   background: #17202a;
   border: 0;
@@ -92,8 +99,14 @@
 }
 
 .admin-nav {
+  align-content: start;
+  align-items: start;
   display: grid;
+  flex: 1 1 auto;
   gap: 4px;
+  grid-auto-rows: max-content;
+  min-height: 0;
+  overflow-y: auto;
   padding: 6px 12px;
 }
 
@@ -125,11 +138,10 @@
 }
 
 .side-user {
-  bottom: 0;
   display: grid;
   gap: 8px;
+  margin-top: auto;
   padding: 18px;
-  position: absolute;
   width: 100%;
 }
 
@@ -148,8 +160,39 @@
   background: #ffffff;
   border-bottom: 1px solid var(--admin-border);
   color: var(--admin-ink);
+  gap: 12px;
   min-height: 74px;
   padding: 0 24px;
+}
+
+.nav-toggle-button.mat-mdc-button {
+  border-radius: 8px;
+  color: var(--admin-muted);
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  width: 40px;
+}
+
+.nav-toggle-button.mat-mdc-button:hover,
+.nav-toggle-button.mat-mdc-button:focus-visible {
+  background: #eef4ff;
+  color: var(--admin-primary);
+}
+
+.nav-toggle-icon {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  width: 18px;
+}
+
+.nav-toggle-icon span {
+  background: currentColor;
+  border-radius: 999px;
+  display: block;
+  height: 2px;
+  width: 18px;
 }
 
 .admin-toolbar h1 {
@@ -173,6 +216,7 @@
 .admin-main {
   margin: 0 auto;
   max-width: 1440px;
+  min-width: 0;
   padding: 24px;
   width: 100%;
 }
@@ -204,14 +248,57 @@
   }
 
   .admin-side {
-    width: 220px;
+    width: 200px;
   }
 
   .side-brand {
     margin: 20px 16px 16px;
   }
 
+  .admin-nav .nav-item {
+    min-height: 38px;
+  }
+
+  .side-user {
+    padding: 14px;
+  }
+
   .admin-main {
     padding: 16px;
+  }
+}
+
+@media (max-width: 780px) {
+  .admin-side {
+    width: 184px;
+  }
+
+  .side-brand-logo {
+    max-width: 168px;
+  }
+
+  .admin-nav {
+    padding-inline: 8px;
+  }
+
+  .admin-nav .nav-item {
+    font-size: 13px;
+    min-height: 36px;
+    padding-inline: 10px;
+  }
+
+  .admin-toolbar {
+    min-height: 68px;
+    padding-inline: 16px;
+  }
+
+  .nav-toggle-button.mat-mdc-button {
+    height: 38px;
+    min-width: 38px;
+    width: 38px;
+  }
+
+  .admin-toolbar h1 {
+    font-size: 20px;
   }
 }

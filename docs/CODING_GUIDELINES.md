@@ -147,6 +147,19 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Ensure all buttons, cards, form controls, and kiosk touch targets remain usable on target booth and desktop viewports.
 - Do not use arbitrary tenant CSS, scripts, HTML templates, or layout definitions.
 
+## Frontend Layout And Accessibility Review
+
+- Treat layout and accessibility as acceptance criteria for every Admin Web, Cashier, Booth UI, or shared Booth Stage UI change.
+- Before changing UI, identify the affected roles, routes, dialogs, grids, tabs, action bars, previews, and kiosk states.
+- Preserve usability at the baseline review viewports: `1920x1080`, `1440x900`, `1366x768`, `1024x768`, and `768x1024`.
+- Do not introduce page-level horizontal overflow, except intentional AG Grid internal scrolling.
+- Interactive controls must have accessible names, visible and focusable keyboard states, and must not be nested inside other interactive controls.
+- Expose current page, selected, pressed, expanded, and modal states accessibly, using patterns such as `aria-current` for navigation and Angular Material/CDK roles for tabs, dialogs, menus, and toggles.
+- Prefer Angular Material/CDK patterns and existing application styles. Do not add Bootstrap, ng-bootstrap, or another UI framework for layout/accessibility fixes.
+- Use stable responsive constraints such as `min-width: 0`, bounded grids, wrapped text, stable toolbar/action sizing, and scoped scroll regions.
+- Use the risk-based Playwright and axe rule: run or update `npm run test:a11y` when a UI change can affect layout, navigation, roles, dialogs, grids, Booth Stage states, or covered responsive surfaces.
+- Fix axe `critical` and `serious` findings before merge. Document any intentionally deferred `moderate` findings.
+
 ## Booth UI Themes
 
 Booth UI themes are PhotoBIZ-owned presets, not tenant-authored skins. They may feel visually and verbally distinct, but they must preserve one shared kiosk workflow.
@@ -181,6 +194,7 @@ Booth UI themes are PhotoBIZ-owned presets, not tenant-authored skins. They may 
 - Backend unit tests should cover domain rules, state transitions, authorization helpers, validators, and provider mapping logic.
 - Backend integration tests should cover API auth, tenant isolation, EF Core persistence, transaction workflows, and error responses.
 - Frontend tests should cover important user workflows, component state, form validation, API services, and realtime handling.
+- Frontend UI changes should include focused component tests for behavior and Playwright/axe coverage for layout or accessibility risk across the target viewports.
 - Booth UI tests should cover active offer display, payment method display, cash waiting state, expiration/error handling, and reset to welcome.
 - Add regression tests for every bug fix unless the test would be more brittle than useful. Document the reason if no test is added.
 - Guideline-only documentation changes do not require application tests.

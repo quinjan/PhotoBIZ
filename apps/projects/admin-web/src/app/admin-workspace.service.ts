@@ -1219,7 +1219,6 @@ export class AdminWorkspace {
         this.session.set(session);
         if (session.mustChangePassword) {
           this.overview.set(null);
-          this.succeed('Update your password to continue.');
           return;
         }
 

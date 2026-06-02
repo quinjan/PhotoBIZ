@@ -107,6 +107,7 @@ select,
 .page-stack {
   display: grid;
   gap: 20px;
+  min-width: 0;
 }
 
 .page-actions {
@@ -149,12 +150,14 @@ select,
   display: grid;
   gap: 18px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .session-setup-grid {
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 
 .session-setup-actions,
@@ -279,6 +282,7 @@ select,
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .readonly-field {
@@ -375,6 +379,7 @@ select,
   gap: 18px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 10px;
+  min-width: 0;
 }
 
 .detail-section {
@@ -384,6 +389,7 @@ select,
   display: grid;
   gap: 16px;
   min-height: 214px;
+  min-width: 0;
   padding: 18px;
 }
 
@@ -632,6 +638,7 @@ select,
 
 .admin-grid {
   min-height: 360px;
+  min-width: 0;
   width: 100%;
 }
 
@@ -815,6 +822,7 @@ select,
   border-radius: var(--admin-radius);
   display: grid;
   gap: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -914,6 +922,19 @@ select,
   transform: translateY(-1px);
 }
 
+.payment-resource-action {
+  align-items: center;
+  border: 1px solid var(--admin-primary);
+  border-radius: 999px;
+  color: var(--admin-primary);
+  display: inline-flex;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 18px;
+  white-space: nowrap;
+}
+
 .payment-resource-summary {
   align-items: center;
   display: flex;
@@ -950,6 +971,7 @@ select,
   display: grid;
   gap: 18px;
   grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  min-width: 0;
 }
 
 .paymongo-instructions {
@@ -1168,6 +1190,7 @@ select,
   aspect-ratio: 16 / 9;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius);
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -1353,5 +1376,27 @@ body.booth-preview-fullscreen-active .admin-side {
 
   .booth-preview-fullscreen-button {
     width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .mat-mdc-card .mat-mdc-card-header {
+    padding: 16px 16px 0;
+  }
+
+  .mat-mdc-card .mat-mdc-card-content {
+    padding: 14px 16px 16px;
+  }
+
+  .mat-mdc-dialog-title {
+    padding: 20px 20px 8px !important;
+  }
+
+  .mat-mdc-dialog-content.dialog-form {
+    padding-inline: 20px !important;
+  }
+
+  .mat-mdc-dialog-actions {
+    padding: 10px 20px 18px !important;
   }
 }

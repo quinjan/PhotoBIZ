@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AdminShellUiModule } from './admin-shell-ui.module';
 import { AdminWorkspace } from './admin-workspace.service';
@@ -11,4 +11,9 @@ import { AdminWorkspace } from './admin-workspace.service';
 })
 export class App {
   protected readonly workspace = inject(AdminWorkspace);
+  protected readonly navigationCollapsed = signal(false);
+
+  protected toggleNavigation(): void {
+    this.navigationCollapsed.update((collapsed) => !collapsed);
+  }
 }
