@@ -224,6 +224,7 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.ToTable("booth_payment_option_assignments");
             entity.HasKey(assignment => assignment.Id);
             entity.Property(assignment => assignment.PaymentMethod).HasMaxLength(80);
+            entity.Property(assignment => assignment.DisplayLabel).HasMaxLength(80);
             entity.Property(assignment => assignment.Status).HasMaxLength(40);
             entity.Property(assignment => assignment.AssignedAt).HasDefaultValueSql("now()");
             entity.HasOne(assignment => assignment.Booth)

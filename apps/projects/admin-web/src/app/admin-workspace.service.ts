@@ -149,6 +149,7 @@ export type PaymentAssignmentSummary = {
   readonly paymentMethod: string;
   readonly runtimeEnabled: boolean;
   readonly status: string;
+  readonly displayLabel: string | null;
 };
 export type BoothAppearanceSummary = {
   readonly id: string;
@@ -507,6 +508,8 @@ export class AdminWorkspace {
   readonly boothDetailCashierUserId = signal<string | null>(null);
   readonly boothDetailStatus = signal('ACTIVE');
   readonly boothDetailOfferId = signal<string | null>(null);
+  readonly boothCashDisplayLabel = signal('Cash');
+  readonly boothPayMongoDisplayLabel = signal('PayMongo QR Ph');
   readonly boothDetailTab = signal<BoothDetailTab>('details');
   readonly boothAppearanceSessionLabel = signal<string>(
     AdminWorkspace.boothThemeDefaults.VINTAGE.sessionLabel,
@@ -1035,7 +1038,7 @@ export class AdminWorkspace {
           ? [
               {
                 method: 'CASH',
-                label: 'Pay Cash',
+                label: this.boothCashDisplayLabel().trim() || 'Cash',
                 runtimeEnabled: cashAssignment.runtimeEnabled,
               },
             ]
@@ -1044,7 +1047,7 @@ export class AdminWorkspace {
           ? [
               {
                 method: 'PAYMONGO_QRPH',
-                label: 'PayMongo QR Ph',
+                label: this.boothPayMongoDisplayLabel().trim() || 'PayMongo QR Ph',
                 runtimeEnabled: payMongoAssignment.runtimeEnabled,
               },
             ]
@@ -2326,7 +2329,11 @@ export class AdminWorkspace {
         await firstValueFrom(
           this.http.post(
             `${AdminWorkspace.apiBaseUrl}/api/admin/booths/${boothId}/payment-options`,
-            { paymentMethod: 'CASH', runtimeEnabled: true },
+            {
+              paymentMethod: 'CASH',
+              runtimeEnabled: true,
+              displayLabel: this.paymentDisplayLabelRequestValue(this.boothCashDisplayLabel()),
+            },
             { withCredentials: true },
           ),
         );
@@ -2458,7 +2465,13 @@ export class AdminWorkspace {
           await firstValueFrom(
             this.http.post(
               `${AdminWorkspace.apiBaseUrl}/api/admin/booths/${boothId}/payment-options`,
-              { paymentMethod: 'PAYMONGO_QRPH', runtimeEnabled: true },
+              {
+                paymentMethod: 'PAYMONGO_QRPH',
+                runtimeEnabled: true,
+                displayLabel: this.paymentDisplayLabelRequestValue(
+                  this.boothPayMongoDisplayLabel(),
+                ),
+              },
               { withCredentials: true },
             ),
           );
@@ -2477,6 +2490,41 @@ export class AdminWorkspace {
     }
 
     await this.disablePayment(assignment);
+  }
+
+  async saveBoothPaymentDisplayNames(boothId: string): Promise<void> {
+    const cashAssignment = this.cashAssignmentFor(boothId);
+    const payMongoAssignment = this.payMongoAssignmentFor(boothId);
+
+    await this.run(
+      async () => {
+        await firstValueFrom(
+          this.http.post(
+            `${AdminWorkspace.apiBaseUrl}/api/admin/booths/${boothId}/payment-options`,
+            {
+              paymentMethod: 'CASH',
+              runtimeEnabled: cashAssignment?.runtimeEnabled ?? false,
+              displayLabel: this.paymentDisplayLabelRequestValue(this.boothCashDisplayLabel()),
+            },
+            { withCredentials: true },
+          ),
+        );
+        await firstValueFrom(
+          this.http.post(
+            `${AdminWorkspace.apiBaseUrl}/api/admin/booths/${boothId}/payment-options`,
+            {
+              paymentMethod: 'PAYMONGO_QRPH',
+              runtimeEnabled: payMongoAssignment?.runtimeEnabled ?? false,
+              displayLabel: this.paymentDisplayLabelRequestValue(this.boothPayMongoDisplayLabel()),
+            },
+            { withCredentials: true },
+          ),
+        );
+        await this.loadOverview();
+        this.succeed('Payment display names saved.');
+      },
+      { errorMessage: 'Payment display name save failed.' },
+    );
   }
 
   async disablePayment(assignment: PaymentAssignmentSummary): Promise<void> {
@@ -2756,6 +2804,8 @@ export class AdminWorkspace {
       this.overview()?.appearanceConfigs?.find((item) => item.boothId === booth.id) ?? null;
     const selectedOffer = this.selectedOfferFor(booth.id);
     const assignedPosStaff = this.assignedPosStaffFor(booth.id);
+    const cashAssignment = this.cashAssignmentFor(booth.id);
+    const payMongoAssignment = this.payMongoAssignmentFor(booth.id);
 
     this.selectedBoothDetailId.set(booth.id);
     this.boothDetailName.set(booth.name);
@@ -2764,6 +2814,8 @@ export class AdminWorkspace {
     this.boothDetailCashierUserId.set(assignedPosStaff?.id ?? null);
     this.boothDetailStatus.set(booth.status);
     this.boothDetailOfferId.set(selectedOffer?.id ?? this.activeOffers()[0]?.id ?? null);
+    this.boothCashDisplayLabel.set(cashAssignment?.displayLabel ?? 'Cash');
+    this.boothPayMongoDisplayLabel.set(payMongoAssignment?.displayLabel ?? 'PayMongo QR Ph');
     const themePreset = this.normalizeBoothThemePreset(appearance?.themePreset);
     const themeDefaults = this.boothDefaultsFor(themePreset);
 
@@ -3025,6 +3077,11 @@ export class AdminWorkspace {
         assignment.paymentMethod === 'PAYMONGO_QRPH' ? 'PayMongo QR Ph' : 'Cash',
       )
       .join(', ');
+  }
+
+  private paymentDisplayLabelRequestValue(value: string): string | null {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
   }
 
   formatMoney(cents: number): string {

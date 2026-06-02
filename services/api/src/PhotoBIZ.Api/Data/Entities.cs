@@ -172,6 +172,7 @@ public sealed class BoothPaymentOptionAssignment
     public Guid? ClientPaymentProviderConfigId { get; set; }
     public Guid? ClientMayaEcrDeviceId { get; set; }
     public string PaymentMethod { get; set; } = StatusValues.PaymentMethod.Cash;
+    public string? DisplayLabel { get; set; }
     public string Status { get; set; } = StatusValues.PaymentAssignment.Assigned;
     public bool RuntimeEnabled { get; set; }
     public DateTimeOffset AssignedAt { get; set; }

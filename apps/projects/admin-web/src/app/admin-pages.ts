@@ -1673,41 +1673,85 @@ export class BoothsPageComponent extends AdminRoutePage {
                 </mat-card-actions>
               </mat-card>
 
-              <mat-card>
+              <mat-card class="payment-assignment-card">
                 <mat-card-header>
-                  <mat-card-title>Payment Assignment</mat-card-title>
+                  <mat-card-title>Payment methods</mat-card-title>
+                  <mat-card-subtitle
+                    >Set booth checkout labels and runtime availability.</mat-card-subtitle
+                  >
                 </mat-card-header>
                 <mat-card-content class="payment-option-list">
-                  <div class="payment-option-row">
-                    <div>
-                      <strong>Cash</strong>
-                      <span>{{
-                        w.cashAssignmentFor(booth.id)?.runtimeEnabled ? 'Enabled' : 'Disabled'
-                      }}</span>
+                  <div class="payment-method-list">
+                    <div class="payment-method-header" aria-hidden="true">
+                      <span>Method</span>
+                      <span>Checkout display name</span>
+                      <span>Runtime</span>
                     </div>
-                    <mat-slide-toggle
-                      [checked]="w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false"
-                      (change)="confirmSetCashPaymentEnabled(booth, $event)"
-                    />
-                  </div>
-                  <div class="payment-option-row">
-                    <div>
-                      <strong>PayMongo QR Ph</strong>
-                      <span>{{
-                        w.payMongoAssignmentFor(booth.id)?.runtimeEnabled
-                          ? 'Enabled'
-                          : w.payMongoRuntimeResource()
-                            ? 'Disabled'
-                            : 'Choose a verified PayMongo runtime mode in Settings first'
-                      }}</span>
+                    <div class="payment-method-row">
+                      <div class="payment-method-summary">
+                        <strong>Cash</strong>
+                        <span>Cashier-approved payments</span>
+                      </div>
+                      <div class="payment-method-label">
+                        <mat-form-field appearance="outline" class="payment-display-name-field">
+                          <mat-label>Booth display name</mat-label>
+                          <input
+                            matInput
+                            maxlength="80"
+                            [ngModel]="w.boothCashDisplayLabel()"
+                            (ngModelChange)="w.boothCashDisplayLabel.set($event)"
+                          />
+                        </mat-form-field>
+                      </div>
+                      <div class="payment-method-availability">
+                        <mat-slide-toggle
+                          aria-label="Enable cash payment"
+                          [checked]="w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false"
+                          (change)="confirmSetCashPaymentEnabled(booth, $event)"
+                        />
+                      </div>
                     </div>
-                    <mat-slide-toggle
-                      [checked]="w.payMongoAssignmentFor(booth.id)?.runtimeEnabled ?? false"
-                      [disabled]="!w.payMongoRuntimeResource()"
-                      (change)="confirmSetPayMongoPaymentEnabled(booth, $event)"
-                    />
+                    <div class="payment-method-row">
+                      <div class="payment-method-summary">
+                        <strong>PayMongo QR Ph</strong>
+                        <span>Dynamic QR checkout</span>
+                      </div>
+                      <div class="payment-method-label">
+                        <mat-form-field appearance="outline" class="payment-display-name-field">
+                          <mat-label>Booth display name</mat-label>
+                          <input
+                            matInput
+                            maxlength="80"
+                            [ngModel]="w.boothPayMongoDisplayLabel()"
+                            (ngModelChange)="w.boothPayMongoDisplayLabel.set($event)"
+                          />
+                        </mat-form-field>
+                      </div>
+                      <div class="payment-method-availability">
+                        <mat-slide-toggle
+                          aria-label="Enable PayMongo QR Ph payment"
+                          [checked]="
+                            w.payMongoRuntimeResource()
+                              ? (w.payMongoAssignmentFor(booth.id)?.runtimeEnabled ?? false)
+                              : false
+                          "
+                          [disabled]="!w.payMongoRuntimeResource()"
+                          (change)="confirmSetPayMongoPaymentEnabled(booth, $event)"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </mat-card-content>
+                <mat-card-actions align="end">
+                  <button
+                    mat-stroked-button
+                    color="primary"
+                    type="button"
+                    (click)="w.saveBoothPaymentDisplayNames(booth.id)"
+                  >
+                    Save payment names
+                  </button>
+                </mat-card-actions>
               </mat-card>
             </section>
           </mat-tab>

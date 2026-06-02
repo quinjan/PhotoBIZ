@@ -211,7 +211,7 @@ In the client tenant UI, Packages is the user-facing label for booth offers. The
 
 The Booths section is an inventory-first workflow. The list shows every booth with location, booth code, effective agent state, active package, runtime payment status, assigned cashier, lifecycle status, and a Manage action. Registration captures only MVP booth record fields: booth name, booth code, location, and optional assigned cashier. After creation, PhotoBIZ shows the one-time kiosk token and Windows Agent credential; Manage Booth can re-issue booth credentials when staff need to configure or recover the Windows Agent. Re-issuing credentials rotates both the Agent credential and kiosk token, and the old Agent credential stops working. Hardware inventory fields such as camera, printer, and notes are intentionally out of MVP scope.
 
-The Manage Booth page owns booth record edits, cashier assignment, active package selection, cash payment assignment, and Booth UI appearance. It uses two tabs: Details for the booth record, package, and payment assignment; Session Setup for session label, welcome copy, completion thank-you message, theme, background image upload, and preview. The management preview must render through the same Booth UI stage presentation contract as the kiosk app, using current unsaved form values for preview and persisting appearance changes through the booth appearance endpoint.
+The Manage Booth page owns booth record edits, cashier assignment, active package selection, payment assignment display names, cash payment assignment, and Booth UI appearance. It uses two tabs: Details for the booth record, package, and payment assignment; Session Setup for session label, welcome copy, completion thank-you message, theme, background image upload, and preview. The management preview must render through the same Booth UI stage presentation contract as the kiosk app, using current unsaved form values for preview and persisting appearance changes through the booth appearance endpoint.
 
 ### 2. Booth UI
 
@@ -244,7 +244,8 @@ Rules:
 - Booth UI displays the booth's single active offer.
 - Booth UI must not allow a second payable session flow to start while the booth already has a non-terminal transaction.
 - Booth UI reflects client-level branding and active session overrides.
-- Booth UI displays only booth-assigned payment methods that are enabled for runtime use.
+- Booth UI displays only booth-assigned payment methods that are enabled for runtime use, using each assignment's customer-facing display label when configured.
+- Booth UI payment actions must use canonical payment methods such as `CASH` and `PAYMONGO_QRPH`, not the display label.
 - Booth UI cannot directly approve payment or start LumaBooth.
 - Payment Back and payment idle auto-return cancel backend `CREATED` transactions and return directly to Welcome without showing a cancelled outcome screen. The payment idle countdown is based on the backend transaction creation timestamp. Cash waiting Back can cancel backend `PENDING_CASH` transactions and may show the cancelled outcome screen. These kiosk actions are booth-scoped by kiosk token.
 - `EXPIRED`, `CANCELLED`, and `PAYMENT_FAILED` screens clear only after Booth UI acknowledges the backend `recentTransaction` and config no longer returns it.
@@ -333,7 +334,7 @@ Guardrails:
 6. Windows Agent requests a fresh Booth UI launch token and opens Chrome in kiosk mode to the Booth UI token URL.
 7. Client activates exactly one booth offer for the booth.
 8. Client selects a PhotoBIZ-managed booth theme and active session appearance.
-9. Client assigns booth payment options from client-level resources.
+9. Client assigns booth payment options from client-level resources and may set customer-facing payment display names for the booth.
 10. Booth becomes available.
 
 ### Workflow C: Active Offer Assignment To Booth
@@ -351,7 +352,7 @@ Guardrails:
 3. Cash is always enabled for the tenant and cannot be disabled.
 4. Client can configure separate PayMongo QR Ph Test and Live resources at the tenant level. Each mode has business account name, public key metadata, encrypted secret key, encrypted webhook secret, webhook URL, setup status, and verification timestamp.
 5. The PayMongo setup panel explains how to copy API keys from `Settings > Developers`, create a same-mode webhook in `Developers > Webhooks`, subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`, paste the webhook secret, save, verify the setup, and choose one verified mode as runtime-active.
-6. Client assigns payment options per booth from usable tenant resources.
+6. Client assigns payment options per booth from usable tenant resources and can set booth-specific customer-facing display names.
 7. Provider-backed runtime payment requires a verified runtime-active client resource, a booth assignment, runtime enablement, and the provider feature to be live.
 8. PayMongo QR Ph can appear at runtime only after the selected tenant runtime mode is verified, assigned to the booth, runtime-enabled, and all backend transaction gates pass.
 
@@ -622,11 +623,12 @@ Future reports:
 Payment configuration has two levels plus the built-in cash resource:
 
 1. Tenant-level resources define what the client account has registered or started configuring.
-2. Booth-level assignments define which of those resources a booth may use when the method is runtime-enabled.
+2. Booth-level assignments define which of those resources a booth may use when the method is runtime-enabled and may carry the Booth UI customer-facing display label.
 
 Admin Web Settings is the tenant-level payment resource surface. Cash is built in, always enabled/verified, and cannot be disabled at the tenant level. PayMongo QR Ph setup stores client-owned credentials and webhook configuration; stored secrets are encrypted and never returned after save.
 
 Backend payment validation must check booth-level assignment, provider/resource status, and runtime feature availability. Tenant-level setup alone is never enough to expose a payment method in Booth UI or Cashier POS.
+Payment state, POS, transaction history, reports, and reconciliation remain canonical method based even when Booth UI shows a custom display name.
 
 ### Cash
 
@@ -725,7 +727,7 @@ The MVP is considered complete when:
 17. PayMongo QR Ph Test and Live modes can be configured per tenant, verified independently, selected as one runtime-active mode, assigned per booth, and exposed to Booth UI only when all backend gates pass.
 18. Per-session transactions can accept post-session extra print add-ons.
 19. Time-unlimited and session-count offers reject extra print add-ons.
-20. Booth payment options are filtered by booth assignment, and cash remains available while verified PayMongo QR Ph can be runtime-enabled per booth.
+20. Booth payment options are filtered by booth assignment, Booth UI can show booth-specific payment display names, and cash remains available while verified PayMongo QR Ph can be runtime-enabled per booth.
 
 ## Open Decisions
 

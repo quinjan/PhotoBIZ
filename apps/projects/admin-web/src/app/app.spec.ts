@@ -521,7 +521,11 @@ describe('App', () => {
       `${apiBaseUrl}/api/admin/booths/${booth.id}/payment-options`,
     );
     expect(enableRequest.request.method).toBe('POST');
-    expect(enableRequest.request.body).toEqual({ paymentMethod: 'CASH', runtimeEnabled: true });
+    expect(enableRequest.request.body).toEqual({
+      paymentMethod: 'CASH',
+      runtimeEnabled: true,
+      displayLabel: 'Cash',
+    });
     enableRequest.flush(enabledAssignment);
 
     await Promise.resolve();
@@ -554,6 +558,81 @@ describe('App', () => {
 
     expect(snackBar.open).toHaveBeenCalledWith(
       'Payment assignment disabled.',
+      'Dismiss',
+      expect.objectContaining({ panelClass: ['snackbar-success'] }),
+    );
+  });
+
+  it('saves booth payment display names without changing payment methods', async () => {
+    const workspace = createWorkspaceWithRejectedSession();
+    const http = TestBed.inject(HttpTestingController);
+    const session = makeSession({ role: 'CLIENT_OWNER' });
+    const booth = makeBooth();
+    const cashAssignment = makePaymentAssignment({ boothId: booth.id, displayLabel: 'Pay Cash' });
+    const payMongoAssignment = makePaymentAssignment({
+      boothId: booth.id,
+      id: 'payment-assignment-2',
+      paymentMethod: 'PAYMONGO_QRPH',
+      runtimeEnabled: false,
+      status: 'LOCKED',
+      displayLabel: 'Scan QR',
+    });
+
+    workspace.session.set(session);
+    workspace.overview.set(
+      makeOverview(session, {
+        booths: [booth],
+        paymentAssignments: [cashAssignment, payMongoAssignment],
+      }),
+    );
+    workspace.viewBooth(booth);
+    workspace.boothCashDisplayLabel.set('  Cash at counter  ');
+    workspace.boothPayMongoDisplayLabel.set('');
+
+    const save = workspace.saveBoothPaymentDisplayNames(booth.id);
+    const cashRequest = http.expectOne(
+      `${apiBaseUrl}/api/admin/booths/${booth.id}/payment-options`,
+    );
+    expect(cashRequest.request.method).toBe('POST');
+    expect(cashRequest.request.body).toEqual({
+      paymentMethod: 'CASH',
+      runtimeEnabled: true,
+      displayLabel: 'Cash at counter',
+    });
+    cashRequest.flush({ ...cashAssignment, displayLabel: 'Cash at counter' });
+
+    await Promise.resolve();
+    const payMongoRequest = http.expectOne(
+      `${apiBaseUrl}/api/admin/booths/${booth.id}/payment-options`,
+    );
+    expect(payMongoRequest.request.method).toBe('POST');
+    expect(payMongoRequest.request.body).toEqual({
+      paymentMethod: 'PAYMONGO_QRPH',
+      runtimeEnabled: false,
+      displayLabel: null,
+    });
+    payMongoRequest.flush({ ...payMongoAssignment, displayLabel: null });
+
+    await Promise.resolve();
+    http.expectOne(`${apiBaseUrl}/api/admin/overview`).flush(
+      makeOverview(session, {
+        booths: [booth],
+        paymentAssignments: [
+          makePaymentAssignment({ boothId: booth.id, displayLabel: 'Cash at counter' }),
+          makePaymentAssignment({
+            boothId: booth.id,
+            id: 'payment-assignment-2',
+            paymentMethod: 'PAYMONGO_QRPH',
+            runtimeEnabled: false,
+            status: 'LOCKED',
+          }),
+        ],
+      }),
+    );
+    await save;
+
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Payment display names saved.',
       'Dismiss',
       expect.objectContaining({ panelClass: ['snackbar-success'] }),
     );
@@ -1637,6 +1716,7 @@ function makePaymentAssignment(
     paymentMethod: 'CASH',
     runtimeEnabled: true,
     status: 'ASSIGNED',
+    displayLabel: null,
     ...overrides,
   };
 }

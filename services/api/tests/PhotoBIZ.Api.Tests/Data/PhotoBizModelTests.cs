@@ -97,6 +97,21 @@ public sealed class PhotoBizModelTests
     }
 
     [Fact]
+    public void BoothPaymentOptionDisplayLabelUsesConstrainedNullableColumn()
+    {
+        using var dbContext = CreateDbContext();
+        var entityType = dbContext.Model.FindEntityType(typeof(BoothPaymentOptionAssignment));
+        Assert.NotNull(entityType);
+
+        var property = entityType.FindProperty(nameof(BoothPaymentOptionAssignment.DisplayLabel));
+
+        Assert.NotNull(property);
+        Assert.Equal("display_label", property.GetColumnName());
+        Assert.Equal(80, property.GetMaxLength());
+        Assert.True(property.IsNullable);
+    }
+
+    [Fact]
     public void UserMustChangePasswordDefaultsToFalse()
     {
         using var dbContext = CreateDbContext();

@@ -21,6 +21,7 @@ public static class PhotoBizApiEndpoints
     private const int AgentVersionMaxLength = 80;
     private const int AgentRuntimeKindMaxLength = 80;
     private const int AgentLumaBoothModeMaxLength = 40;
+    private const int PaymentDisplayLabelMaxLength = 80;
 
     public static void MapPhotoBizApi(this IEndpointRouteBuilder app)
     {
@@ -357,7 +358,7 @@ public static class PhotoBizApiEndpoints
             printEntitlements.Select(ToPrintEntitlementSummary).ToArray(),
             activations.Select(ToOfferActivationSummary).ToArray(),
             BuildPaymentResourceSummaries(clients, paymentProviderConfigs, payMongoPaymentAttempts, mayaEcrDevices),
-            paymentAssignments.Select(assignment => new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status)).ToArray(),
+            paymentAssignments.Select(ToPaymentAssignmentSummary).ToArray(),
             appearanceConfigs.Select(config =>
             {
                 var normalizedTheme = NormalizeThemePreset(config.ThemePreset);
@@ -2209,6 +2210,15 @@ public static class PhotoBizApiEndpoints
             });
         }
 
+        var displayLabelResult = NormalizePaymentDisplayLabel(request.DisplayLabel);
+        if (displayLabelResult.Error is not null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["displayLabel"] = [displayLabelResult.Error]
+            });
+        }
+
         var booth = await ApplyClientScope(dbContext.Booths.AsNoTracking(), currentUser, item => item.ClientAccountId)
             .SingleOrDefaultAsync(item => item.Id == boothId, cancellationToken);
 
@@ -2251,23 +2261,25 @@ public static class PhotoBizApiEndpoints
                 Id = Guid.NewGuid(),
                 BoothId = boothId,
                 PaymentMethod = request.PaymentMethod,
+                DisplayLabel = displayLabelResult.Value,
                 RuntimeEnabled = runtimeEnabled,
-                Status = runtimeEnabled ? StatusValues.PaymentAssignment.Assigned : StatusValues.PaymentAssignment.Locked,
+                Status = ResolvePaymentAssignmentStatus(runtimeEnabled),
                 AssignedAt = DateTimeOffset.UtcNow
             };
             dbContext.BoothPaymentOptionAssignments.Add(assignment);
         }
         else
         {
+            assignment.DisplayLabel = displayLabelResult.Value;
             assignment.RuntimeEnabled = runtimeEnabled;
-            assignment.Status = runtimeEnabled ? StatusValues.PaymentAssignment.Assigned : StatusValues.PaymentAssignment.Locked;
+            assignment.Status = ResolvePaymentAssignmentStatus(runtimeEnabled, assignment.Status);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await auditService.WriteAsync(currentUser, "booth_payment_option.updated", nameof(BoothPaymentOptionAssignment), assignment.Id, new { boothId, assignment.PaymentMethod, assignment.RuntimeEnabled }, cancellationToken);
+        await auditService.WriteAsync(currentUser, "booth_payment_option.updated", nameof(BoothPaymentOptionAssignment), assignment.Id, new { boothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.DisplayLabel }, cancellationToken);
 
-        return TypedResults.Ok(new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status));
+        return TypedResults.Ok(ToPaymentAssignmentSummary(assignment));
     }
 
     private static async Task<Results<Ok<PaymentAssignmentSummary>, ForbidHttpResult, ValidationProblem>> DisablePaymentOptionAsync(
@@ -2321,7 +2333,7 @@ public static class PhotoBizApiEndpoints
 
         await auditService.WriteAsync(currentUser, "booth_payment_option.disabled", nameof(BoothPaymentOptionAssignment), assignment.Id, new { boothId, assignment.PaymentMethod }, cancellationToken);
 
-        return TypedResults.Ok(new PaymentAssignmentSummary(assignment.Id, assignment.BoothId, assignment.PaymentMethod, assignment.RuntimeEnabled, assignment.Status));
+        return TypedResults.Ok(ToPaymentAssignmentSummary(assignment));
     }
 
     private static async Task<IResult> ReceivePayMongoWebhookAsync(
@@ -2463,7 +2475,7 @@ public static class PhotoBizApiEndpoints
                     item.RuntimeEnabled &&
                     (item.PaymentMethod == StatusValues.PaymentMethod.Cash ||
                         (item.PaymentMethod == StatusValues.PaymentMethod.PayMongoQrPh && hasVerifiedPayMongo)))
-                .Select(item => new BoothPaymentOptionResponse(item.PaymentMethod, ToPaymentLabel(item.PaymentMethod), item.RuntimeEnabled))
+                .Select(item => new BoothPaymentOptionResponse(item.PaymentMethod, ToPaymentLabel(item.PaymentMethod, item.DisplayLabel), item.RuntimeEnabled))
                 .ToArray(),
             activeTransaction,
             recentTransaction));
@@ -4791,8 +4803,62 @@ public static class PhotoBizApiEndpoints
         };
     }
 
-    private static string ToPaymentLabel(string paymentMethod)
+    private static PaymentAssignmentSummary ToPaymentAssignmentSummary(BoothPaymentOptionAssignment assignment)
     {
+        return new PaymentAssignmentSummary(
+            assignment.Id,
+            assignment.BoothId,
+            assignment.PaymentMethod,
+            assignment.RuntimeEnabled,
+            assignment.Status,
+            assignment.DisplayLabel);
+    }
+
+    private static string ResolvePaymentAssignmentStatus(bool runtimeEnabled, string? currentStatus = null)
+    {
+        if (runtimeEnabled)
+        {
+            return StatusValues.PaymentAssignment.Assigned;
+        }
+
+        return currentStatus == StatusValues.PaymentAssignment.Disabled
+            ? StatusValues.PaymentAssignment.Disabled
+            : StatusValues.PaymentAssignment.Locked;
+    }
+
+    private static (string? Value, string? Error) NormalizePaymentDisplayLabel(string? displayLabel)
+    {
+        if (displayLabel is null)
+        {
+            return (null, null);
+        }
+
+        var trimmed = displayLabel.Trim();
+        if (trimmed.Length == 0)
+        {
+            return (null, "Payment display name must not be blank. Omit it to use the default label.");
+        }
+
+        if (trimmed.Length > PaymentDisplayLabelMaxLength)
+        {
+            return (null, $"Payment display name must be {PaymentDisplayLabelMaxLength} characters or fewer.");
+        }
+
+        if (trimmed.Any(char.IsControl) || trimmed.Contains('<') || trimmed.Contains('>'))
+        {
+            return (null, "Payment display name must be plain text.");
+        }
+
+        return (trimmed, null);
+    }
+
+    private static string ToPaymentLabel(string paymentMethod, string? displayLabel = null)
+    {
+        if (!string.IsNullOrWhiteSpace(displayLabel))
+        {
+            return displayLabel.Trim();
+        }
+
         return paymentMethod switch
         {
             StatusValues.PaymentMethod.Cash => "Cash",
@@ -4900,7 +4966,7 @@ public sealed record PaymentResourceSummary(
     bool HasWebhookSecret,
     bool RuntimeActive,
     string? LatestTestUrl);
-public sealed record PaymentAssignmentSummary(Guid Id, Guid BoothId, string PaymentMethod, bool RuntimeEnabled, string Status);
+public sealed record PaymentAssignmentSummary(Guid Id, Guid BoothId, string PaymentMethod, bool RuntimeEnabled, string Status, string? DisplayLabel);
 public sealed record BoothAppearanceSummary(
     Guid Id,
     Guid BoothId,
@@ -5078,7 +5144,7 @@ public sealed record UpdatePaymentResourceRequest(
     string? WebhookSecret = null,
     bool Verify = false);
 public sealed record SetPaymentResourceRuntimeModeRequest(string PaymentMode);
-public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool RuntimeEnabled);
+public sealed record AssignPaymentOptionRequest(string PaymentMethod, bool RuntimeEnabled, string? DisplayLabel);
 public sealed record BoothClientResponse(string DisplayName, string? LogoUrl);
 public sealed record BoothThemeResponse(string Preset, string PrimaryColor, string AccentColor, string? BackgroundImageUrl, string? BackgroundImageDataUrl, string FontMode);
 public sealed record BoothThemeScheme(string PrimaryColor, string AccentColor, string FontMode);

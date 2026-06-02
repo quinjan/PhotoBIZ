@@ -750,6 +750,131 @@ public sealed class PhotoBizManagementApiTests
     }
 
     [Fact]
+    public async Task PaymentAssignmentDisplayLabelIsTrimmedAndReturnedToBoothUiConfig()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1,
+            includeOffer: true,
+            includeActivation: true,
+            includeAppearance: true,
+            includeFreshHeartbeat: true,
+            kioskToken: "label-kiosk-token");
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var assignmentResponse = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
+        {
+            paymentMethod = StatusValues.PaymentMethod.Cash,
+            runtimeEnabled = true,
+            displayLabel = "  Cash at counter  "
+        });
+
+        Assert.Equal(HttpStatusCode.OK, assignmentResponse.StatusCode);
+        var assignment = await assignmentResponse.Content.ReadFromJsonAsync<PaymentAssignmentSummary>();
+        Assert.NotNull(assignment);
+        Assert.Equal("Cash at counter", assignment.DisplayLabel);
+        Assert.Equal(StatusValues.PaymentMethod.Cash, assignment.PaymentMethod);
+
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", "label-kiosk-token");
+        var customConfig = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(customConfig);
+        Assert.Contains(customConfig.PaymentOptions, option =>
+            option.Method == StatusValues.PaymentMethod.Cash &&
+            option.Label == "Cash at counter" &&
+            option.RuntimeEnabled);
+
+        client.DefaultRequestHeaders.Remove("X-Kiosk-Token");
+        var fallbackResponse = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
+        {
+            paymentMethod = StatusValues.PaymentMethod.Cash,
+            runtimeEnabled = true,
+            displayLabel = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.OK, fallbackResponse.StatusCode);
+        var fallbackAssignment = await fallbackResponse.Content.ReadFromJsonAsync<PaymentAssignmentSummary>();
+        Assert.NotNull(fallbackAssignment);
+        Assert.Null(fallbackAssignment.DisplayLabel);
+
+        client.DefaultRequestHeaders.Add("X-Kiosk-Token", "label-kiosk-token");
+        var fallbackConfig = await client.GetFromJsonAsync<BoothConfigResponse>("/api/booth-ui/config");
+
+        Assert.NotNull(fallbackConfig);
+        Assert.Contains(fallbackConfig.PaymentOptions, option =>
+            option.Method == StatusValues.PaymentMethod.Cash &&
+            option.Label == "Cash" &&
+            option.RuntimeEnabled);
+    }
+
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    [InlineData("Cash <now>")]
+    public async Task PaymentAssignmentDisplayLabelRejectsInvalidPlainText(string displayLabel)
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var response = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
+        {
+            paymentMethod = StatusValues.PaymentMethod.Cash,
+            runtimeEnabled = true,
+            displayLabel
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Contains("displayLabel", problem.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task PaymentAssignmentDisplayLabelUpdatePreservesDisabledStatus()
+    {
+        await using var factory = new PhotoBizApiFactory();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("https://localhost")
+        });
+        var seed = await factory.SeedClientSetupAsync(
+            StatusValues.Subscription.Active,
+            activeBoothAllowance: 1,
+            existingActiveBooths: 1);
+        await LoginAsync(client, seed.ClientOwnerEmail);
+
+        var disableResponse = await client.DeleteAsync($"/api/admin/booths/{seed.BoothId}/payment-options/{StatusValues.PaymentMethod.Cash}");
+        var labelResponse = await client.PostAsJsonAsync($"/api/admin/booths/{seed.BoothId}/payment-options", new
+        {
+            paymentMethod = StatusValues.PaymentMethod.Cash,
+            runtimeEnabled = false,
+            displayLabel = "Cash desk"
+        });
+
+        Assert.Equal(HttpStatusCode.OK, disableResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, labelResponse.StatusCode);
+        var assignment = await labelResponse.Content.ReadFromJsonAsync<PaymentAssignmentSummary>();
+        Assert.NotNull(assignment);
+        Assert.Equal(StatusValues.PaymentAssignment.Disabled, assignment.Status);
+        Assert.False(assignment.RuntimeEnabled);
+        Assert.Equal("Cash desk", assignment.DisplayLabel);
+    }
+
+    [Fact]
     public async Task PayMongoSetupRequiresCredentialsBeforeGeneratingWebhookUrl()
     {
         await using var factory = new PhotoBizApiFactory();

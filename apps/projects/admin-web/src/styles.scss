@@ -807,28 +807,80 @@ select,
 }
 
 .payment-option-list {
-  display: grid;
-  gap: 12px;
+  display: block;
 }
 
-.payment-option-row {
-  align-items: center;
+.payment-method-list {
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius);
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 14px;
-}
-
-.payment-option-row div {
   display: grid;
-  gap: 4px;
+  gap: 0;
+  overflow: hidden;
 }
 
-.payment-option-row span {
+.payment-method-header,
+.payment-method-row {
+  align-items: center;
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.45fr) 72px;
+}
+
+.payment-method-header {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--admin-border);
   color: var(--admin-muted);
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  padding: 10px 16px;
+  text-transform: uppercase;
+}
+
+.payment-method-row {
+  background: #ffffff;
+  min-height: 82px;
+  padding: 14px 12px;
+}
+
+.payment-method-row + .payment-method-row {
+  border-top: 1px solid var(--admin-border);
+}
+
+.payment-method-summary {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.payment-method-summary strong {
+  color: var(--admin-ink);
+  font-size: 14px;
+}
+
+.payment-method-summary span {
+  color: var(--admin-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.payment-method-label {
+  min-width: 0;
+}
+
+.payment-method-label .mat-mdc-form-field-subscript-wrapper {
+  display: none;
+}
+
+.payment-display-name-field {
+  width: 100%;
+}
+
+.payment-method-availability {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
 }
 
 .payment-resource-list {
@@ -1276,6 +1328,16 @@ body.booth-preview-fullscreen-active .admin-side {
 
   .payment-resource-row .mat-mdc-slide-toggle {
     margin-left: 58px;
+  }
+
+  .payment-method-header {
+    display: none;
+  }
+
+  .payment-method-row {
+    align-items: flex-start;
+    gap: 12px;
+    grid-template-columns: 1fr;
   }
 
   .pos-booth-actions,
