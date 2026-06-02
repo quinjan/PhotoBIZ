@@ -348,12 +348,12 @@ Guardrails:
 
 1. Client Owner or Client Admin opens Settings > Payment Resources.
 2. Settings shows tenant information and the tenant-level payment resources for the client account.
-3. Cash is the MVP runtime payment method. It is always enabled for the tenant and cannot be disabled.
-4. Client can configure one PayMongo QR Ph resource at the tenant level with mode, business account name, public key metadata, encrypted secret key, encrypted webhook secret, webhook URL, setup status, and verification timestamp.
-5. The PayMongo setup panel explains how to copy API keys from `Settings > Developers`, create a same-mode webhook in `Developers > Webhooks`, subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`, paste the webhook secret, save, and verify the setup.
+3. Cash is always enabled for the tenant and cannot be disabled.
+4. Client can configure separate PayMongo QR Ph Test and Live resources at the tenant level. Each mode has business account name, public key metadata, encrypted secret key, encrypted webhook secret, webhook URL, setup status, and verification timestamp.
+5. The PayMongo setup panel explains how to copy API keys from `Settings > Developers`, create a same-mode webhook in `Developers > Webhooks`, subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`, paste the webhook secret, save, verify the setup, and choose one verified mode as runtime-active.
 6. Client assigns payment options per booth from usable tenant resources.
-7. Provider-backed runtime payment requires a verified client resource, a booth assignment, runtime enablement, and the provider feature to be live.
-8. PayMongo QR Ph can appear at runtime only after the tenant setup is verified, assigned to the booth, runtime-enabled, and all backend transaction gates pass.
+7. Provider-backed runtime payment requires a verified runtime-active client resource, a booth assignment, runtime enablement, and the provider feature to be live.
+8. PayMongo QR Ph can appear at runtime only after the selected tenant runtime mode is verified, assigned to the booth, runtime-enabled, and all backend transaction gates pass.
 
 ### Workflow E: Cash Payment
 
@@ -380,10 +380,11 @@ For `TIME_UNLIMITED` and `SESSION_COUNT` offers, Manage Booth only selects the p
 
 1. Client Owner or Client Admin opens Settings > Payment Resources.
 2. Client sees cash plus a PayMongo QR Ph setup card.
-3. Client selects test or live mode and enters business account name, public API key, secret API key, and webhook secret. Live mode warns that it processes real payments.
-4. The form shows the PhotoBIZ webhook URL after the resource exists, and the instruction panel tells the client to create a same-mode PayMongo webhook for `payment.paid`, `payment.failed`, and `qrph.expired`.
-5. Save stores secrets encrypted and returns only masked metadata. Verify PayMongo Setup performs a safe backend credential check before marking the resource verified.
-6. Client Owner or Client Admin assigns verified PayMongo QR Ph per booth and enables runtime exposure where the booth should accept QR payments.
+3. Client can configure Test and Live modes independently. Each mode stores its own business account name, public API key, secret API key, webhook secret, webhook URL, and verification status. Live mode warns that it processes real payments.
+4. The form shows the PhotoBIZ webhook URL after the selected mode resource exists, and the instruction panel tells the client to create a same-mode PayMongo webhook for `payment.paid`, `payment.failed`, and `qrph.expired`.
+5. Save stores secrets encrypted and returns only masked metadata. Verify PayMongo Setup performs a safe backend credential check before marking that mode verified.
+6. Client Owner or Client Admin chooses one verified PayMongo mode as the tenant runtime mode. Booth PayMongo assignments remain method-level and use whichever verified mode is currently runtime-active.
+7. Client Owner or Client Admin assigns PayMongo QR Ph per booth and enables runtime exposure where the booth should accept QR payments.
 
 ### Workflow G: Transaction Expiration
 
@@ -647,15 +648,17 @@ Requirements:
 
 Requirements:
 
-- Client account can have one PayMongo QR Ph configuration.
-- Client Owner supplies PayMongo business account name, mode (`test` or `live`), public API key, secret API key, and webhook secret.
+- Client account can have one PayMongo QR Ph Test configuration and one PayMongo QR Ph Live configuration.
+- Client Owner supplies PayMongo business account name, mode (`test` or `live`), public API key, secret API key, and webhook secret for each mode they configure.
+- One verified PayMongo QR Ph configuration is selected as the tenant runtime mode. When both Test and Live are configured, Booth UI and Cashier POS use only the runtime-active mode for new PayMongo transactions.
 - Public and secret key prefixes must match the selected mode: `pk_test_`/`sk_test_` for test mode and `pk_live_`/`sk_live_` for live mode.
 - Secret API key and webhook secret are stored encrypted and never returned to frontend clients.
 - PhotoBIZ provides a webhook URL for the client to register in PayMongo Dashboard under `Developers > Webhooks`.
 - The webhook must be created in the same test/live mode selected in PhotoBIZ and subscribe to `payment.paid`, `payment.failed`, and `qrph.expired`.
+- The latest PayMongo Test simulator URL is shown only in Test mode as a read-only admin aid after a Test QR payment is generated. Booth UI does not show simulator URLs.
 - Booths can assign PayMongo QR Ph only after the client-level resource exists and is verified/usable.
 - PayMongo webhooks become the source of truth for payment success, failure, and expiration.
-- Payment attempts table supports auditability and retries.
+- Payment attempts table stores the provider config used by the attempt, the provider reference, raw provider payload, and Test simulator URL when PayMongo returns one.
 - Booth UI and Cashier POS display this option only after client payment config is verified, assigned to the booth, and runtime provider integration is enabled.
 - If PayMongo reports paid after a PhotoBIZ transaction was cancelled, the payment is recorded for reconciliation and must not start a booth session.
 
@@ -719,7 +722,7 @@ The MVP is considered complete when:
 14. Application Owner dashboard shows client and subscription health.
 15. Client Owner dashboard shows client sales and booth status.
 16. Cashier dashboard shows only the assigned booth.
-17. PayMongo QR Ph can be configured per tenant, verified, assigned per booth, and exposed to Booth UI only when all backend gates pass.
+17. PayMongo QR Ph Test and Live modes can be configured per tenant, verified independently, selected as one runtime-active mode, assigned per booth, and exposed to Booth UI only when all backend gates pass.
 18. Per-session transactions can accept post-session extra print add-ons.
 19. Time-unlimited and session-count offers reject extra print add-ons.
 20. Booth payment options are filtered by booth assignment, and cash remains available while verified PayMongo QR Ph can be runtime-enabled per booth.

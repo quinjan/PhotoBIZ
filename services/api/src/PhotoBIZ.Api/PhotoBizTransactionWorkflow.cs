@@ -304,12 +304,13 @@ public sealed class PhotoBizTransactionWorkflow(
                 item.ClientAccountId == booth.ClientAccountId &&
                 item.Provider == StatusValues.PaymentProvider.PayMongo &&
                 item.IntegrationType == StatusValues.PaymentMethod.PayMongoQrPh &&
-                item.Status == StatusValues.PaymentResource.Verified,
+                item.Status == StatusValues.PaymentResource.Verified &&
+                item.RuntimeActive,
                 cancellationToken);
 
         if (config is null || string.IsNullOrWhiteSpace(config.EncryptedSecretKey))
         {
-            throw new InvalidOperationException("PayMongo QR Ph is not verified for this client.");
+            throw new InvalidOperationException("PayMongo QR Ph runtime mode is not verified for this client.");
         }
 
         if (secretProtector is null)
@@ -333,10 +334,12 @@ public sealed class PhotoBizTransactionWorkflow(
         {
             Id = Guid.NewGuid(),
             TransactionId = transaction.Id,
+            ClientPaymentProviderConfigId = config.Id,
             Provider = StatusValues.PaymentProvider.PayMongo,
             ProviderReference = qrPayment.PaymentIntentId,
             Status = StatusValues.Transaction.PendingPayMongoQrPh,
             RawPayload = qrPayment.RawPayload,
+            TestPaymentUrl = qrPayment.TestPaymentUrl,
             CreatedAt = DateTimeOffset.UtcNow
         });
 

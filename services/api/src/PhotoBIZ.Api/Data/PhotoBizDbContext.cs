@@ -107,12 +107,13 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(config => config.EncryptedSecretKey).HasMaxLength(2000);
             entity.Property(config => config.EncryptedWebhookSecret).HasMaxLength(2000);
             entity.Property(config => config.WebhookUrl).HasMaxLength(1000);
+            entity.Property(config => config.RuntimeActive).HasDefaultValue(false);
             entity.HasOne(config => config.ClientAccount)
                 .WithMany(client => client.PaymentProviderConfigs)
                 .HasForeignKey(config => config.ClientAccountId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("fk_payment_configs_client_account");
-            entity.HasIndex(config => new { config.ClientAccountId, config.Provider, config.IntegrationType })
+            entity.HasIndex(config => new { config.ClientAccountId, config.Provider, config.IntegrationType, config.PaymentMode })
                 .IsUnique()
                 .HasDatabaseName("ix_payment_configs_client_provider_type");
         });
@@ -375,11 +376,17 @@ public sealed class PhotoBizDbContext(DbContextOptions<PhotoBizDbContext> option
             entity.Property(attempt => attempt.ProviderReference).HasMaxLength(200);
             entity.Property(attempt => attempt.Status).HasMaxLength(60);
             entity.Property(attempt => attempt.RawPayload).HasColumnType("jsonb");
+            entity.Property(attempt => attempt.TestPaymentUrl).HasMaxLength(1000);
             entity.Property(attempt => attempt.CreatedAt).HasDefaultValueSql("now()");
             entity.HasOne(attempt => attempt.Transaction)
                 .WithMany(transaction => transaction.PaymentAttempts)
                 .HasForeignKey(attempt => attempt.TransactionId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(attempt => attempt.ClientPaymentProviderConfig)
+                .WithMany(config => config.PaymentAttempts)
+                .HasForeignKey(attempt => attempt.ClientPaymentProviderConfigId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(attempt => attempt.ClientPaymentProviderConfigId);
             entity.HasIndex(attempt => new { attempt.Provider, attempt.ProviderReference });
         });
 

@@ -34,6 +34,7 @@ public sealed record PayMongoQrPaymentResult(
     string PaymentIntentId,
     string? PaymentMethodId,
     string? QrImageUrl,
+    string? TestPaymentUrl,
     string RawPayload,
     DateTimeOffset ExpiresAt);
 
@@ -155,6 +156,10 @@ public sealed class PayMongoClient(HttpClient httpClient) : IPayMongoClient
         var qrImageUrl =
             GetString(attached, "data", "attributes", "next_action", "code", "image_url") ??
             GetString(attached, "data", "attributes", "next_action", "qrph", "image_url");
+        var testPaymentUrl =
+            GetString(attached, "data", "attributes", "next_action", "code", "test_url") ??
+            GetString(attached, "data", "attributes", "next_action", "qrph", "test_url") ??
+            GetString(attached, "data", "attributes", "next_action", "test_url");
         var expiresAt =
             GetDateTimeOffset(attached, "data", "attributes", "next_action", "code", "expires_at") ??
             GetDateTimeOffset(attached, "data", "attributes", "next_action", "qrph", "expires_at") ??
@@ -164,6 +169,7 @@ public sealed class PayMongoClient(HttpClient httpClient) : IPayMongoClient
             intentId,
             methodId,
             qrImageUrl,
+            testPaymentUrl,
             attached.ToJsonString(JsonOptions),
             expiresAt);
     }

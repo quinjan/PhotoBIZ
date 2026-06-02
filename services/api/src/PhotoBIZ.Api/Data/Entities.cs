@@ -55,10 +55,12 @@ public sealed class ClientPaymentProviderConfig
     public string? EncryptedSecretKey { get; set; }
     public string? EncryptedWebhookSecret { get; set; }
     public string? WebhookUrl { get; set; }
+    public bool RuntimeActive { get; set; }
     public DateTimeOffset? VerifiedAt { get; set; }
 
     public ClientAccount? ClientAccount { get; set; }
     public ICollection<BoothPaymentOptionAssignment> BoothPaymentOptionAssignments { get; } = [];
+    public ICollection<PaymentAttempt> PaymentAttempts { get; } = [];
 }
 
 public sealed class ClientMayaEcrDevice
@@ -277,13 +279,16 @@ public sealed class PaymentAttempt
 {
     public Guid Id { get; set; }
     public Guid TransactionId { get; set; }
+    public Guid? ClientPaymentProviderConfigId { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string? ProviderReference { get; set; }
     public string Status { get; set; } = StatusValues.Transaction.Created;
     public string RawPayload { get; set; } = "{}";
+    public string? TestPaymentUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 
     public Transaction? Transaction { get; set; }
+    public ClientPaymentProviderConfig? ClientPaymentProviderConfig { get; set; }
 }
 
 public sealed class BoothSession

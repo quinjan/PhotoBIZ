@@ -121,6 +121,8 @@ export type PaymentResourceSummary = {
   readonly webhookUrl?: string | null;
   readonly hasSecretKey?: boolean;
   readonly hasWebhookSecret?: boolean;
+  readonly runtimeActive?: boolean;
+  readonly latestTestUrl?: string | null;
 };
 export type TenantPaymentResourceDisplay = {
   readonly method: string;
@@ -138,6 +140,8 @@ export type TenantPaymentResourceDisplay = {
   readonly webhookUrl: string | null;
   readonly hasSecretKey: boolean;
   readonly hasWebhookSecret: boolean;
+  readonly runtimeActive: boolean;
+  readonly latestTestUrl: string | null;
 };
 export type PaymentAssignmentSummary = {
   readonly id: string;
@@ -794,14 +798,53 @@ export class AdminWorkspace {
   readonly tenantPaymentResources = computed<TenantPaymentResourceDisplay[]>(() => {
     const clientId = this.currentClient()?.id ?? null;
     const resources = this.overview()?.paymentResources ?? [];
+    const payMongoResources = this.payMongoModeResources();
 
     return this.paymentResourceDefinitions.map((definition) => {
+      if (definition.method === 'PAYMONGO_QRPH') {
+        const runtimeResource = payMongoResources.find((resource) => resource.runtimeActive);
+        const verifiedResources = payMongoResources.filter(
+          (resource) => resource.status === 'VERIFIED',
+        );
+        const draftResource = payMongoResources.find((resource) => resource.status === 'DRAFT');
+        const displayResource =
+          runtimeResource ??
+          verifiedResources[0] ??
+          draftResource ??
+          payMongoResources.find((resource) => resource.paymentMode === 'test') ??
+          null;
+        const status = displayResource?.status ?? 'NOT_CONFIGURED';
+
+        return {
+          ...definition,
+          enabled: Boolean(runtimeResource),
+          locked: false,
+          status,
+          statusLabel: runtimeResource
+            ? `Runtime ${this.payMongoModeLabel(runtimeResource.paymentMode)}`
+            : verifiedResources.length > 0
+              ? `${verifiedResources.length} mode${verifiedResources.length === 1 ? '' : 's'} verified`
+              : this.paymentResourceStatusLabel(status),
+          resourceId: displayResource?.resourceId ?? null,
+          paymentMode: displayResource?.paymentMode ?? null,
+          businessAccountName: displayResource?.businessAccountName ?? null,
+          publicKeyMasked: displayResource?.publicKeyMasked ?? null,
+          webhookUrl: displayResource?.webhookUrl ?? null,
+          hasSecretKey: displayResource?.hasSecretKey ?? false,
+          hasWebhookSecret: displayResource?.hasWebhookSecret ?? false,
+          runtimeActive: displayResource?.runtimeActive ?? false,
+          latestTestUrl:
+            payMongoResources.find((resource) => resource.paymentMode === 'test')?.latestTestUrl ??
+            null,
+        };
+      }
+
       const resource = resources.find(
         (item) => item.clientAccountId === clientId && item.paymentMethod === definition.method,
       );
       const status =
         definition.method === 'CASH' ? 'VERIFIED' : (resource?.status ?? 'NOT_CONFIGURED');
-      const providerVerified = definition.method !== 'PAYMONGO_QRPH' || status === 'VERIFIED';
+      const providerVerified = status === 'VERIFIED';
       const enabled =
         definition.method === 'CASH' ? true : providerVerified && (resource?.enabled ?? false);
 
@@ -818,11 +861,52 @@ export class AdminWorkspace {
         webhookUrl: resource?.webhookUrl ?? null,
         hasSecretKey: resource?.hasSecretKey ?? false,
         hasWebhookSecret: resource?.hasWebhookSecret ?? false,
+        runtimeActive: resource?.runtimeActive ?? false,
+        latestTestUrl: resource?.latestTestUrl ?? null,
+      };
+    });
+  });
+  readonly payMongoModeResources = computed<TenantPaymentResourceDisplay[]>(() => {
+    const clientId = this.currentClient()?.id ?? null;
+    const resources = this.overview()?.paymentResources ?? [];
+    const definition = this.paymentResourceDefinitions.find(
+      (item) => item.method === 'PAYMONGO_QRPH',
+    )!;
+
+    return (['test', 'live'] as const).map((mode) => {
+      const resource = resources.find(
+        (item) =>
+          item.clientAccountId === clientId &&
+          item.paymentMethod === 'PAYMONGO_QRPH' &&
+          item.paymentMode === mode,
+      );
+      const status = resource?.status ?? 'NOT_CONFIGURED';
+
+      return {
+        ...definition,
+        label: `${definition.label} ${this.payMongoModeLabel(mode)}`,
+        enabled: status !== 'NOT_CONFIGURED' && status !== 'DISABLED',
+        locked: status !== 'VERIFIED',
+        status,
+        statusLabel: this.paymentResourceStatusLabel(status),
+        resourceId: resource?.resourceId ?? null,
+        paymentMode: mode,
+        businessAccountName: resource?.businessAccountName ?? null,
+        publicKeyMasked: resource?.publicKeyMasked ?? null,
+        webhookUrl: resource?.webhookUrl ?? null,
+        hasSecretKey: resource?.hasSecretKey ?? false,
+        hasWebhookSecret: resource?.hasWebhookSecret ?? false,
+        runtimeActive: resource?.runtimeActive ?? false,
+        latestTestUrl: resource?.latestTestUrl ?? null,
       };
     });
   });
   readonly payMongoResource = computed(
-    () => this.tenantPaymentResources().find((item) => item.method === 'PAYMONGO_QRPH') ?? null,
+    () =>
+      this.payMongoModeResources().find((item) => item.paymentMode === this.payMongoMode()) ?? null,
+  );
+  readonly payMongoRuntimeResource = computed(
+    () => this.payMongoModeResources().find((item) => item.runtimeActive) ?? null,
   );
   readonly clientOwners = computed(
     () => this.overview()?.users.filter((user) => user.role === 'CLIENT_OWNER') ?? [],
@@ -2321,8 +2405,30 @@ export class AdminWorkspace {
   }
 
   setPayMongoMode(value: 'test' | 'live'): void {
-    this.payMongoFormDirty.set(true);
+    this.selectPayMongoMode(value);
+  }
+
+  selectPayMongoMode(value: 'test' | 'live'): void {
     this.payMongoMode.set(value);
+    this.payMongoFormDirty.set(false);
+    this.hydratePayMongoFormFromResource(true);
+  }
+
+  async setPayMongoRuntimeMode(value: 'test' | 'live'): Promise<void> {
+    await this.run(
+      async () => {
+        await firstValueFrom(
+          this.http.put(
+            `${AdminWorkspace.apiBaseUrl}/api/admin/payment-resources/PAYMONGO_QRPH/runtime-mode`,
+            { paymentMode: value },
+            { withCredentials: true },
+          ),
+        );
+        await this.loadOverview();
+        this.succeed(`PayMongo ${this.payMongoModeLabel(value)} is now used at booths.`);
+      },
+      { errorMessage: 'PayMongo runtime mode update failed.' },
+    );
   }
 
   setPayMongoBusinessAccountName(value: string): void {
@@ -2932,6 +3038,10 @@ export class AdminWorkspace {
       .join(' ');
   }
 
+  payMongoModeLabel(mode: string | null | undefined): string {
+    return mode === 'live' ? 'Live' : 'Test';
+  }
+
   statusClassFor(value: string | null | undefined): string {
     return String(value ?? '')
       .toLowerCase()
@@ -3482,14 +3592,16 @@ export class AdminWorkspace {
     }
   }
 
-  private hydratePayMongoFormFromResource(): void {
-    if (this.payMongoFormDirty()) {
+  private hydratePayMongoFormFromResource(force = false): void {
+    if (!force && this.payMongoFormDirty()) {
       return;
     }
 
     const payMongo = this.payMongoResource();
-    this.payMongoMode.set(payMongo?.paymentMode === 'live' ? 'live' : 'test');
     this.payMongoBusinessAccountName.set(payMongo?.businessAccountName ?? '');
+    this.payMongoPublicKey.set('');
+    this.payMongoSecretKey.set('');
+    this.payMongoWebhookSecret.set('');
   }
 
   dismissToast(id: number): void {

@@ -253,10 +253,11 @@ Agent configuration keys:
 Payment setup has two levels plus the built-in cash resource:
 
 - Cash is a built-in client payment resource. It is always enabled/verified for every client tenant and cannot be disabled at the tenant level.
-- Admin Web Settings exposes tenant payment resources. Client Owner and Client Admin users can configure PayMongo QR Ph credentials, webhook signing secret, and test/live mode for the tenant.
-- Client-level provider resources register one PayMongo QR Ph configuration per tenant. The encrypted secret key and encrypted webhook secret are never returned to frontend clients; only masked public key metadata, webhook URL, setup status, and verification timestamp are returned.
-- Booth-level assignments choose which registered payment resources are allowed on each booth.
-- Runtime exposure requires every gate: usable/verified client payment resource where provider-backed, booth assignment `ASSIGNED`, `RuntimeEnabled == true`, subscription eligibility, booth availability, and fresh agent heartbeat for session-starting transactions.
+- Admin Web Settings exposes tenant payment resources. Client Owner and Client Admin users can configure separate PayMongo QR Ph Test and Live credentials, webhook signing secrets, and webhook URLs for the tenant.
+- Client-level provider resources register at most one PayMongo QR Ph Test configuration and one PayMongo QR Ph Live configuration per tenant. The encrypted secret key and encrypted webhook secret are never returned to frontend clients; only masked public key metadata, webhook URL, setup status, runtime-active mode, latest Test simulator URL, and verification timestamp are returned.
+- Exactly one verified PayMongo QR Ph configuration may be runtime-active for a tenant. Booth-level PayMongo assignments remain method-level; the tenant runtime-active mode decides whether booth transactions use Test or Live credentials.
+- Booth-level assignments choose which registered payment methods are allowed on each booth.
+- Runtime exposure requires every gate: usable/verified runtime-active client payment resource where provider-backed, booth assignment `ASSIGNED`, `RuntimeEnabled == true`, subscription eligibility, booth availability, and fresh agent heartbeat for session-starting transactions.
 - Runtime payment option values are `CASH` and `PAYMONGO_QRPH`. Legacy payment setup tables from earlier planning remain inert and are not surfaced as client payment options.
 
 ## Cash Payment State Flow
@@ -495,6 +496,7 @@ erDiagram
   BOOTH ||--|| BOOTH_APPEARANCE_CONFIG : configures
   BOOTH ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : allows
   CLIENT_PAYMENT_PROVIDER_CONFIG ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : assigned_to
+  CLIENT_PAYMENT_PROVIDER_CONFIG ||--o{ PAYMENT_ATTEMPT : creates
   CLIENT_MAYA_ECR_DEVICE ||--o{ BOOTH_PAYMENT_OPTION_ASSIGNMENT : legacy_inert
   BOOTH ||--o{ BOOTH_OFFER_ACTIVATION : activates
   BOOTH_OFFER ||--o{ BOOTH_OFFER_ACTIVATION : assigned_to
@@ -557,6 +559,7 @@ erDiagram
     string encrypted_secret_key
     string encrypted_webhook_secret
     string webhook_url
+    bool runtime_active
     datetime verified_at
   }
 
@@ -683,10 +686,12 @@ erDiagram
   PAYMENT_ATTEMPT {
     uuid id
     uuid transaction_id
+    uuid client_payment_provider_config_id
     string provider
     string provider_reference
     string status
     json raw_payload
+    string test_payment_url
     datetime created_at
   }
 
@@ -744,9 +749,9 @@ Rules:
 - Booth UI kiosk cancel can cancel only same-booth `CREATED` and `PENDING_CASH` transactions.
 - Cashier `return-to-welcome` recovery cancels the booth's active non-terminal transaction so the booth can accept a new session purchase.
 - Cancelled transactions record structured cancellation context: actor type (`BOOTH_USER`, `CASHIER`, or `SYSTEM`), source screen/action, previous status, and cashier user ID when an authenticated cashier performed the action.
-- Payment method selection must be validated against booth-level payment option assignments, client-level provider resource status when provider-backed, and runtime provider availability.
+- Payment method selection must be validated against booth-level payment option assignments, client-level provider resource status when provider-backed, tenant runtime-active provider mode, and runtime provider availability.
 - Tenant-level payment resource setup alone cannot expose a payment method to Booth UI or Cashier POS.
-- `CASH` is the only runtime-enabled payment method in MVP.
+- `CASH` and a booth-assigned, verified runtime-active `PAYMONGO_QRPH` resource can be runtime-enabled in MVP.
 - Cashiers can approve only transactions for their assigned booth.
 - Application Owner can manage clients/subscriptions but does not normally approve client booth transactions.
 - Expired transactions release the booth.

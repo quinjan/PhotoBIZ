@@ -943,10 +943,9 @@ describe('App', () => {
     expect(text).not.toContain('Maya Checkout QR');
     expect(text).not.toContain('Maya Terminal ECR');
     expect(root.querySelector('.payment-resource-icon')?.textContent?.trim()).toBe('PHP');
-    expect(toggles).toHaveLength(2);
+    expect(toggles).toHaveLength(1);
     expect(toggles[0].textContent).toContain('Enabled');
-    expect(toggles[1].textContent).toContain('Disabled');
-    expect(toggles[1].querySelector('button')?.hasAttribute('disabled')).toBe(true);
+    expect(text).toContain('Configure');
 
     (resourceRows[1] as HTMLElement).click();
     await fixture.whenStable();
@@ -955,8 +954,11 @@ describe('App', () => {
     expect(router.url).toBe('/settings/paymongo');
     const payMongoText = root.textContent ?? '';
     expect(payMongoText).toContain('PayMongo Dashboard Setup');
+    expect(payMongoText).toContain('Booth runtime mode');
+    expect(payMongoText).toContain('Test');
+    expect(payMongoText).toContain('Live');
     expect(payMongoText).toContain('Generate PhotoBIZ Webhook URL');
-    expect(payMongoText).toContain('Save Step 1 And Generate Webhook URL');
+    expect(payMongoText).toContain('Save Account Keys');
     expect(payMongoText).toContain('Create PayMongo Webhook And Verify');
     expect(payMongoText).toContain('Step 2 is locked until Step 1 is saved with account name');
     expect(payMongoText).toContain('Generate the PhotoBIZ webhook URL first');
@@ -967,7 +969,7 @@ describe('App', () => {
     expect(payMongoText).toContain('Return to PhotoBIZ and verify');
   });
 
-  it('updates tenant payment resources through the settings toggle', async () => {
+  it('updates the PayMongo runtime mode', async () => {
     const workspace = createWorkspaceWithRejectedSession();
     const http = TestBed.inject(HttpTestingController);
     const client = makeClient({ id: 'client-1' });
@@ -980,23 +982,36 @@ describe('App', () => {
         paymentResources: [
           makePaymentResource({
             clientAccountId: client.id,
-            enabled: false,
+            enabled: true,
             paymentMethod: 'PAYMONGO_QRPH',
+            paymentMode: 'test',
+            runtimeActive: true,
+            status: 'VERIFIED',
+          }),
+          makePaymentResource({
+            clientAccountId: client.id,
+            enabled: true,
+            paymentMethod: 'PAYMONGO_QRPH',
+            paymentMode: 'live',
             status: 'VERIFIED',
           }),
         ],
       }),
     );
 
-    const update = workspace.setPaymentResourceEnabled('PAYMONGO_QRPH', true);
-    const request = http.expectOne(`${apiBaseUrl}/api/admin/payment-resources/PAYMONGO_QRPH`);
+    const update = workspace.setPayMongoRuntimeMode('live');
+    const request = http.expectOne(
+      `${apiBaseUrl}/api/admin/payment-resources/PAYMONGO_QRPH/runtime-mode`,
+    );
     expect(request.request.method).toBe('PUT');
-    expect(request.request.body).toEqual({ enabled: true });
+    expect(request.request.body).toEqual({ paymentMode: 'live' });
     request.flush(
       makePaymentResource({
         clientAccountId: client.id,
         enabled: true,
         paymentMethod: 'PAYMONGO_QRPH',
+        paymentMode: 'live',
+        runtimeActive: true,
         status: 'VERIFIED',
       }),
     );
@@ -1010,6 +1025,15 @@ describe('App', () => {
             clientAccountId: client.id,
             enabled: true,
             paymentMethod: 'PAYMONGO_QRPH',
+            paymentMode: 'test',
+            status: 'VERIFIED',
+          }),
+          makePaymentResource({
+            clientAccountId: client.id,
+            enabled: true,
+            paymentMethod: 'PAYMONGO_QRPH',
+            paymentMode: 'live',
+            runtimeActive: true,
             status: 'VERIFIED',
           }),
         ],
@@ -1018,7 +1042,7 @@ describe('App', () => {
     await update;
 
     expect(snackBar.open).toHaveBeenCalledWith(
-      'Payment resource enabled.',
+      'PayMongo Live is now used at booths.',
       'Dismiss',
       expect.objectContaining({ panelClass: ['snackbar-success'] }),
     );
@@ -1042,7 +1066,7 @@ describe('App', () => {
 
     const root = fixture.nativeElement as HTMLElement;
     const stepOneButton = Array.from(root.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Save Step 1'),
+      button.textContent?.includes('Save Account Keys'),
     ) as HTMLButtonElement;
     stepOneButton.click();
     fixture.detectChanges();
@@ -1068,9 +1092,10 @@ describe('App', () => {
       'admin-confirmation-dialog',
     ) as HTMLElement;
     expect(stepOneConfirmation).toBeTruthy();
-    expect(stepOneConfirmation.textContent).toContain('Save PayMongo Step 1?');
+    expect(stepOneConfirmation.textContent).toContain('Save PayMongo Account Keys?');
+    expect(stepOneConfirmation.textContent).toContain('Blank key fields keep the saved values');
     const confirmStepOne = Array.from(stepOneConfirmation.querySelectorAll('button')).find(
-      (button) => button.textContent?.trim() === 'Save Step 1',
+      (button) => button.textContent?.trim() === 'Save Account Keys',
     ) as HTMLButtonElement;
     confirmStepOne.click();
     fixture.detectChanges();
@@ -1094,6 +1119,7 @@ describe('App', () => {
         clientAccountId: client.id,
         enabled: true,
         paymentMethod: 'PAYMONGO_QRPH',
+        paymentMode: 'test',
         resourceId: 'paymongo-config-1',
         status: 'DRAFT',
         businessAccountName: 'PayMongo Test',
@@ -1111,18 +1137,38 @@ describe('App', () => {
             clientAccountId: client.id,
             enabled: true,
             paymentMethod: 'PAYMONGO_QRPH',
+            paymentMode: 'test',
             resourceId: 'paymongo-config-1',
             status: 'DRAFT',
             businessAccountName: 'PayMongo Test',
             publicKeyMasked: 'pk_test_***_123',
             hasSecretKey: true,
             webhookUrl: 'https://localhost/api/payments/paymongo/webhooks/paymongo-config-1',
+            latestTestUrl: 'https://payments.paymongo.com/test/qrph/pi_test_photobiz',
           }),
         ],
       }),
     );
     await fixture.whenStable();
     fixture.detectChanges();
+
+    const setupText = root.textContent ?? '';
+    expect(setupText).toContain('Business account');
+    expect(setupText).toContain('PayMongo Test');
+    expect(setupText).toContain('Public key');
+    expect(setupText).toContain('pk_test_***_123');
+    expect(setupText).toContain('Secret key');
+    expect(setupText).toContain('Saved');
+    expect(setupText).toContain('Leave blank to keep pk_test_***_123');
+    expect(setupText).toContain('Leave blank to keep the saved secret key.');
+    expect(setupText).toContain('Update Account Keys');
+
+    const readonlyFieldValues = Array.from(root.querySelectorAll('input[readonly]')).map(
+      (input) => (input as HTMLInputElement).value,
+    );
+    expect(readonlyFieldValues).toContain(
+      'https://payments.paymongo.com/test/qrph/pi_test_photobiz',
+    );
 
     const saveWebhookButton = Array.from(root.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Save Webhook Secret'),

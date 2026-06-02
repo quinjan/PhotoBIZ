@@ -1696,14 +1696,14 @@ export class BoothsPageComponent extends AdminRoutePage {
                       <span>{{
                         w.payMongoAssignmentFor(booth.id)?.runtimeEnabled
                           ? 'Enabled'
-                          : w.payMongoResource()?.status === 'VERIFIED'
+                          : w.payMongoRuntimeResource()
                             ? 'Disabled'
-                            : 'Verify PayMongo in Settings first'
+                            : 'Choose a verified PayMongo runtime mode in Settings first'
                       }}</span>
                     </div>
                     <mat-slide-toggle
                       [checked]="w.payMongoAssignmentFor(booth.id)?.runtimeEnabled ?? false"
-                      [disabled]="w.payMongoResource()?.status !== 'VERIFIED'"
+                      [disabled]="!w.payMongoRuntimeResource()"
                       (change)="confirmSetPayMongoPaymentEnabled(booth, $event)"
                     />
                   </div>
@@ -2829,15 +2829,25 @@ export class ReportsPageComponent extends AdminRoutePage {
                     <span>{{ resource.description }}</span>
                   </div>
                 </div>
-                <mat-slide-toggle
-                  [checked]="resource.enabled"
-                  [disabled]="resource.locked"
-                  [matTooltip]="resource.locked ? lockedReason(resource) : ''"
-                  (click)="$event.stopPropagation()"
-                  (change)="confirmSetPaymentResourceEnabled(resource, $event)"
-                >
-                  {{ resource.enabled ? 'Enabled' : 'Disabled' }}
-                </mat-slide-toggle>
+                @if (resource.method === 'PAYMONGO_QRPH') {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="$event.stopPropagation(); openPaymentResource(resource)"
+                  >
+                    Configure
+                  </button>
+                } @else {
+                  <mat-slide-toggle
+                    [checked]="resource.enabled"
+                    [disabled]="resource.locked"
+                    [matTooltip]="resource.locked ? lockedReason(resource) : ''"
+                    (click)="$event.stopPropagation()"
+                    (change)="confirmSetPaymentResourceEnabled(resource, $event)"
+                  >
+                    {{ resource.enabled ? 'Enabled' : 'Disabled' }}
+                  </mat-slide-toggle>
+                }
               </div>
             }
           </div>
@@ -2912,8 +2922,8 @@ export class SettingsPageComponent extends AdminRoutePage {
         <mat-card-header>
           <mat-card-title>PayMongo QR Ph Setup</mat-card-title>
           <mat-card-subtitle
-            >Configure the tenant PayMongo account before enabling the resource in
-            Settings.</mat-card-subtitle
+            >Keep Test and Live credentials separate, then choose which verified mode booths
+            use.</mat-card-subtitle
           >
         </mat-card-header>
         <mat-card-content>
@@ -2923,10 +2933,7 @@ export class SettingsPageComponent extends AdminRoutePage {
               <div class="paymongo-instruction-phase">
                 <strong>1. Generate the PhotoBIZ webhook URL first</strong>
                 <ol>
-                  <li>
-                    Select the PayMongo mode you will use: Test for sandbox testing or Live for real
-                    payments.
-                  </li>
+                  <li>Select Test for sandbox testing or Live for real payments.</li>
                   <li>Enter the business account name, public key, and secret key.</li>
                   <li>
                     Leave webhook secret blank for now because PayMongo creates it only after the
@@ -2969,13 +2976,45 @@ export class SettingsPageComponent extends AdminRoutePage {
                 </ol>
               </div>
               <p class="muted">
-                Keep mode values matched from start to finish. Test keys need a Test webhook. Live
-                keys need a Live webhook and will process real payments.
+                Test and Live each keep their own keys, webhook secret, verification status, and
+                webhook URL. Booths use only the one verified mode selected as runtime.
               </p>
             </div>
             <div class="paymongo-form">
+              <div class="paymongo-mode-picker" aria-label="PayMongo setup mode">
+                @for (resource of w.payMongoModeResources(); track resource.paymentMode) {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="paymongo-mode-card"
+                    [class.active]="w.payMongoMode() === resource.paymentMode"
+                    [class.runtime]="resource.runtimeActive"
+                    (click)="selectPayMongoMode(resource.paymentMode)"
+                  >
+                    <span>{{ w.payMongoModeLabel(resource.paymentMode) }}</span>
+                    <small>{{ resource.statusLabel }}</small>
+                    @if (resource.runtimeActive) {
+                      <span class="status-chip active">Runtime</span>
+                    }
+                  </button>
+                }
+              </div>
               <div class="inline-status-row">
-                <strong>Setup Progress</strong>
+                <strong>Booth runtime mode</strong>
+                <span
+                  class="status-chip"
+                  [class.active]="!!w.payMongoRuntimeResource()"
+                  [class.not-used]="!w.payMongoRuntimeResource()"
+                >
+                  @if (w.payMongoRuntimeResource(); as runtimeResource) {
+                    {{ w.payMongoModeLabel(runtimeResource.paymentMode) }}
+                  } @else {
+                    Not Selected
+                  }
+                </span>
+              </div>
+              <div class="inline-status-row">
+                <strong>{{ currentModeLabel() }} Setup Progress</strong>
                 <span
                   class="status-chip"
                   [class.active]="w.payMongoResource()?.status === 'VERIFIED'"
@@ -2983,6 +3022,48 @@ export class SettingsPageComponent extends AdminRoutePage {
                   {{ w.payMongoResource()?.statusLabel ?? 'Not Configured' }}
                 </span>
               </div>
+              <section class="paymongo-saved-summary" aria-label="Saved PayMongo setup">
+                <div>
+                  <span>Business account</span>
+                  <strong>{{ w.payMongoResource()?.businessAccountName ?? 'Not saved' }}</strong>
+                </div>
+                <div>
+                  <span>Public key</span>
+                  <strong>{{ w.payMongoResource()?.publicKeyMasked ?? 'Not saved' }}</strong>
+                </div>
+                <div>
+                  <span>Secret key</span>
+                  <strong>{{ w.payMongoResource()?.hasSecretKey ? 'Saved' : 'Not saved' }}</strong>
+                </div>
+                <div>
+                  <span>Webhook secret</span>
+                  <strong>{{
+                    w.payMongoResource()?.hasWebhookSecret ? 'Saved' : 'Not saved'
+                  }}</strong>
+                </div>
+                <div>
+                  <span>Status</span>
+                  <strong>{{ w.payMongoResource()?.statusLabel ?? 'Not Configured' }}</strong>
+                </div>
+                <div>
+                  <span>Runtime</span>
+                  <strong>{{
+                    w.payMongoResource()?.runtimeActive ? 'Used at booths' : 'Not used at booths'
+                  }}</strong>
+                </div>
+              </section>
+              @if (canSetCurrentModeRuntime()) {
+                <div class="paymongo-step-actions">
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    (click)="setCurrentModeRuntime()"
+                  >
+                    {{ w.payMongoMode() === 'live' ? 'Promote Live' : 'Use Test At Booth' }}
+                  </button>
+                </div>
+              }
               <section class="paymongo-step-card" [class.active]="!hasPayMongoWebhookUrl()">
                 <div class="paymongo-step-header">
                   <span class="paymongo-step-number">1</span>
@@ -2992,41 +3073,48 @@ export class SettingsPageComponent extends AdminRoutePage {
                   </div>
                 </div>
                 <mat-form-field appearance="outline">
-                  <mat-label>Mode</mat-label>
-                  <mat-select
-                    [ngModel]="w.payMongoMode()"
-                    (ngModelChange)="w.setPayMongoMode($event)"
-                  >
-                    <mat-option value="test">Test</mat-option>
-                    <mat-option value="live">Live</mat-option>
-                  </mat-select>
-                </mat-form-field>
-                <mat-form-field appearance="outline">
                   <mat-label>Business account name</mat-label>
                   <input
                     matInput
                     [ngModel]="w.payMongoBusinessAccountName()"
                     (ngModelChange)="w.setPayMongoBusinessAccountName($event)"
                   />
+                  <mat-hint>{{
+                    w.payMongoResource()?.businessAccountName
+                      ? 'Saved value is shown. Edit only when the PayMongo account name changed.'
+                      : 'Required before generating the webhook URL.'
+                  }}</mat-hint>
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Public key</mat-label>
                   <input
                     matInput
-                    [placeholder]="w.payMongoResource()?.publicKeyMasked ?? 'pk_test_...'"
+                    [placeholder]="
+                      w.payMongoResource()?.publicKeyMasked ?? payMongoPublicKeyPlaceholder()
+                    "
                     [ngModel]="w.payMongoPublicKey()"
                     (ngModelChange)="w.setPayMongoPublicKey($event)"
                   />
+                  <mat-hint>{{
+                    w.payMongoResource()?.publicKeyMasked
+                      ? 'Leave blank to keep ' + w.payMongoResource()?.publicKeyMasked
+                      : 'Enter the public key for this mode.'
+                  }}</mat-hint>
                 </mat-form-field>
                 <mat-form-field appearance="outline">
                   <mat-label>Secret key</mat-label>
                   <input
                     matInput
                     type="password"
-                    placeholder="Stored securely after save"
+                    [placeholder]="secretKeyPlaceholder()"
                     [ngModel]="w.payMongoSecretKey()"
                     (ngModelChange)="w.setPayMongoSecretKey($event)"
                   />
+                  <mat-hint>{{
+                    w.payMongoResource()?.hasSecretKey
+                      ? 'Leave blank to keep the saved secret key.'
+                      : 'Required before generating the webhook URL.'
+                  }}</mat-hint>
                 </mat-form-field>
                 <div class="paymongo-step-actions">
                   <button
@@ -3035,7 +3123,7 @@ export class SettingsPageComponent extends AdminRoutePage {
                     type="button"
                     (click)="savePayMongo(false)"
                   >
-                    Save Step 1 And Generate Webhook URL
+                    {{ accountKeysButtonLabel() }}
                   </button>
                 </div>
               </section>
@@ -3067,12 +3155,27 @@ export class SettingsPageComponent extends AdminRoutePage {
                   <input
                     matInput
                     type="password"
-                    placeholder="Generated by PayMongo after webhook creation"
+                    [placeholder]="webhookSecretPlaceholder()"
                     [disabled]="!hasPayMongoStepOneSaved()"
                     [ngModel]="w.payMongoWebhookSecret()"
                     (ngModelChange)="w.setPayMongoWebhookSecret($event)"
                   />
+                  <mat-hint>{{
+                    w.payMongoResource()?.hasWebhookSecret
+                      ? 'Leave blank to keep the saved webhook secret.'
+                      : 'Paste the secret from the same-mode PayMongo webhook.'
+                  }}</mat-hint>
                 </mat-form-field>
+                @if (w.payMongoMode() === 'test') {
+                  <mat-form-field appearance="outline">
+                    <mat-label>Latest test payment URL</mat-label>
+                    <input
+                      matInput
+                      readonly
+                      [value]="w.payMongoResource()?.latestTestUrl ?? 'No test payment URL yet'"
+                    />
+                  </mat-form-field>
+                }
                 <div class="paymongo-step-actions">
                   <button
                     mat-stroked-button
@@ -3109,6 +3212,59 @@ export class PayMongoSettingsPageComponent extends AdminRoutePage {
     this.activate('paymongo-settings');
   }
 
+  selectPayMongoMode(mode: string | null): void {
+    this.w.selectPayMongoMode(mode === 'live' ? 'live' : 'test');
+  }
+
+  currentModeLabel(): string {
+    return this.w.payMongoModeLabel(this.w.payMongoMode());
+  }
+
+  payMongoPublicKeyPlaceholder(): string {
+    return this.w.payMongoMode() === 'live' ? 'pk_live_...' : 'pk_test_...';
+  }
+
+  secretKeyPlaceholder(): string {
+    return this.w.payMongoResource()?.hasSecretKey
+      ? 'Leave blank to keep saved secret key'
+      : 'Stored securely after save';
+  }
+
+  webhookSecretPlaceholder(): string {
+    return this.w.payMongoResource()?.hasWebhookSecret
+      ? 'Leave blank to keep saved webhook secret'
+      : 'Generated by PayMongo after webhook creation';
+  }
+
+  accountKeysButtonLabel(): string {
+    return this.w.payMongoResource()?.resourceId ? 'Update Account Keys' : 'Save Account Keys';
+  }
+
+  canSetCurrentModeRuntime(): boolean {
+    const resource = this.w.payMongoResource();
+    return resource?.status === 'VERIFIED' && !resource.runtimeActive;
+  }
+
+  async setCurrentModeRuntime(): Promise<void> {
+    const mode = this.w.payMongoMode();
+    if (
+      !(await this.confirmAction({
+        title: mode === 'live' ? 'Promote Live PayMongo?' : 'Use Test PayMongo At Booth?',
+        message:
+          mode === 'live'
+            ? 'Booths with PayMongo enabled will create real QR Ph payments through the Live PayMongo setup.'
+            : 'Booths with PayMongo enabled will create sandbox QR Ph payments through the Test PayMongo setup.',
+        details: [`Mode: ${mode}`],
+        confirmLabel: mode === 'live' ? 'Promote Live' : 'Use Test',
+        tone: 'primary',
+      }))
+    ) {
+      return;
+    }
+
+    await this.w.setPayMongoRuntimeMode(mode);
+  }
+
   async savePayMongo(verify: boolean): Promise<void> {
     if (!this.validatePayMongoStepOne()) {
       return;
@@ -3116,14 +3272,14 @@ export class PayMongoSettingsPageComponent extends AdminRoutePage {
 
     if (
       !(await this.confirmAction({
-        title: 'Save PayMongo Step 1?',
+        title: 'Save PayMongo Account Keys?',
         message:
-          'PhotoBIZ will store the PayMongo account name and API keys, then generate the webhook URL you need for PayMongo.',
+          'PhotoBIZ will store or update the PayMongo account name and API keys, then keep the webhook URL available for PayMongo.',
         details: [
           `Mode: ${this.w.payMongoMode()}`,
-          'The secret key is encrypted and will not be shown again after save.',
+          'Blank key fields keep the saved values. Enter a key only when replacing it.',
         ],
-        confirmLabel: 'Save Step 1',
+        confirmLabel: this.accountKeysButtonLabel(),
         tone: 'primary',
       }))
     ) {
