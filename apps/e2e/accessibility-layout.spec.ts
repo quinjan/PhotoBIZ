@@ -288,8 +288,9 @@ async function signIn(
 ): Promise<void> {
   await page.goto(ADMIN_BASE_URL);
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign In' }).click();
+  const passwordField = page.getByLabel('Password');
+  await passwordField.fill(password);
+  await passwordField.press('Enter');
 
   if (options.expectPasswordChange) {
     await expect(page.getByRole('heading', { name: 'Update password' })).toBeVisible();

@@ -43,6 +43,18 @@ class ResizeObserverMock {
   disconnect(): void {}
 }
 
+function authForm(root: HTMLElement): HTMLFormElement {
+  const form = root.querySelector('form.auth-form');
+  expect(form).toBeTruthy();
+  return form as HTMLFormElement;
+}
+
+function formSubmit(form: HTMLFormElement): Event {
+  const event = new Event('submit', { bubbles: true, cancelable: true });
+  form.dispatchEvent(event);
+  return event;
+}
+
 describe('App', () => {
   let snackBar: { open: ReturnType<typeof vi.fn>; dismiss: ReturnType<typeof vi.fn> };
 
@@ -88,6 +100,23 @@ describe('App', () => {
     expect(compiled.querySelector('.admin-shell')).toBeNull();
   });
 
+  it('submits the sign in flow through the auth form submit event', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const login = vi.spyOn(workspace, 'login').mockResolvedValue();
+
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const form = authForm(fixture.nativeElement);
+    const submit = formSubmit(form);
+
+    expect(submit.defaultPrevented).toBe(true);
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(form.querySelector('button[type="submit"]')?.textContent?.trim()).toBe('Sign In');
+  });
+
   it('keeps users with forced password changes in the password flow', async () => {
     const fixture = TestBed.createComponent(App);
     rejectSessionRestore();
@@ -99,6 +128,26 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('Update password');
     expect(compiled.querySelector('.admin-shell')).toBeNull();
+  });
+
+  it('submits the forced password change flow through the auth form submit event', async () => {
+    const fixture = TestBed.createComponent(App);
+    rejectSessionRestore();
+    const workspace = TestBed.inject(AdminWorkspace);
+    const changeOwnPassword = vi.spyOn(workspace, 'changeOwnPassword').mockResolvedValue(true);
+
+    workspace.session.set(makeSession({ mustChangePassword: true }));
+    fixture.detectChanges();
+
+    const form = authForm(fixture.nativeElement);
+    const submit = formSubmit(form);
+
+    expect(submit.defaultPrevented).toBe(true);
+    expect(changeOwnPassword).toHaveBeenCalledTimes(1);
+    expect(form.querySelector('button[type="submit"]')?.textContent?.trim()).toBe(
+      'Update Password',
+    );
+    expect(form.querySelector('button[type="button"]')?.textContent?.trim()).toBe('Sign Out');
   });
 
   it('resets booth session copy to the selected theme defaults', () => {
@@ -1350,6 +1399,16 @@ describe('App', () => {
     expect(document.body.textContent).toContain('Current password');
     expect(document.body.textContent).toContain('New password');
     expect(document.body.textContent).toContain('Confirm new password');
+
+    const changeOwnPassword = vi.spyOn(workspace, 'changeOwnPassword').mockResolvedValue(true);
+    const passwordForm = dialog?.querySelector('form') as HTMLFormElement;
+    const submit = formSubmit(passwordForm);
+
+    expect(submit.defaultPrevented).toBe(true);
+    expect(changeOwnPassword).toHaveBeenCalledTimes(1);
+    expect(passwordForm.querySelector('button[type="submit"]')?.textContent?.trim()).toBe(
+      'Change Password',
+    );
   });
 
   it('shows friendly package type names in the packages grid', async () => {

@@ -17,21 +17,23 @@
     </section>
 
     <section class="auth-card mat-elevation-z3">
-      <h2>Sign in</h2>
-      <mat-form-field appearance="outline">
-        <mat-label>Email</mat-label>
-        <input matInput [ngModel]="w.loginEmail()" (ngModelChange)="w.loginEmail.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.loginPassword()"
-          (ngModelChange)="w.loginPassword.set($event)"
-        />
-      </mat-form-field>
-      <button mat-flat-button color="primary" type="button" (click)="w.login()">Sign In</button>
+      <form ngNoForm class="auth-form" (submit)="$event.preventDefault(); w.login()">
+        <h2>Sign in</h2>
+        <mat-form-field appearance="outline">
+          <mat-label>Email</mat-label>
+          <input matInput [ngModel]="w.loginEmail()" (ngModelChange)="w.loginEmail.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.loginPassword()"
+            (ngModelChange)="w.loginPassword.set($event)"
+          />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit">Sign In</button>
+      </form>
     </section>
   </main>
 } @else if (w.session()?.mustChangePassword) {
@@ -51,38 +53,38 @@
     </section>
 
     <section class="auth-card mat-elevation-z3">
-      <h2>Update password</h2>
-      <mat-form-field appearance="outline">
-        <mat-label>Current password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordCurrent()"
-          (ngModelChange)="w.changePasswordCurrent.set($event)"
-        />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>New password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordNew()"
-          (ngModelChange)="w.changePasswordNew.set($event)"
-        />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Confirm new password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordConfirm()"
-          (ngModelChange)="w.changePasswordConfirm.set($event)"
-        />
-      </mat-form-field>
-      <button mat-flat-button color="primary" type="button" (click)="w.changeOwnPassword()">
-        Update Password
-      </button>
-      <button mat-button type="button" (click)="w.logout()">Sign Out</button>
+      <form ngNoForm class="auth-form" (submit)="$event.preventDefault(); w.changeOwnPassword()">
+        <h2>Update password</h2>
+        <mat-form-field appearance="outline">
+          <mat-label>Current password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordCurrent()"
+            (ngModelChange)="w.changePasswordCurrent.set($event)"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>New password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordNew()"
+            (ngModelChange)="w.changePasswordNew.set($event)"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Confirm new password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordConfirm()"
+            (ngModelChange)="w.changePasswordConfirm.set($event)"
+          />
+        </mat-form-field>
+        <button mat-flat-button color="primary" type="submit">Update Password</button>
+        <button mat-button type="button" (click)="w.logout()">Sign Out</button>
+      </form>
     </section>
   </main>
 } @else {

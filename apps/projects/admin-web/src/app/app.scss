@@ -65,6 +65,11 @@
   margin: 0 0 8px;
 }
 
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
 .admin-shell {
   background: var(--admin-bg);
   min-height: 100vh;

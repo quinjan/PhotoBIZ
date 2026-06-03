@@ -155,6 +155,7 @@ Do not add another top-level runtime surface without updating `docs/ARCHITECTURE
 - Do not introduce page-level horizontal overflow, except intentional AG Grid internal scrolling.
 - Interactive controls must have accessible names, visible and focusable keyboard states, and must not be nested inside other interactive controls.
 - Expose current page, selected, pressed, expanded, and modal states accessibly, using patterns such as `aria-current` for navigation and Angular Material/CDK roles for tabs, dialogs, menus, and toggles.
+- Data-entry surfaces with a primary save, create, sign-in, or update action must use semantic form conformance: wrap fields and the primary action in a real `<form>`, make the primary action `type="submit"`, and keep secondary/destructive actions as explicit `type="button"` controls. Pressing Enter in a text/password/number field should trigger the same path as the primary action. Signal-backed Angular forms may use `ngNoForm` with a native `(submit)` handler, or register controls and use Angular form directives, but they must not rely on click-only submit behavior.
 - Prefer Angular Material/CDK patterns and existing application styles. Do not add Bootstrap, ng-bootstrap, or another UI framework for layout/accessibility fixes.
 - Use stable responsive constraints such as `min-width: 0`, bounded grids, wrapped text, stable toolbar/action sizing, and scoped scroll regions.
 - Use the risk-based Playwright and axe rule: run or update `npm run test:a11y` when a UI change can affect layout, navigation, roles, dialogs, grids, Booth Stage states, or covered responsive surfaces.
@@ -194,6 +195,7 @@ Booth UI themes are PhotoBIZ-owned presets, not tenant-authored skins. They may 
 - Backend unit tests should cover domain rules, state transitions, authorization helpers, validators, and provider mapping logic.
 - Backend integration tests should cover API auth, tenant isolation, EF Core persistence, transaction workflows, and error responses.
 - Frontend tests should cover important user workflows, component state, form validation, API services, and realtime handling.
+- Form workflow tests should cover semantic submission for important forms, including Enter-to-submit behavior for login, password changes, and other high-risk save/create flows.
 - Frontend UI changes should include focused component tests for behavior and Playwright/axe coverage for layout or accessibility risk across the target viewports.
 - Booth UI tests should cover active offer display, payment method display, cash waiting state, expiration/error handling, and reset to welcome.
 - Add regression tests for every bug fix unless the test would be more brittle than useful. Document the reason if no test is added.

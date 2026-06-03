@@ -215,25 +215,27 @@ abstract class AdminRoutePage {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>New Client</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Client name</mat-label>
-        <input matInput [ngModel]="w.clientName()" (ngModelChange)="w.clientName.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Owner name</mat-label>
-        <input matInput [ngModel]="w.ownerName()" (ngModelChange)="w.ownerName.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Owner email</mat-label>
-        <input matInput [ngModel]="w.ownerEmail()" (ngModelChange)="w.ownerEmail.set($event)" />
-      </mat-form-field>
-      <p class="helper-text">Default password will be set to {{ w.defaultInitialPassword }}.</p>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Create Client</button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Client name</mat-label>
+          <input matInput [ngModel]="w.clientName()" (ngModelChange)="w.clientName.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Owner name</mat-label>
+          <input matInput [ngModel]="w.ownerName()" (ngModelChange)="w.ownerName.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Owner email</mat-label>
+          <input matInput [ngModel]="w.ownerEmail()" (ngModelChange)="w.ownerEmail.set($event)" />
+        </mat-form-field>
+        <p class="helper-text">Default password will be set to {{ w.defaultInitialPassword }}.</p>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Create Client</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class ClientDialogComponent {
@@ -252,47 +254,49 @@ export class ClientDialogComponent {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>Assign Subscription</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Subscription</mat-label>
-        <mat-select
-          [ngModel]="w.subscriptionPlanId()"
-          (ngModelChange)="w.subscriptionPlanId.set($event)"
-        >
-          @for (plan of w.overview()?.subscriptionPlans ?? []; track plan.id) {
-            <mat-option [value]="plan.id">{{ plan.name }}</mat-option>
-          } @empty {
-            <mat-option disabled>No subscriptions available</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Status</mat-label>
-        <mat-select
-          [ngModel]="w.subscriptionStatus()"
-          (ngModelChange)="w.subscriptionStatus.set($event)"
-        >
-          <mat-option value="TRIAL">Trial</mat-option>
-          <mat-option value="ACTIVE">Active</mat-option>
-          <mat-option value="SUSPENDED">Suspended</mat-option>
-          <mat-option value="CANCELLED">Cancelled</mat-option>
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Active booth allowance</mat-label>
-        <input
-          matInput
-          min="0"
-          type="number"
-          [ngModel]="w.subscriptionAllowance()"
-          (ngModelChange)="w.subscriptionAllowance.set(+$event)"
-        />
-      </mat-form-field>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Assign</button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Subscription</mat-label>
+          <mat-select
+            [ngModel]="w.subscriptionPlanId()"
+            (ngModelChange)="w.subscriptionPlanId.set($event)"
+          >
+            @for (plan of w.overview()?.subscriptionPlans ?? []; track plan.id) {
+              <mat-option [value]="plan.id">{{ plan.name }}</mat-option>
+            } @empty {
+              <mat-option disabled>No subscriptions available</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Status</mat-label>
+          <mat-select
+            [ngModel]="w.subscriptionStatus()"
+            (ngModelChange)="w.subscriptionStatus.set($event)"
+          >
+            <mat-option value="TRIAL">Trial</mat-option>
+            <mat-option value="ACTIVE">Active</mat-option>
+            <mat-option value="SUSPENDED">Suspended</mat-option>
+            <mat-option value="CANCELLED">Cancelled</mat-option>
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Active booth allowance</mat-label>
+          <input
+            matInput
+            min="0"
+            type="number"
+            [ngModel]="w.subscriptionAllowance()"
+            (ngModelChange)="w.subscriptionAllowance.set(+$event)"
+          />
+        </mat-form-field>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Assign</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class SubscriptionAssignmentDialogComponent {
@@ -336,40 +340,46 @@ export class SubscriptionAssignmentDialogComponent {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>Add User</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Name</mat-label>
-        <input matInput [ngModel]="w.newUserName()" (ngModelChange)="w.newUserName.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Email</mat-label>
-        <input matInput [ngModel]="w.newUserEmail()" (ngModelChange)="w.newUserEmail.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Role</mat-label>
-        <mat-select [ngModel]="w.newUserRole()" (ngModelChange)="w.newUserRole.set($event)">
-          <mat-option value="CLIENT_ADMIN">Client Admin</mat-option>
-          <mat-option value="CASHIER">Cashier</mat-option>
-        </mat-select>
-      </mat-form-field>
-      @if (w.newUserRole() === 'CASHIER') {
-        <div class="permission-stack">
-          @for (permission of w.cashierPermissionRows; track permission.key) {
-            <mat-slide-toggle
-              [checked]="w.cashierPermissions()[permission.key]"
-              (change)="w.toggleCashierPermission(permission.key)"
-            >
-              {{ permission.label }}
-            </mat-slide-toggle>
-          }
-        </div>
-      }
-      <p class="helper-text">Default password will be set to {{ w.defaultInitialPassword }}.</p>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Add User</button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Name</mat-label>
+          <input matInput [ngModel]="w.newUserName()" (ngModelChange)="w.newUserName.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Email</mat-label>
+          <input
+            matInput
+            [ngModel]="w.newUserEmail()"
+            (ngModelChange)="w.newUserEmail.set($event)"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Role</mat-label>
+          <mat-select [ngModel]="w.newUserRole()" (ngModelChange)="w.newUserRole.set($event)">
+            <mat-option value="CLIENT_ADMIN">Client Admin</mat-option>
+            <mat-option value="CASHIER">Cashier</mat-option>
+          </mat-select>
+        </mat-form-field>
+        @if (w.newUserRole() === 'CASHIER') {
+          <div class="permission-stack">
+            @for (permission of w.cashierPermissionRows; track permission.key) {
+              <mat-slide-toggle
+                [checked]="w.cashierPermissions()[permission.key]"
+                (change)="w.toggleCashierPermission(permission.key)"
+              >
+                {{ permission.label }}
+              </mat-slide-toggle>
+            }
+          </div>
+        }
+        <p class="helper-text">Default password will be set to {{ w.defaultInitialPassword }}.</p>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Add User</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class UserDialogComponent {
@@ -388,32 +398,34 @@ export class UserDialogComponent {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>{{ w.selectedLocationDetail() ? 'Manage Location' : 'Add Location' }}</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Location name</mat-label>
-        <input
-          matInput
-          name="locationDetailName"
-          [ngModel]="w.locationDetailName()"
-          (ngModelChange)="w.locationDetailName.set($event)"
-        />
-      </mat-form-field>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      @if (w.selectedLocationDetail(); as location) {
-        @if (location.status === 'ACTIVE') {
-          <button mat-button color="warn" type="button" (click)="deactivate(location)">
-            Deactivate
-          </button>
-        } @else {
-          <button mat-button color="primary" type="button" (click)="activate(location)">
-            Activate
-          </button>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Location name</mat-label>
+          <input
+            matInput
+            name="locationDetailName"
+            [ngModel]="w.locationDetailName()"
+            (ngModelChange)="w.locationDetailName.set($event)"
+          />
+        </mat-form-field>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        @if (w.selectedLocationDetail(); as location) {
+          @if (location.status === 'ACTIVE') {
+            <button mat-button color="warn" type="button" (click)="deactivate(location)">
+              Deactivate
+            </button>
+          } @else {
+            <button mat-button color="primary" type="button" (click)="activate(location)">
+              Activate
+            </button>
+          }
         }
-      }
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Save</button>
-    </mat-dialog-actions>
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Save</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class LocationDialogComponent {
@@ -472,42 +484,47 @@ export class LocationDialogComponent {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>Register Booth</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Booth name</mat-label>
-        <input matInput [ngModel]="w.boothName()" (ngModelChange)="w.boothName.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Booth code</mat-label>
-        <input matInput [ngModel]="w.boothCode()" (ngModelChange)="w.boothCode.set($event)" />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Location</mat-label>
-        <mat-select [ngModel]="w.boothLocationId()" (ngModelChange)="w.boothLocationId.set($event)">
-          @for (location of w.overview()?.locations ?? []; track location.id) {
-            <mat-option [value]="location.id">{{ location.name }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>POS staff</mat-label>
-        <mat-select
-          [ngModel]="w.boothCashierUserId()"
-          (ngModelChange)="w.boothCashierUserId.set($event)"
-        >
-          <mat-option [value]="null">Unassigned</mat-option>
-          @for (user of w.availablePosStaff(); track user.id) {
-            <mat-option [value]="user.id"
-              >{{ user.name }} / {{ w.roleLabel(user.role) }}</mat-option
-            >
-          }
-        </mat-select>
-      </mat-form-field>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Register Booth</button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Booth name</mat-label>
+          <input matInput [ngModel]="w.boothName()" (ngModelChange)="w.boothName.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Booth code</mat-label>
+          <input matInput [ngModel]="w.boothCode()" (ngModelChange)="w.boothCode.set($event)" />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Location</mat-label>
+          <mat-select
+            [ngModel]="w.boothLocationId()"
+            (ngModelChange)="w.boothLocationId.set($event)"
+          >
+            @for (location of w.overview()?.locations ?? []; track location.id) {
+              <mat-option [value]="location.id">{{ location.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>POS staff</mat-label>
+          <mat-select
+            [ngModel]="w.boothCashierUserId()"
+            (ngModelChange)="w.boothCashierUserId.set($event)"
+          >
+            <mat-option [value]="null">Unassigned</mat-option>
+            @for (user of w.availablePosStaff(); track user.id) {
+              <mat-option [value]="user.id"
+                >{{ user.name }} / {{ w.roleLabel(user.role) }}</mat-option
+              >
+            }
+          </mat-select>
+        </mat-form-field>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Register Booth</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class BoothDialogComponent {
@@ -528,34 +545,36 @@ export class BoothDialogComponent {
     <h2 mat-dialog-title>
       {{ w.selectedPrintEntitlement() ? 'Manage Print Entitlement' : 'New Print Entitlement' }}
     </h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Print entitlement</mat-label>
-        <input
-          matInput
-          [ngModel]="w.printEntitlementName()"
-          (ngModelChange)="w.printEntitlementName.set($event)"
-        />
-      </mat-form-field>
-      @if (w.selectedPrintEntitlement(); as entitlement) {
-        <p class="helper-text">{{ w.printEntitlementUsageStatus(entitlement) }}</p>
-      }
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      @if (w.selectedPrintEntitlement(); as entitlement) {
-        <button
-          mat-button
-          color="warn"
-          type="button"
-          [disabled]="!w.canDeletePrintEntitlement(entitlement)"
-          (click)="delete(entitlement)"
-        >
-          Delete
-        </button>
-      }
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="save()">Save</button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Print entitlement</mat-label>
+          <input
+            matInput
+            [ngModel]="w.printEntitlementName()"
+            (ngModelChange)="w.printEntitlementName.set($event)"
+          />
+        </mat-form-field>
+        @if (w.selectedPrintEntitlement(); as entitlement) {
+          <p class="helper-text">{{ w.printEntitlementUsageStatus(entitlement) }}</p>
+        }
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        @if (w.selectedPrintEntitlement(); as entitlement) {
+          <button
+            mat-button
+            color="warn"
+            type="button"
+            [disabled]="!w.canDeletePrintEntitlement(entitlement)"
+            (click)="delete(entitlement)"
+          >
+            Delete
+          </button>
+        }
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Save</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class PrintEntitlementDialogComponent {
@@ -652,75 +671,71 @@ export class PrintEntitlementsDialogComponent {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>Create Extra Prints</h2>
-    <mat-dialog-content class="dialog-form">
-      @if (w.extraPrintCandidate(); as candidate) {
-        @if (w.transactionActivityFor(candidate); as activity) {
-          <div class="readonly-field-grid extra-print-summary-grid">
-            <div class="readonly-field">
-              <span class="field-label">Session</span>
-              <strong>{{ candidate.transactionNumber }}</strong>
-              <span>{{ activity.detail }}</span>
-            </div>
-            <div class="readonly-field">
-              <span class="field-label">Original activity</span>
-              <strong>{{ activity.title }}</strong>
-              <span>{{ activity.auditText }}</span>
-            </div>
-            <div class="readonly-field">
-              <span class="field-label">Included print</span>
-              <strong>{{ candidate.includedPrintEntitlement ?? 'None' }}</strong>
-            </div>
-            <div class="readonly-field">
-              <span class="field-label">Add-on unit price</span>
-              <strong>{{ w.formatMoney(candidate.extraPrintUnitPriceCents ?? 0) }}</strong>
-            </div>
-          </div>
-        }
-
-        <mat-form-field appearance="outline">
-          <mat-label>Copies</mat-label>
-          <mat-select
-            [ngModel]="w.extraPrintCopies()"
-            (ngModelChange)="w.extraPrintCopies.set($event)"
-          >
-            @for (copy of w.copyOptions(); track copy) {
-              <mat-option [value]="copy">{{ copy }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-        <p class="extra-print-total">Total {{ w.formatMoney(w.extraPrintTotalCents()) }}</p>
-      } @else {
-        @if (w.extraPrintReferenceTransaction(); as reference) {
-          @if (w.transactionActivityFor(reference); as activity) {
+    <form ngNoForm (submit)="$event.preventDefault(); save()">
+      <mat-dialog-content class="dialog-form">
+        @if (w.extraPrintCandidate(); as candidate) {
+          @if (w.transactionActivityFor(candidate); as activity) {
             <div class="readonly-field-grid extra-print-summary-grid">
               <div class="readonly-field">
-                <span class="field-label">Previous transaction</span>
-                <strong>{{ reference.transactionNumber }}</strong>
+                <span class="field-label">Session</span>
+                <strong>{{ candidate.transactionNumber }}</strong>
                 <span>{{ activity.detail }}</span>
               </div>
               <div class="readonly-field">
-                <span class="field-label">Status</span>
-                <strong>{{ reference.status }}</strong>
-                <span>This previous transaction is not eligible for extra prints.</span>
+                <span class="field-label">Original activity</span>
+                <strong>{{ activity.title }}</strong>
+                <span>{{ activity.auditText }}</span>
+              </div>
+              <div class="readonly-field">
+                <span class="field-label">Included print</span>
+                <strong>{{ candidate.includedPrintEntitlement ?? 'None' }}</strong>
+              </div>
+              <div class="readonly-field">
+                <span class="field-label">Add-on unit price</span>
+                <strong>{{ w.formatMoney(candidate.extraPrintUnitPriceCents ?? 0) }}</strong>
               </div>
             </div>
           }
+
+          <mat-form-field appearance="outline">
+            <mat-label>Copies</mat-label>
+            <mat-select
+              [ngModel]="w.extraPrintCopies()"
+              (ngModelChange)="w.extraPrintCopies.set($event)"
+            >
+              @for (copy of w.copyOptions(); track copy) {
+                <mat-option [value]="copy">{{ copy }}</mat-option>
+              }
+            </mat-select>
+          </mat-form-field>
+          <p class="extra-print-total">Total {{ w.formatMoney(w.extraPrintTotalCents()) }}</p>
+        } @else {
+          @if (w.extraPrintReferenceTransaction(); as reference) {
+            @if (w.transactionActivityFor(reference); as activity) {
+              <div class="readonly-field-grid extra-print-summary-grid">
+                <div class="readonly-field">
+                  <span class="field-label">Previous transaction</span>
+                  <strong>{{ reference.transactionNumber }}</strong>
+                  <span>{{ activity.detail }}</span>
+                </div>
+                <div class="readonly-field">
+                  <span class="field-label">Status</span>
+                  <strong>{{ reference.status }}</strong>
+                  <span>This previous transaction is not eligible for extra prints.</span>
+                </div>
+              </div>
+            }
+          }
+          <p class="empty-state">No eligible transaction for extra print.</p>
         }
-        <p class="empty-state">No eligible transaction for extra print.</p>
-      }
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button mat-dialog-close type="button">Cancel</button>
-      <button
-        mat-flat-button
-        color="primary"
-        type="button"
-        [disabled]="!w.extraPrintCandidate()"
-        (click)="save()"
-      >
-        Create Extra Prints
-      </button>
-    </mat-dialog-actions>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button mat-dialog-close type="button">Cancel</button>
+        <button mat-flat-button color="primary" type="submit" [disabled]="!w.extraPrintCandidate()">
+          Create Extra Prints
+        </button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class ExtraPrintDialogComponent {
@@ -915,145 +930,146 @@ export class ClientsPageComponent extends AdminRoutePage {
     @if (w.selectedClient(); as client) {
       <section class="page-stack">
         <mat-card class="client-detail-card">
-          <mat-card-content class="client-detail-content">
-            <div class="client-detail-header">
-              <div>
-                <h2>{{ client.name }}</h2>
+          <form ngNoForm (submit)="$event.preventDefault(); confirmOwnerTransfer(client)">
+            <mat-card-content class="client-detail-content">
+              <div class="client-detail-header">
+                <div>
+                  <h2>{{ client.name }}</h2>
+                </div>
+                <span
+                  class="status-chip client-status-chip"
+                  [class.active]="client.status === 'ACTIVE'"
+                  [class.suspended]="client.status === 'SUSPENDED'"
+                  [class.archived]="client.status === 'ARCHIVED'"
+                >
+                  {{ client.status }}
+                </span>
               </div>
-              <span
-                class="status-chip client-status-chip"
-                [class.active]="client.status === 'ACTIVE'"
-                [class.suspended]="client.status === 'SUSPENDED'"
-                [class.archived]="client.status === 'ARCHIVED'"
-              >
-                {{ client.status }}
-              </span>
-            </div>
 
-            <section class="client-detail-grid">
-              <section class="detail-section">
-                <div class="detail-section-header">
-                  <h3>Owner</h3>
-                </div>
-                <div class="detail-info-stack">
-                  <span class="detail-label">Current owner</span>
-                  @if (w.ownerForClient(client.id); as owner) {
-                    <p>{{ owner.name }}</p>
-                    <p class="muted">{{ owner.email }}</p>
-                  } @else {
-                    <p class="empty-state">No owner assigned.</p>
-                  }
-                </div>
-                <mat-form-field appearance="outline">
-                  <mat-label>New owner</mat-label>
-                  <mat-select
-                    [ngModel]="w.ownerTransferUserId() ?? ''"
-                    (ngModelChange)="w.ownerTransferUserId.set($event || null)"
-                  >
-                    <mat-option value="">No change</mat-option>
-                    @for (candidate of w.ownerTransferCandidates(client.id); track candidate.id) {
-                      <mat-option [value]="candidate.id"
-                        >{{ candidate.name }} / {{ w.roleLabel(candidate.role) }}</mat-option
-                      >
-                    } @empty {
-                      <mat-option disabled>No eligible users</mat-option>
-                    }
-                  </mat-select>
-                </mat-form-field>
-                @if (w.ownerTransferTargetFor(client.id); as transferTarget) {
-                  <div class="pending-change">
-                    <span>Pending owner</span>
-                    <strong>{{ transferTarget.name }}</strong>
-                    <span>{{ transferTarget.email }}</span>
+              <section class="client-detail-grid">
+                <section class="detail-section">
+                  <div class="detail-section-header">
+                    <h3>Owner</h3>
                   </div>
-                }
-              </section>
-
-              <section class="detail-section">
-                <div class="detail-section-header">
-                  <h3>Subscription</h3>
-                </div>
-                @if (w.latestSubscriptionFor(client.id); as subscription) {
                   <div class="detail-info-stack">
-                    <div class="inline-status-row">
-                      <p>{{ w.planNameFor(subscription.subscriptionPlanId) }}</p>
-                      <span
-                        class="status-chip subscription-status-chip"
-                        [class.active]="subscription.status === 'ACTIVE'"
-                        [class.trial]="subscription.status === 'TRIAL'"
-                        [class.suspended]="subscription.status === 'SUSPENDED'"
-                        [class.cancelled]="subscription.status === 'CANCELLED'"
-                      >
-                        {{ subscription.status }}
-                      </span>
-                    </div>
-                    <p class="muted">
-                      Allowance {{ subscription.activeBoothAllowance }} active booths
-                    </p>
+                    <span class="detail-label">Current owner</span>
+                    @if (w.ownerForClient(client.id); as owner) {
+                      <p>{{ owner.name }}</p>
+                      <p class="muted">{{ owner.email }}</p>
+                    } @else {
+                      <p class="empty-state">No owner assigned.</p>
+                    }
                   </div>
-                } @else {
-                  <p class="empty-state">No subscription assigned.</p>
-                }
-                <div class="detail-section-actions">
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    class="stretch-action-button"
-                    type="button"
-                    (click)="openSubscriptionAssignment(client.id)"
-                  >
-                    Assign Subscription
-                  </button>
-                </div>
-              </section>
-            </section>
+                  <mat-form-field appearance="outline">
+                    <mat-label>New owner</mat-label>
+                    <mat-select
+                      [ngModel]="w.ownerTransferUserId() ?? ''"
+                      (ngModelChange)="w.ownerTransferUserId.set($event || null)"
+                    >
+                      <mat-option value="">No change</mat-option>
+                      @for (candidate of w.ownerTransferCandidates(client.id); track candidate.id) {
+                        <mat-option [value]="candidate.id"
+                          >{{ candidate.name }} / {{ w.roleLabel(candidate.role) }}</mat-option
+                        >
+                      } @empty {
+                        <mat-option disabled>No eligible users</mat-option>
+                      }
+                    </mat-select>
+                  </mat-form-field>
+                  @if (w.ownerTransferTargetFor(client.id); as transferTarget) {
+                    <div class="pending-change">
+                      <span>Pending owner</span>
+                      <strong>{{ transferTarget.name }}</strong>
+                      <span>{{ transferTarget.email }}</span>
+                    </div>
+                  }
+                </section>
 
-            <div class="client-detail-footer">
-              <div class="detail-action-bar">
-                <div class="detail-action-group danger-action-group">
-                  @if (client.status === 'SUSPENDED') {
+                <section class="detail-section">
+                  <div class="detail-section-header">
+                    <h3>Subscription</h3>
+                  </div>
+                  @if (w.latestSubscriptionFor(client.id); as subscription) {
+                    <div class="detail-info-stack">
+                      <div class="inline-status-row">
+                        <p>{{ w.planNameFor(subscription.subscriptionPlanId) }}</p>
+                        <span
+                          class="status-chip subscription-status-chip"
+                          [class.active]="subscription.status === 'ACTIVE'"
+                          [class.trial]="subscription.status === 'TRIAL'"
+                          [class.suspended]="subscription.status === 'SUSPENDED'"
+                          [class.cancelled]="subscription.status === 'CANCELLED'"
+                        >
+                          {{ subscription.status }}
+                        </span>
+                      </div>
+                      <p class="muted">
+                        Allowance {{ subscription.activeBoothAllowance }} active booths
+                      </p>
+                    </div>
+                  } @else {
+                    <p class="empty-state">No subscription assigned.</p>
+                  }
+                  <div class="detail-section-actions">
                     <button
                       mat-flat-button
                       color="primary"
+                      class="stretch-action-button"
                       type="button"
-                      (click)="confirmClientStatus(client, 'ACTIVE')"
+                      (click)="openSubscriptionAssignment(client.id)"
                     >
-                      Activate Client
+                      Assign Subscription
                     </button>
-                  } @else {
+                  </div>
+                </section>
+              </section>
+
+              <div class="client-detail-footer">
+                <div class="detail-action-bar">
+                  <div class="detail-action-group danger-action-group">
+                    @if (client.status === 'SUSPENDED') {
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        type="button"
+                        (click)="confirmClientStatus(client, 'ACTIVE')"
+                      >
+                        Activate Client
+                      </button>
+                    } @else {
+                      <button
+                        mat-flat-button
+                        class="danger-flat-button"
+                        type="button"
+                        (click)="confirmClientStatus(client, 'SUSPENDED')"
+                      >
+                        Suspend Client
+                      </button>
+                    }
+                    <button
+                      mat-button
+                      class="danger-link-button"
+                      type="button"
+                      (click)="confirmClientStatus(client, 'ARCHIVED')"
+                    >
+                      Archive
+                    </button>
+                  </div>
+                  <div class="detail-action-group primary-action-group">
+                    <button mat-button type="button" (click)="w.setView('clients')">Back</button>
                     <button
                       mat-flat-button
-                      class="danger-flat-button"
-                      type="button"
-                      (click)="confirmClientStatus(client, 'SUSPENDED')"
+                      color="primary"
+                      type="submit"
+                      [disabled]="!w.ownerTransferUserId()"
                     >
-                      Suspend Client
+                      Save
                     </button>
-                  }
-                  <button
-                    mat-button
-                    class="danger-link-button"
-                    type="button"
-                    (click)="confirmClientStatus(client, 'ARCHIVED')"
-                  >
-                    Archive
-                  </button>
-                </div>
-                <div class="detail-action-group primary-action-group">
-                  <button mat-button type="button" (click)="w.setView('clients')">Back</button>
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    [disabled]="!w.ownerTransferUserId()"
-                    (click)="confirmOwnerTransfer(client)"
-                  >
-                    Save
-                  </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </mat-card-content>
+            </mat-card-content>
+          </form>
         </mat-card>
       </section>
     } @else {
@@ -1100,7 +1116,6 @@ export class ClientDetailPageComponent extends AdminRoutePage {
     const transferTarget = this.w.ownerTransferTargetFor(client.id);
 
     if (!transferTarget) {
-      await this.w.transferClientOwner(client.id);
       return;
     }
 
@@ -1180,39 +1195,34 @@ export class SubscriptionsPageComponent extends AdminRoutePage {
         <mat-card-header>
           <mat-card-title>Subscription Definition</mat-card-title>
         </mat-card-header>
-        <mat-card-content class="form-grid compact-form-grid">
-          <mat-form-field appearance="outline">
-            <mat-label>Name</mat-label>
-            <input matInput [ngModel]="w.planName()" (ngModelChange)="w.planName.set($event)" />
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>Monthly price per booth</mat-label>
-            <input
-              matInput
-              type="number"
-              [ngModel]="w.planPrice() / 100"
-              (ngModelChange)="w.setPlanPriceFromPesos($event)"
-            />
-          </mat-form-field>
-          <mat-slide-toggle
-            class="catalog-toggle"
-            [checked]="w.subscriptionActive()"
-            (change)="w.subscriptionActive.set($event.checked)"
-          >
-            Active in catalog
-          </mat-slide-toggle>
-        </mat-card-content>
-        <mat-card-actions align="end">
-          <button mat-button type="button" (click)="w.setView('subscriptions')">Cancel</button>
-          <button
-            mat-flat-button
-            color="primary"
-            type="button"
-            (click)="confirmSaveSubscriptionDefinition()"
-          >
-            Save
-          </button>
-        </mat-card-actions>
+        <form ngNoForm (submit)="$event.preventDefault(); confirmSaveSubscriptionDefinition()">
+          <mat-card-content class="form-grid compact-form-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Name</mat-label>
+              <input matInput [ngModel]="w.planName()" (ngModelChange)="w.planName.set($event)" />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Monthly price per booth</mat-label>
+              <input
+                matInput
+                type="number"
+                [ngModel]="w.planPrice() / 100"
+                (ngModelChange)="w.setPlanPriceFromPesos($event)"
+              />
+            </mat-form-field>
+            <mat-slide-toggle
+              class="catalog-toggle"
+              [checked]="w.subscriptionActive()"
+              (change)="w.subscriptionActive.set($event.checked)"
+            >
+              Active in catalog
+            </mat-slide-toggle>
+          </mat-card-content>
+          <mat-card-actions align="end">
+            <button mat-button type="button" (click)="w.setView('subscriptions')">Cancel</button>
+            <button mat-flat-button color="primary" type="submit">Save</button>
+          </mat-card-actions>
+        </form>
       </mat-card>
     </section>
   `,
@@ -1304,64 +1314,64 @@ export class UsersPageComponent extends AdminRoutePage {
             <mat-card-title>User Details</mat-card-title>
             <mat-card-subtitle>{{ user.email }}</mat-card-subtitle>
           </mat-card-header>
-          <mat-card-content class="form-grid">
-            <mat-form-field appearance="outline">
-              <mat-label>Name</mat-label>
-              <input
-                matInput
-                [ngModel]="w.userDetailName()"
-                (ngModelChange)="w.userDetailName.set($event)"
-              />
-            </mat-form-field>
-            <mat-form-field appearance="outline">
-              <mat-label>Role</mat-label>
-              <mat-select
-                [disabled]="!w.canEditSelectedUserRole(user)"
-                [ngModel]="w.userDetailRole()"
-                (ngModelChange)="w.setUserDetailRole($event)"
-              >
-                <mat-option value="CLIENT_ADMIN">Client Admin</mat-option>
-                <mat-option value="CASHIER">Cashier</mat-option>
-              </mat-select>
-            </mat-form-field>
-            @if (w.userDetailRole() === 'CASHIER') {
-              <div class="permission-stack">
-                @for (permission of w.cashierPermissionRows; track permission.key) {
-                  <mat-slide-toggle
-                    [checked]="w.userDetailPermissions()[permission.key]"
-                    (change)="w.toggleUserDetailPermission(permission.key)"
-                  >
-                    {{ permission.label }}
-                  </mat-slide-toggle>
-                }
-              </div>
-            }
-          </mat-card-content>
-          <mat-card-actions align="end">
-            <button mat-button type="button" (click)="w.setView('users')">Back</button>
-            @if (user.status === 'ACTIVE' && w.canDeactivateUser(user)) {
-              <button
-                mat-button
-                color="warn"
-                type="button"
-                (click)="confirmUserStatus(user, 'INACTIVE')"
-              >
-                Deactivate
-              </button>
-            } @else if (user.status !== 'ACTIVE') {
-              <button
-                mat-button
-                color="primary"
-                type="button"
-                (click)="confirmUserStatus(user, 'ACTIVE')"
-              >
-                Activate
-              </button>
-            }
-            <button mat-flat-button color="primary" type="button" (click)="confirmSaveUser(user)">
-              Save
-            </button>
-          </mat-card-actions>
+          <form ngNoForm (submit)="$event.preventDefault(); confirmSaveUser(user)">
+            <mat-card-content class="form-grid">
+              <mat-form-field appearance="outline">
+                <mat-label>Name</mat-label>
+                <input
+                  matInput
+                  [ngModel]="w.userDetailName()"
+                  (ngModelChange)="w.userDetailName.set($event)"
+                />
+              </mat-form-field>
+              <mat-form-field appearance="outline">
+                <mat-label>Role</mat-label>
+                <mat-select
+                  [disabled]="!w.canEditSelectedUserRole(user)"
+                  [ngModel]="w.userDetailRole()"
+                  (ngModelChange)="w.setUserDetailRole($event)"
+                >
+                  <mat-option value="CLIENT_ADMIN">Client Admin</mat-option>
+                  <mat-option value="CASHIER">Cashier</mat-option>
+                </mat-select>
+              </mat-form-field>
+              @if (w.userDetailRole() === 'CASHIER') {
+                <div class="permission-stack">
+                  @for (permission of w.cashierPermissionRows; track permission.key) {
+                    <mat-slide-toggle
+                      [checked]="w.userDetailPermissions()[permission.key]"
+                      (change)="w.toggleUserDetailPermission(permission.key)"
+                    >
+                      {{ permission.label }}
+                    </mat-slide-toggle>
+                  }
+                </div>
+              }
+            </mat-card-content>
+            <mat-card-actions align="end">
+              <button mat-button type="button" (click)="w.setView('users')">Back</button>
+              @if (user.status === 'ACTIVE' && w.canDeactivateUser(user)) {
+                <button
+                  mat-button
+                  color="warn"
+                  type="button"
+                  (click)="confirmUserStatus(user, 'INACTIVE')"
+                >
+                  Deactivate
+                </button>
+              } @else if (user.status !== 'ACTIVE') {
+                <button
+                  mat-button
+                  color="primary"
+                  type="button"
+                  (click)="confirmUserStatus(user, 'ACTIVE')"
+                >
+                  Activate
+                </button>
+              }
+              <button mat-flat-button color="primary" type="submit">Save</button>
+            </mat-card-actions>
+          </form>
         </mat-card>
       </section>
     } @else {
@@ -1619,68 +1629,63 @@ export class BoothsPageComponent extends AdminRoutePage {
           <mat-tab label="Details">
             <section class="content-grid tab-panel">
               <mat-card>
-                <mat-card-content class="form-grid">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Name</mat-label>
-                    <input
-                      matInput
-                      [ngModel]="w.boothDetailName()"
-                      (ngModelChange)="w.boothDetailName.set($event)"
-                    />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Code</mat-label>
-                    <input
-                      matInput
-                      [ngModel]="w.boothDetailCode()"
-                      (ngModelChange)="w.boothDetailCode.set($event)"
-                    />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Location</mat-label>
-                    <mat-select
-                      [ngModel]="w.boothDetailLocationId()"
-                      (ngModelChange)="w.boothDetailLocationId.set($event)"
-                    >
-                      @for (location of w.overview()?.locations ?? []; track location.id) {
-                        <mat-option [value]="location.id">{{ location.name }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>POS staff</mat-label>
-                    <mat-select
-                      [ngModel]="w.boothDetailCashierUserId()"
-                      (ngModelChange)="w.boothDetailCashierUserId.set($event)"
-                    >
-                      <mat-option [value]="null">Unassigned</mat-option>
-                      @for (user of w.boothDetailPosStaffOptions(); track user.id) {
-                        <mat-option [value]="user.id">{{ user.name }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Active package</mat-label>
-                    <mat-select
-                      [ngModel]="w.boothDetailOfferId()"
-                      (ngModelChange)="w.boothDetailOfferId.set($event)"
-                    >
-                      @for (offer of w.activeOffers(); track offer.id) {
-                        <mat-option [value]="offer.id">{{ offer.name }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                </mat-card-content>
-                <mat-card-actions align="end">
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    (click)="confirmSaveBoothDetails(booth)"
-                  >
-                    Save
-                  </button>
-                </mat-card-actions>
+                <form ngNoForm (submit)="$event.preventDefault(); confirmSaveBoothDetails(booth)">
+                  <mat-card-content class="form-grid">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Name</mat-label>
+                      <input
+                        matInput
+                        [ngModel]="w.boothDetailName()"
+                        (ngModelChange)="w.boothDetailName.set($event)"
+                      />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Code</mat-label>
+                      <input
+                        matInput
+                        [ngModel]="w.boothDetailCode()"
+                        (ngModelChange)="w.boothDetailCode.set($event)"
+                      />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Location</mat-label>
+                      <mat-select
+                        [ngModel]="w.boothDetailLocationId()"
+                        (ngModelChange)="w.boothDetailLocationId.set($event)"
+                      >
+                        @for (location of w.overview()?.locations ?? []; track location.id) {
+                          <mat-option [value]="location.id">{{ location.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>POS staff</mat-label>
+                      <mat-select
+                        [ngModel]="w.boothDetailCashierUserId()"
+                        (ngModelChange)="w.boothDetailCashierUserId.set($event)"
+                      >
+                        <mat-option [value]="null">Unassigned</mat-option>
+                        @for (user of w.boothDetailPosStaffOptions(); track user.id) {
+                          <mat-option [value]="user.id">{{ user.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Active package</mat-label>
+                      <mat-select
+                        [ngModel]="w.boothDetailOfferId()"
+                        (ngModelChange)="w.boothDetailOfferId.set($event)"
+                      >
+                        @for (offer of w.activeOffers(); track offer.id) {
+                          <mat-option [value]="offer.id">{{ offer.name }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                  </mat-card-content>
+                  <mat-card-actions align="end">
+                    <button mat-flat-button color="primary" type="submit">Save</button>
+                  </mat-card-actions>
+                </form>
               </mat-card>
 
               <mat-card class="payment-assignment-card">
@@ -1690,182 +1695,177 @@ export class BoothsPageComponent extends AdminRoutePage {
                     >Set booth checkout labels and runtime availability.</mat-card-subtitle
                   >
                 </mat-card-header>
-                <mat-card-content class="payment-option-list">
-                  <div class="payment-method-list">
-                    <div class="payment-method-header" aria-hidden="true">
-                      <span>Method</span>
-                      <span>Checkout display name</span>
-                      <span>Runtime</span>
-                    </div>
-                    <div class="payment-method-row">
-                      <div class="payment-method-summary">
-                        <strong>Cash</strong>
-                        <span>Cashier-approved payments</span>
+                <form
+                  ngNoForm
+                  (submit)="$event.preventDefault(); w.saveBoothPaymentDisplayNames(booth.id)"
+                >
+                  <mat-card-content class="payment-option-list">
+                    <div class="payment-method-list">
+                      <div class="payment-method-header" aria-hidden="true">
+                        <span>Method</span>
+                        <span>Checkout display name</span>
+                        <span>Runtime</span>
                       </div>
-                      <div class="payment-method-label">
-                        <mat-form-field appearance="outline" class="payment-display-name-field">
-                          <mat-label>Booth display name</mat-label>
-                          <input
-                            matInput
-                            maxlength="80"
-                            [ngModel]="w.boothCashDisplayLabel()"
-                            (ngModelChange)="w.boothCashDisplayLabel.set($event)"
+                      <div class="payment-method-row">
+                        <div class="payment-method-summary">
+                          <strong>Cash</strong>
+                          <span>Cashier-approved payments</span>
+                        </div>
+                        <div class="payment-method-label">
+                          <mat-form-field appearance="outline" class="payment-display-name-field">
+                            <mat-label>Booth display name</mat-label>
+                            <input
+                              matInput
+                              maxlength="80"
+                              [ngModel]="w.boothCashDisplayLabel()"
+                              (ngModelChange)="w.boothCashDisplayLabel.set($event)"
+                            />
+                          </mat-form-field>
+                        </div>
+                        <div class="payment-method-availability">
+                          <mat-slide-toggle
+                            aria-label="Enable cash payment"
+                            [checked]="w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false"
+                            (change)="confirmSetCashPaymentEnabled(booth, $event)"
                           />
-                        </mat-form-field>
+                        </div>
                       </div>
-                      <div class="payment-method-availability">
-                        <mat-slide-toggle
-                          aria-label="Enable cash payment"
-                          [checked]="w.cashAssignmentFor(booth.id)?.runtimeEnabled ?? false"
-                          (change)="confirmSetCashPaymentEnabled(booth, $event)"
-                        />
-                      </div>
-                    </div>
-                    <div class="payment-method-row">
-                      <div class="payment-method-summary">
-                        <strong>PayMongo QR Ph</strong>
-                        <span>Dynamic QR checkout</span>
-                      </div>
-                      <div class="payment-method-label">
-                        <mat-form-field appearance="outline" class="payment-display-name-field">
-                          <mat-label>Booth display name</mat-label>
-                          <input
-                            matInput
-                            maxlength="80"
-                            [ngModel]="w.boothPayMongoDisplayLabel()"
-                            (ngModelChange)="w.boothPayMongoDisplayLabel.set($event)"
+                      <div class="payment-method-row">
+                        <div class="payment-method-summary">
+                          <strong>PayMongo QR Ph</strong>
+                          <span>Dynamic QR checkout</span>
+                        </div>
+                        <div class="payment-method-label">
+                          <mat-form-field appearance="outline" class="payment-display-name-field">
+                            <mat-label>Booth display name</mat-label>
+                            <input
+                              matInput
+                              maxlength="80"
+                              [ngModel]="w.boothPayMongoDisplayLabel()"
+                              (ngModelChange)="w.boothPayMongoDisplayLabel.set($event)"
+                            />
+                          </mat-form-field>
+                        </div>
+                        <div class="payment-method-availability">
+                          <mat-slide-toggle
+                            aria-label="Enable PayMongo QR Ph payment"
+                            [checked]="
+                              w.payMongoRuntimeResource()
+                                ? (w.payMongoAssignmentFor(booth.id)?.runtimeEnabled ?? false)
+                                : false
+                            "
+                            [disabled]="!w.payMongoRuntimeResource()"
+                            (change)="confirmSetPayMongoPaymentEnabled(booth, $event)"
                           />
-                        </mat-form-field>
-                      </div>
-                      <div class="payment-method-availability">
-                        <mat-slide-toggle
-                          aria-label="Enable PayMongo QR Ph payment"
-                          [checked]="
-                            w.payMongoRuntimeResource()
-                              ? (w.payMongoAssignmentFor(booth.id)?.runtimeEnabled ?? false)
-                              : false
-                          "
-                          [disabled]="!w.payMongoRuntimeResource()"
-                          (change)="confirmSetPayMongoPaymentEnabled(booth, $event)"
-                        />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </mat-card-content>
-                <mat-card-actions align="end">
-                  <button
-                    mat-stroked-button
-                    color="primary"
-                    type="button"
-                    (click)="w.saveBoothPaymentDisplayNames(booth.id)"
-                  >
-                    Save payment names
-                  </button>
-                </mat-card-actions>
+                  </mat-card-content>
+                  <mat-card-actions align="end">
+                    <button mat-stroked-button color="primary" type="submit">
+                      Save payment names
+                    </button>
+                  </mat-card-actions>
+                </form>
               </mat-card>
             </section>
           </mat-tab>
           <mat-tab label="Session Setup">
             <section class="session-setup-grid tab-panel">
               <mat-card>
-                <mat-card-content class="form-grid">
-                  <mat-form-field appearance="outline">
-                    <mat-label>Session label</mat-label>
-                    <input
-                      matInput
-                      [ngModel]="w.boothAppearanceSessionLabel()"
-                      (ngModelChange)="w.boothAppearanceSessionLabel.set($event)"
-                    />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Welcome headline</mat-label>
-                    <input
-                      matInput
-                      [ngModel]="w.boothAppearanceHeadline()"
-                      (ngModelChange)="w.boothAppearanceHeadline.set($event)"
-                    />
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Welcome subtitle</mat-label>
-                    <textarea
-                      matInput
-                      rows="3"
-                      [ngModel]="w.boothAppearanceSubtitle()"
-                      (ngModelChange)="w.boothAppearanceSubtitle.set($event)"
-                    ></textarea>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Completion thank-you message</mat-label>
-                    <textarea
-                      matInput
-                      rows="2"
-                      [ngModel]="w.boothAppearanceCompletionMessage()"
-                      (ngModelChange)="w.boothAppearanceCompletionMessage.set($event)"
-                    ></textarea>
-                  </mat-form-field>
-                  <mat-form-field appearance="outline">
-                    <mat-label>Theme</mat-label>
-                    <mat-select
-                      [ngModel]="w.boothAppearanceThemePreset()"
-                      (ngModelChange)="w.boothAppearanceThemePreset.set($event)"
-                    >
-                      @for (preset of w.boothThemePresets; track preset.value) {
-                        <mat-option [value]="preset.value">{{ preset.label }}</mat-option>
-                      }
-                    </mat-select>
-                  </mat-form-field>
-                  <div class="background-upload-control">
-                    <input
-                      #boothBackgroundInput
-                      class="background-file-input"
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      (change)="setBoothBackgroundImageFromFile($event)"
-                    />
+                <form ngNoForm (submit)="$event.preventDefault(); confirmSaveBoothSession()">
+                  <mat-card-content class="form-grid">
+                    <mat-form-field appearance="outline">
+                      <mat-label>Session label</mat-label>
+                      <input
+                        matInput
+                        [ngModel]="w.boothAppearanceSessionLabel()"
+                        (ngModelChange)="w.boothAppearanceSessionLabel.set($event)"
+                      />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Welcome headline</mat-label>
+                      <input
+                        matInput
+                        [ngModel]="w.boothAppearanceHeadline()"
+                        (ngModelChange)="w.boothAppearanceHeadline.set($event)"
+                      />
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Welcome subtitle</mat-label>
+                      <textarea
+                        matInput
+                        rows="3"
+                        [ngModel]="w.boothAppearanceSubtitle()"
+                        (ngModelChange)="w.boothAppearanceSubtitle.set($event)"
+                      ></textarea>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Completion thank-you message</mat-label>
+                      <textarea
+                        matInput
+                        rows="2"
+                        [ngModel]="w.boothAppearanceCompletionMessage()"
+                        (ngModelChange)="w.boothAppearanceCompletionMessage.set($event)"
+                      ></textarea>
+                    </mat-form-field>
+                    <mat-form-field appearance="outline">
+                      <mat-label>Theme</mat-label>
+                      <mat-select
+                        [ngModel]="w.boothAppearanceThemePreset()"
+                        (ngModelChange)="w.boothAppearanceThemePreset.set($event)"
+                      >
+                        @for (preset of w.boothThemePresets; track preset.value) {
+                          <mat-option [value]="preset.value">{{ preset.label }}</mat-option>
+                        }
+                      </mat-select>
+                    </mat-form-field>
+                    <div class="background-upload-control">
+                      <input
+                        #boothBackgroundInput
+                        class="background-file-input"
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        (change)="setBoothBackgroundImageFromFile($event)"
+                      />
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="background-upload-button"
+                        (click)="boothBackgroundInput.click()"
+                      >
+                        Choose Image
+                      </button>
+                      <div class="background-upload-meta">
+                        <span class="background-file-name" aria-live="polite">
+                          {{ backgroundImageFileLabel() }}
+                        </span>
+                        @if (w.boothAppearanceBackgroundImageDataUrl()) {
+                          <button
+                            type="button"
+                            class="background-clear-icon"
+                            aria-label="Remove background image"
+                            (click)="clearBoothBackgroundImage()"
+                          >
+                            X
+                          </button>
+                        }
+                      </div>
+                    </div>
+                  </mat-card-content>
+                  <mat-card-actions class="session-setup-actions">
                     <button
                       mat-stroked-button
                       type="button"
-                      class="background-upload-button"
-                      (click)="boothBackgroundInput.click()"
+                      (click)="w.resetBoothSessionToThemeDefaults()"
                     >
-                      Choose Image
+                      Reset to theme defaults
                     </button>
-                    <div class="background-upload-meta">
-                      <span class="background-file-name" aria-live="polite">
-                        {{ backgroundImageFileLabel() }}
-                      </span>
-                      @if (w.boothAppearanceBackgroundImageDataUrl()) {
-                        <button
-                          type="button"
-                          class="background-clear-icon"
-                          aria-label="Remove background image"
-                          (click)="clearBoothBackgroundImage()"
-                        >
-                          X
-                        </button>
-                      }
+                    <div class="session-primary-actions">
+                      <button mat-flat-button color="primary" type="submit">Save</button>
                     </div>
-                  </div>
-                </mat-card-content>
-                <mat-card-actions class="session-setup-actions">
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    (click)="w.resetBoothSessionToThemeDefaults()"
-                  >
-                    Reset to theme defaults
-                  </button>
-                  <div class="session-primary-actions">
-                    <button
-                      mat-flat-button
-                      color="primary"
-                      type="button"
-                      (click)="confirmSaveBoothSession()"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </mat-card-actions>
+                  </mat-card-actions>
+                </form>
               </mat-card>
 
               <mat-card>
@@ -2258,124 +2258,124 @@ export class PackagesPageComponent extends AdminRoutePage {
             </span>
           }
         </mat-card-header>
-        <mat-card-content class="form-grid">
-          <mat-form-field appearance="outline">
-            <mat-label>Package name</mat-label>
-            <input
-              matInput
-              name="packageName"
-              [ngModel]="w.packageName()"
-              (ngModelChange)="w.packageName.set($event)"
-            />
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>Price</mat-label>
-            <span matTextPrefix>{{ w.packageCurrency() }}&nbsp;</span>
-            <input
-              matInput
-              name="packagePrice"
-              type="number"
-              [ngModel]="w.packagePriceCents() / 100"
-              (ngModelChange)="w.setPackagePriceFromPesos($event)"
-            />
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>Description</mat-label>
-            <textarea
-              matInput
-              rows="3"
-              [ngModel]="w.packageDescription()"
-              (ngModelChange)="w.packageDescription.set($event)"
-            ></textarea>
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>Type</mat-label>
-            <mat-select
-              [ngModel]="w.packageOfferType()"
-              (ngModelChange)="w.packageOfferType.set($event)"
-            >
-              <mat-option value="PER_SESSION">Per Session</mat-option>
-              <mat-option value="TIME_UNLIMITED">Time Unlimited</mat-option>
-              <mat-option value="SESSION_COUNT">Session Count</mat-option>
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>Print entitlement</mat-label>
-            <mat-select
-              [ngModel]="w.packagePrintEntitlement()"
-              (ngModelChange)="w.packagePrintEntitlement.set($event)"
-            >
-              @for (entitlement of w.packagePrintEntitlementOptions(); track entitlement) {
-                <mat-option [value]="entitlement">{{ entitlement }}</mat-option>
-              }
-            </mat-select>
-          </mat-form-field>
-          <mat-form-field appearance="outline">
-            <mat-label>LumaBooth mode</mat-label>
-            <mat-select
-              [ngModel]="w.packageLumaBoothMode()"
-              (ngModelChange)="w.packageLumaBoothMode.set($event)"
-            >
-              <mat-option value="PRINT">Print</mat-option>
-              <mat-option value="GIF">GIF</mat-option>
-              <mat-option value="BOOMERANG">Boomerang</mat-option>
-              <mat-option value="VIDEO">Video</mat-option>
-            </mat-select>
-          </mat-form-field>
-          @if (w.packageOfferType() === 'PER_SESSION') {
+        <form ngNoForm (submit)="$event.preventDefault(); confirmSavePackage()">
+          <mat-card-content class="form-grid">
             <mat-form-field appearance="outline">
-              <mat-label>Add-on print price</mat-label>
+              <mat-label>Package name</mat-label>
+              <input
+                matInput
+                name="packageName"
+                [ngModel]="w.packageName()"
+                (ngModelChange)="w.packageName.set($event)"
+              />
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Price</mat-label>
               <span matTextPrefix>{{ w.packageCurrency() }}&nbsp;</span>
               <input
                 matInput
+                name="packagePrice"
                 type="number"
-                [ngModel]="w.packageExtraPrintPriceCents() / 100"
-                (ngModelChange)="w.setPackageExtraPrintPriceFromPesos($event)"
+                [ngModel]="w.packagePriceCents() / 100"
+                (ngModelChange)="w.setPackagePriceFromPesos($event)"
               />
             </mat-form-field>
-          } @else if (w.packageOfferType() === 'TIME_UNLIMITED') {
             <mat-form-field appearance="outline">
-              <mat-label>Duration hours</mat-label>
-              <input
+              <mat-label>Description</mat-label>
+              <textarea
                 matInput
-                type="number"
-                [ngModel]="w.packageDurationHours()"
-                (ngModelChange)="w.packageDurationHours.set(+$event)"
-              />
+                rows="3"
+                [ngModel]="w.packageDescription()"
+                (ngModelChange)="w.packageDescription.set($event)"
+              ></textarea>
             </mat-form-field>
-          } @else {
             <mat-form-field appearance="outline">
-              <mat-label>Session allowance</mat-label>
-              <input
-                matInput
-                type="number"
-                [ngModel]="w.packageSessionAllowance()"
-                (ngModelChange)="w.packageSessionAllowance.set(+$event)"
-              />
-            </mat-form-field>
-          }
-        </mat-card-content>
-        <mat-card-actions class="detail-action-bar package-detail-actions">
-          <div class="detail-action-group danger-action-group">
-            @if (w.selectedPackage(); as selectedPackage) {
-              <button
-                mat-flat-button
-                type="button"
-                [color]="selectedPackage.active ? null : 'primary'"
-                [class.danger-flat-button]="selectedPackage.active"
-                (click)="confirmPackageStatus(selectedPackage, !selectedPackage.active)"
+              <mat-label>Type</mat-label>
+              <mat-select
+                [ngModel]="w.packageOfferType()"
+                (ngModelChange)="w.packageOfferType.set($event)"
               >
-                {{ selectedPackage.active ? 'Deactivate' : 'Activate' }}
-              </button>
+                <mat-option value="PER_SESSION">Per Session</mat-option>
+                <mat-option value="TIME_UNLIMITED">Time Unlimited</mat-option>
+                <mat-option value="SESSION_COUNT">Session Count</mat-option>
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>Print entitlement</mat-label>
+              <mat-select
+                [ngModel]="w.packagePrintEntitlement()"
+                (ngModelChange)="w.packagePrintEntitlement.set($event)"
+              >
+                @for (entitlement of w.packagePrintEntitlementOptions(); track entitlement) {
+                  <mat-option [value]="entitlement">{{ entitlement }}</mat-option>
+                }
+              </mat-select>
+            </mat-form-field>
+            <mat-form-field appearance="outline">
+              <mat-label>LumaBooth mode</mat-label>
+              <mat-select
+                [ngModel]="w.packageLumaBoothMode()"
+                (ngModelChange)="w.packageLumaBoothMode.set($event)"
+              >
+                <mat-option value="PRINT">Print</mat-option>
+                <mat-option value="GIF">GIF</mat-option>
+                <mat-option value="BOOMERANG">Boomerang</mat-option>
+                <mat-option value="VIDEO">Video</mat-option>
+              </mat-select>
+            </mat-form-field>
+            @if (w.packageOfferType() === 'PER_SESSION') {
+              <mat-form-field appearance="outline">
+                <mat-label>Add-on print price</mat-label>
+                <span matTextPrefix>{{ w.packageCurrency() }}&nbsp;</span>
+                <input
+                  matInput
+                  type="number"
+                  [ngModel]="w.packageExtraPrintPriceCents() / 100"
+                  (ngModelChange)="w.setPackageExtraPrintPriceFromPesos($event)"
+                />
+              </mat-form-field>
+            } @else if (w.packageOfferType() === 'TIME_UNLIMITED') {
+              <mat-form-field appearance="outline">
+                <mat-label>Duration hours</mat-label>
+                <input
+                  matInput
+                  type="number"
+                  [ngModel]="w.packageDurationHours()"
+                  (ngModelChange)="w.packageDurationHours.set(+$event)"
+                />
+              </mat-form-field>
+            } @else {
+              <mat-form-field appearance="outline">
+                <mat-label>Session allowance</mat-label>
+                <input
+                  matInput
+                  type="number"
+                  [ngModel]="w.packageSessionAllowance()"
+                  (ngModelChange)="w.packageSessionAllowance.set(+$event)"
+                />
+              </mat-form-field>
             }
-          </div>
-          <div class="detail-action-group primary-action-group">
-            <button mat-button type="button" (click)="w.setView('packages')">Cancel</button>
-            <button mat-flat-button color="primary" type="button" (click)="confirmSavePackage()">
-              Save
-            </button>
-          </div>
-        </mat-card-actions>
+          </mat-card-content>
+          <mat-card-actions class="detail-action-bar package-detail-actions">
+            <div class="detail-action-group danger-action-group">
+              @if (w.selectedPackage(); as selectedPackage) {
+                <button
+                  mat-flat-button
+                  type="button"
+                  [color]="selectedPackage.active ? null : 'primary'"
+                  [class.danger-flat-button]="selectedPackage.active"
+                  (click)="confirmPackageStatus(selectedPackage, !selectedPackage.active)"
+                >
+                  {{ selectedPackage.active ? 'Deactivate' : 'Activate' }}
+                </button>
+              }
+            </div>
+            <div class="detail-action-group primary-action-group">
+              <button mat-button type="button" (click)="w.setView('packages')">Cancel</button>
+              <button mat-flat-button color="primary" type="submit">Save</button>
+            </div>
+          </mat-card-actions>
+        </form>
       </mat-card>
     </section>
   `,
@@ -3132,7 +3132,12 @@ export class SettingsPageComponent extends AdminRoutePage {
                   </button>
                 </div>
               }
-              <section class="paymongo-step-card" [class.active]="!hasPayMongoWebhookUrl()">
+              <form
+                ngNoForm
+                class="paymongo-step-card"
+                [class.active]="!hasPayMongoWebhookUrl()"
+                (submit)="$event.preventDefault(); savePayMongo(false)"
+              >
                 <div class="paymongo-step-header">
                   <span class="paymongo-step-number">1</span>
                   <div>
@@ -3185,18 +3190,18 @@ export class SettingsPageComponent extends AdminRoutePage {
                   }}</mat-hint>
                 </mat-form-field>
                 <div class="paymongo-step-actions">
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    (click)="savePayMongo(false)"
-                  >
+                  <button mat-flat-button color="primary" type="submit">
                     {{ accountKeysButtonLabel() }}
                   </button>
                 </div>
-              </section>
+              </form>
 
-              <section class="paymongo-step-card" [class.active]="hasPayMongoStepOneSaved()">
+              <form
+                ngNoForm
+                class="paymongo-step-card"
+                [class.active]="hasPayMongoStepOneSaved()"
+                (submit)="$event.preventDefault(); savePayMongoWebhookSecret()"
+              >
                 <div class="paymongo-step-header">
                   <span class="paymongo-step-number">2</span>
                   <div>
@@ -3245,12 +3250,7 @@ export class SettingsPageComponent extends AdminRoutePage {
                   </mat-form-field>
                 }
                 <div class="paymongo-step-actions">
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    [disabled]="!hasPayMongoStepOneSaved()"
-                    (click)="savePayMongoWebhookSecret()"
-                  >
+                  <button mat-stroked-button type="submit" [disabled]="!hasPayMongoStepOneSaved()">
                     Save Webhook Secret
                   </button>
                   <button
@@ -3263,7 +3263,7 @@ export class SettingsPageComponent extends AdminRoutePage {
                     Verify PayMongo Setup
                   </button>
                 </div>
-              </section>
+              </form>
             </div>
           </section>
         </mat-card-content>
@@ -3455,41 +3455,41 @@ export class PayMongoSettingsPageComponent extends AdminRoutePage {
   imports: [AdminUiModule],
   template: `
     <h2 mat-dialog-title>Change Password</h2>
-    <mat-dialog-content class="dialog-form">
-      <mat-form-field appearance="outline">
-        <mat-label>Current password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordCurrent()"
-          (ngModelChange)="w.changePasswordCurrent.set($event)"
-        />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>New password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordNew()"
-          (ngModelChange)="w.changePasswordNew.set($event)"
-        />
-      </mat-form-field>
-      <mat-form-field appearance="outline">
-        <mat-label>Confirm new password</mat-label>
-        <input
-          matInput
-          type="password"
-          [ngModel]="w.changePasswordConfirm()"
-          (ngModelChange)="w.changePasswordConfirm.set($event)"
-        />
-      </mat-form-field>
-    </mat-dialog-content>
-    <mat-dialog-actions align="end">
-      <button mat-button type="button" (click)="close()">Cancel</button>
-      <button mat-flat-button color="primary" type="button" (click)="changePassword()">
-        Change Password
-      </button>
-    </mat-dialog-actions>
+    <form ngNoForm (submit)="$event.preventDefault(); changePassword()">
+      <mat-dialog-content class="dialog-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Current password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordCurrent()"
+            (ngModelChange)="w.changePasswordCurrent.set($event)"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>New password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordNew()"
+            (ngModelChange)="w.changePasswordNew.set($event)"
+          />
+        </mat-form-field>
+        <mat-form-field appearance="outline">
+          <mat-label>Confirm new password</mat-label>
+          <input
+            matInput
+            type="password"
+            [ngModel]="w.changePasswordConfirm()"
+            (ngModelChange)="w.changePasswordConfirm.set($event)"
+          />
+        </mat-form-field>
+      </mat-dialog-content>
+      <mat-dialog-actions align="end">
+        <button mat-button type="button" (click)="close()">Cancel</button>
+        <button mat-flat-button color="primary" type="submit">Change Password</button>
+      </mat-dialog-actions>
+    </form>
   `,
 })
 export class ChangePasswordDialogComponent {
